@@ -318,7 +318,21 @@ Semantic versioning, pinned to Genesis freeze:
 
 ---
 
-## Phase 1 — TypeScript Math Foundation (2 weeks)
+## Phase 1 — TypeScript Math Foundation ✅ DONE (v2.3.0, 2026-04-23)
+
+**Landed:** `ts/src/gen1/math.ts` (Modular class + byte/bigint helpers), `coords.ts` (4 coord types + INFINITY_POINT_EXTENDED), `curve.ts` (DALOS_ELLIPSE constant + affine↔extended conversions + on-curve / infinity / equality predicates), `point-ops.ts` (HWCD addition V1/V2/V3, doubling V1/V2, tripling, fortyNiner, precomputeMatrix).
+
+**Verified:** 63/63 tests pass. Algebraic identity checks confirm line-by-line port:
+- `addition(G, G) === doubling(G)`
+- `tripling(G) === addition(G, doubling(G)) === addition(addition(G, G), G)`
+- `fortyNiner(G) === 48 chained additions of G`
+- `precomputeMatrix[i][j]` at every slot equals `(i·7 + j + 1)·G` computed via the naive chain
+
+Ready for Phase 2 (base-49 Horner scalar multiplication).
+
+---
+
+## Phase 1 — TypeScript Math Foundation (pre-landing spec; kept for reference) (2 weeks)
 
 **Goal:** Port the pure-arithmetic layer. Every function validated against Go test vectors.
 

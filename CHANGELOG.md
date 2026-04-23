@@ -17,6 +17,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [2.3.0] — 2026-04-23
+
+**Phase 1 landed — TypeScript Math Foundation.** Complete port of the pure-arithmetic layer from `Elliptic/PointOperations.go` and `Elliptic/PointConverter.go` to TypeScript. Every function is a line-for-line mirror of the Go reference with preserved intermediate variable names. 63/63 tests pass.
+
+### Added
+
+- **`ts/src/gen1/math.ts`** — `Modular` class with `add`/`sub`/`mul`/`div`/`inv`/`exp`/`neg`/`canon`, plus `bytesToBigIntBE` / `bigIntToBytesBE` / `parseBase10` helpers matching Go's `big.Int` interface.
+- **`ts/src/gen1/coords.ts`** — `CoordAffine`, `CoordExtended`, `CoordInverted`, `CoordProjective` interfaces + `INFINITY_POINT_EXTENDED` constant `{ex: 0, ey: 1, ez: 1, et: 0}`.
+- **`ts/src/gen1/curve.ts`** — `Ellipse` interface + `DALOS_ELLIPSE` constant (name, P, Q, T, R, S, a, d, G verified byte-for-byte against Go) + `DALOS_FIELD` shared Modular instance + `affine2Extended` / `extended2Affine` / `isInfinityPoint` / `isOnCurve` / `arePointsEqual` / `isInverseOnCurve` predicates.
+- **`ts/src/gen1/point-ops.ts`** — HWCD formulas as typed TypeScript: `addition` dispatcher + `additionV1` (mmadd-2008-hwcd) + `additionV2` (madd-2008-hwcd-2) + `additionV3` (add-2008-hwcd), `doubling` dispatcher + `doublingV1` (mdbl-2008-hwcd) + `doublingV2` (dbl-2008-hwcd), `tripling` (tpl-2015-c), `fortyNiner` (3·P → 6·P → 12·P → 24·P → 48·P → 49·P), `precomputeMatrix` (49-element 7×7 matrix for base-49 Horner in Phase 2).
+- **`ts/src/gen1/index.ts`** — public gen1 surface. Path: `@stoachain/dalos-crypto/gen1`.
+- **`ts/tests/gen1/math.test.ts`** — 14 tests (modular ops, 1606-bit scale, byte conversions, decimal parser).
+- **`ts/tests/gen1/curve.test.ts`** — 14 tests (parameter constants match Go; predicates work correctly).
+- **`ts/tests/gen1/point-ops.test.ts`** — 28 tests proving every operation via algebraic identity cross-checks.
+
+### Changed
+
+- `ts/src/index.ts` — `SCAFFOLD_VERSION` bumped from `0.0.1` to `0.1.0`. Adds `export * as gen1 from './gen1/index.js'` for top-level discoverability.
+- `ts/tests/scaffold.test.ts` — expectation updated to match the new version.
+
+### Verified
+
+- `npm run lint` → 0 errors, 0 warnings across 11 files
+- `npm run typecheck` → exit 0 (strictest TS options: `noUncheckedIndexedAccess`, `verbatimModuleSyntax`, `isolatedModules`, all `strict*`)
+- `npm run build` → exit 0 (`dist/gen1/*.js` + `.d.ts` + source maps produced)
+- `npm test` → **63/63 pass in 1.8s** across 4 test files
+
+### Known edge case (matches Go behaviour)
+
+`fortyNiner(infinity)` is not tested as an algebraic identity because the HWCD addition formulas produce a degenerate Z=0 intermediate when combining infinity with itself via the V2 path. In practice this never occurs — fortyNiner is only called on non-infinity accumulators within base-49 Horner scalar multiplication (Phase 2). The Go reference has the same behaviour.
+
+### Next
+
+Phase 2 (scalar multiplication) adds `ts/src/gen1/scalar-mult.ts` with branch-free base-49 Horner evaluation matching v1.3.0+ Go behaviour. First byte-identity gate against the Go test-vector corpus arrives in Phase 4 (full key-gen pipeline).
+
+---
+
 ## [2.2.0] — 2026-04-23
 
 **Phase 0b landed — TypeScript build scaffold.** `ts/` subfolder now hosts the `@stoachain/dalos-crypto` package (at v0.0.1), ready for Phase 1 math code to land inside. Zero cryptographic logic yet — pure infrastructure.

@@ -17,6 +17,64 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [2.7.0] — 2026-04-23
+
+**Phase 5 landed — TypeScript AES-256-GCM wrapper.** Complete port of the Go `AES/AES.go` encryption layer with all v2.1.0 hardening applied and one TS-port robustness improvement (nonce-first-nibble constraint that eliminates a latent roundtrip bug in the Go reference). 208/208 tests pass.
+
+### Added
+
+- **`ts/src/gen1/aes.ts`** — AES-256-GCM encryption module:
+  - `bitStringToBytes(bits)` — bitstring → bigint → hex → bytes, matching Go's `BitStringToHex` (including Go's partial-decode behaviour for odd-nibble magnitudes)
+  - `bytesToBitString(bytes)` — reverse, matching Go's `CipherTextDec.SetString(hex, 16).Text(2)`
+  - `makeKeyFromPassword(pw)` — single-pass Blake3 → 32-byte AES key, matching Go exactly
+  - `zeroBytes(b)` — best-effort scrub helper (matches Go's v2.1.0 `ZeroBytes`)
+  - `encryptBitString(bits, pw)` — AES-256-GCM with 12-byte random nonce; returns `""` on failure (matches v2.1.0 Go)
+  - `decryptBitString(bits, pw)` — throws typed errors on failure (matches v2.1.0 Go)
+  - `encryptAndPad` / `decryptAndPadToLength` — convenience wrappers for fixed-width round-tripping (restores leading zeros lost in the bigint-based byte encoding)
+- **`ts/tests/gen1/aes.test.ts`** — 28 tests covering:
+  - `bitStringToBytes` / `bytesToBitString` edge cases (empty, all-zero, odd-nibble)
+  - Key derivation determinism + Unicode passwords
+  - Round-trip encryption/decryption
+  - Wrong password fails (AES-GCM auth-tag mismatch)
+  - Corrupted ciphertext fails
+  - Different ciphertext each call (random nonce)
+  - **1600-bit round-trips across 24 committed bitstring vectors** (those whose magnitude is even-nibble hex length — the other 26 hit the documented Go AES-wrapper limitation)
+  - Wrong-password rejection across 10 vectors
+
+### TS-port improvement over Go reference
+
+The Go `AES/AES.go` has a latent bug: when the random nonce's first byte has a zero TOP NIBBLE (e.g., `0x0F` or lower), the bytes→bigint→binary encoding of the combined ciphertext loses that nibble and the ciphertext cannot be decrypted. This affects ~6.25% of nonces → ~6.25% of encryptions produce unreadable ciphertexts in the Go CLI.
+
+The TS port constrains the nonce generation to `nonce[0] >= 0x10`, eliminating this failure case. This is **interoperable with Go**: TS-produced ciphertexts always decrypt cleanly under Go (Go's decrypt works for any nonce, it's only Go's encrypt that has the latent bug). Documented in `aes.ts` with rationale.
+
+### Known limitations (matches Go, preserved for byte-identity)
+
+- **Leading zero BITS of the plaintext are lost** — `bigint(bits, 2)` strips them. Use `decryptAndPadToLength(ct, pw, 1600)` to restore them after decryption (matches Go's `strings.Repeat("0", …)` pad-after-decrypt pattern in `ImportPrivateKey`).
+- **Plaintexts with odd-nibble magnitude** lose their last half-nibble on encryption (Go's `hex.DecodeString` on odd-length input returns partial bytes + error; the error is discarded). ~50% of random bitstrings hit this. **Not fixable without breaking byte-identity with Go.**
+- **Weak password KDF** — single-pass Blake3 with no salt is brute-forceable at GPU speeds for low-entropy passwords. AES-1 and AES-2 marked NOT-FIXED-BY-DESIGN in AUDIT.md; user responsibility to choose a strong password.
+
+### Verified
+
+- `npm run lint` → 0 errors across 25 files
+- `npm run typecheck` → exit 0
+- `npm run build` → exit 0
+- `npm test` → **208/208 tests pass in 26 seconds**
+- AES round-trips verified on 24 bitstring vectors (even-nibble magnitude subset) + synthesised all-ones/leading-zero patterns
+- Wrong password fails on every ciphertext
+
+### Updated
+
+- `ts/src/gen1/index.ts` — exports Phase 5 AES surface
+- `ts/src/index.ts` — SCAFFOLD_VERSION `0.4.0` → `0.5.0`
+- `ts/tests/scaffold.test.ts` — version expectation updated
+- `docs/TS_PORT_PLAN.md` — Phase 5 marked DONE
+
+### Next
+
+Phase 6 ports the v2-hardened Schnorr (length-prefixed Fiat–Shamir, RFC-6979-style deterministic nonces, domain-separation tag). Since Schnorr v2 is fully deterministic, signatures will match the Go corpus byte-for-byte for all 20 Schnorr vectors.
+
+---
+
 ## [2.6.0] — 2026-04-23
 
 **🎯 PHASE 4 LANDED — END-TO-END BYTE-IDENTITY ACHIEVED.** The TypeScript port is now a functionally complete drop-in replacement for the Go reference's key-generation service. Every one of the 85 address-bearing vectors in the committed Go corpus plus all 20 Schnorr-vector public keys reproduces byte-for-byte through the full TypeScript pipeline. **182/182 tests pass.**

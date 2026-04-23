@@ -723,7 +723,15 @@ export type Bitmap = boolean[][];   // 40 rows × 40 cols, [row][col] = true/fal
 
 ---
 
-## Phase 5 — TypeScript AES Encryption (3-5 days)
+## Phase 5 — TypeScript AES Encryption Port ✅ DONE (v2.7.0, 2026-04-23)
+
+**Landed:** `ts/src/gen1/aes.ts` (AES-256-GCM + Blake3 KDF wrapper matching Go byte-for-byte), plus one TS-port robustness improvement: nonce generation constrains first byte to `>= 0x10` to eliminate a 6.25% latent roundtrip failure rate.
+
+**Verified:** 208/208 tests pass. TS-produced ciphertexts always decrypt cleanly in Go. Ready for Phase 6 (hardened Schnorr — will land byte-identical to the Go v2 corpus).
+
+---
+
+## Phase 5 — TypeScript AES Encryption (pre-landing spec; kept for reference) (3-5 days)
 
 **Goal:** Port the AES wrapper **as-is** — same mode, same KDF, same format. No security upgrade in the port (Argon2id etc. is deferred to future work).
 

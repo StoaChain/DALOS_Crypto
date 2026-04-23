@@ -122,3 +122,15 @@ export {
   fromSeedWords,
   fromBitmap,
 } from './key-gen.js';
+
+// AES encryption (Phase 5)
+export {
+  zeroBytes,
+  bitStringToBytes,
+  bytesToBitString,
+  makeKeyFromPassword,
+  encryptBitString,
+  decryptBitString,
+  encryptAndPad,
+  decryptAndPadToLength,
+} from './aes.js';

@@ -2,7 +2,8 @@
 
 [![Audit](https://img.shields.io/badge/Audit-Complete-brightgreen)](AUDIT.md)
 [![Curve](https://img.shields.io/badge/Curve-verified-brightgreen)](verification/VERIFICATION_LOG.md)
-[![Version](https://img.shields.io/badge/Version-2.0.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-2.1.0-blue)](CHANGELOG.md)
+[![Phase 0](https://img.shields.io/badge/Phase%200-COMPLETE-brightgreen)](docs/TS_PORT_PLAN.md)
 [![Language](https://img.shields.io/badge/Language-Go%201.19-00ADD8)](go.mod)
 [![TypeScript Port](https://img.shields.io/badge/TypeScript%20port-planned-lightgrey)](#roadmap)
 

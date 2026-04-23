@@ -6,10 +6,32 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
 )
+
+// ============================================================================
+// AES-3 hardening (v2.1.0): proper error handling
+// ============================================================================
+//
+// Pre-v2.1.0 this file printed errors via fmt.Println and then
+// continued execution, producing garbage output from invalid state.
+// From v2.1.0 onward, the public functions short-circuit on any AES
+// primitive failure:
+//   - EncryptBitString returns "" on any failure (no more garbage)
+//   - DecryptBitString returns a non-nil error on any failure
+//
+// Signatures are unchanged so every existing caller compiles without
+// modification. New callers should treat an empty-string return from
+// EncryptBitString as an error signal.
+//
+// KG-3 hardening (v2.1.0): best-effort zeroing of password-derived
+// buffers and intermediate plaintext byte slices after use. Go strings
+// are immutable and cannot be zeroed — callers must keep passwords in
+// byte slices if memory-lifetime hygiene matters to them.
+// ============================================================================
 
 //
 // Converts a String of 0s and 1s to a Slice of bytes.
@@ -25,111 +47,113 @@ func BitStringToHex(BitString string) []byte {
 
 //
 // Hashes a Password with Blake3 and creates a slice of bytes 32 units long
-// that can be used as a KEY for AES Encryption and Decryption
+// that can be used as a KEY for AES Encryption and Decryption.
 //
+// KG-3 note: the returned slice is caller-owned. Callers should call
+// ZeroBytes on it when finished to best-effort scrub the AES key from
+// memory. Go's GC may still retain copies in internal buffers; this
+// is a best-effort mitigation, not a guarantee.
 func MakeKeyFromPassword(Password string) []byte {
-	var SByteArray []byte
-	//Making Key from Password. A Blake3 Hash with 32 bytes output is used.
 	PasswordToByteSlice := []byte(Password)
 	HashedPassword := Blake3.SumCustom(PasswordToByteSlice, 32)
-	//Converting the resulting hash which is a slice of bytes, to hex (byte to hex)
-	for i := 0; i < len(HashedPassword); i++ {
-		SByteArray = append(SByteArray, HashedPassword[i])
-	}
-	Key, _ := hex.DecodeString(hex.EncodeToString(SByteArray))
+
+	// Best-effort zeroing of the intermediate password-bytes buffer.
+	ZeroBytes(PasswordToByteSlice)
+
+	// Copy out to an owned slice so we can zero the Blake3 output
+	// without affecting the caller's key.
+	Key := make([]byte, len(HashedPassword))
+	copy(Key, HashedPassword)
+	ZeroBytes(HashedPassword)
 	return Key
 }
 
+// ZeroBytes overwrites a byte slice with zeros. Best-effort memory
+// hygiene helper for secret material (passwords, derived keys,
+// intermediate plaintext). KG-3 hardening (v2.1.0).
+func ZeroBytes(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
+}
+
+// EncryptBitString encrypts a 0/1 bitstring under AES-256-GCM keyed
+// by Blake3(password, 32 bytes).
 //
-// Encrypts a String of 0s and 1s using a Password via AES and outputs another String of 0s and 1s
+// v2.1.0: returns "" on any AES primitive failure (cipher setup, GCM
+// construction, or nonce generation) instead of printing and returning
+// garbage. A valid input always produces a non-empty output.
 func EncryptBitString(BitString, Password string) (BitStringOutput string) {
 	var CipherTextDec = new(big.Int)
 
-	//Converting BitString to HEX
 	BitStringToEncrypt := BitStringToHex(BitString)
-
-	//Making Key from Password. A Blake3 Hash with 32 bytes output is used.
 	Key := MakeKeyFromPassword(Password)
+	defer ZeroBytes(Key) // KG-3: scrub AES key on return
 
-	//Create a New Cipher Block from the Key
-	Block, err1 := aes.NewCipher(Key)
-	// if there are any errors, handle them
-	if err1 != nil {
-		fmt.Println("Block Error:", err1)
+	Block, err := aes.NewCipher(Key)
+	if err != nil {
+		return ""
 	}
 
-	//Create a new Galois Counter Mode
-	// gcm or Galois/Counter Mode, is a mode of operation
-	// for symmetric key cryptographic block ciphers
-	// - https://en.wikipedia.org/wiki/Galois/Counter_Mode
-	AesGcm, err2 := cipher.NewGCM(Block)
-	// if any error generating new GCM
-	// handle them
-	if err2 != nil {
-		fmt.Println("AesGcm Error:", err2)
+	AesGcm, err := cipher.NewGCM(Block)
+	if err != nil {
+		return ""
 	}
 
-	// creates a new byte array the size of the nonce
-	// which must be passed to Seal
 	nonce := make([]byte, AesGcm.NonceSize())
-	// populates our nonce with a cryptographically secure
-	// random sequence
-	if _, err3 := io.ReadFull(rand.Reader, nonce); err3 != nil {
-		fmt.Println("Nonce Error:", err3)
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return ""
 	}
 
-	//Encrypt the data using aesGCM.Seal
 	CipherText := AesGcm.Seal(nonce, nonce, BitStringToEncrypt, nil)
 
-	//Converting CipherText to a BitString
 	CipherTextHex := hex.EncodeToString(CipherText)
 	CipherTextDec.SetString(CipherTextHex, 16)
 	BitStringOutput = CipherTextDec.Text(2)
+
+	// KG-3: scrub intermediate plaintext byte slice
+	ZeroBytes(BitStringToEncrypt)
 	return BitStringOutput
 }
 
+// DecryptBitString is the inverse of EncryptBitString.
+//
+// v2.1.0: returns a non-nil error on any AES primitive failure or
+// malformed ciphertext. Pre-v2.1.0 this printed and returned garbage.
 func DecryptBitString(BitString, Password string) (BitStringOutput string, Error error) {
 	var DecryptedDataDec = new(big.Int)
 
-	//Converting BitString to HEX
 	BitStringToDecrypt := BitStringToHex(BitString)
-
-	//Making Key from Password. A Blake3 Hash with 32 bytes output is used.
 	Key := MakeKeyFromPassword(Password)
+	defer ZeroBytes(Key) // KG-3
 
-	//Create a New Cipher Block from the Key
-	Block, err1 := aes.NewCipher(Key)
-	// if there are any errors, handle them
-	if err1 != nil {
-		fmt.Println("Block Error:", err1)
+	Block, err := aes.NewCipher(Key)
+	if err != nil {
+		return "", fmt.Errorf("AES DecryptBitString NewCipher: %w", err)
 	}
 
-	//Create a new Galois Counter Mode
-	// gcm or Galois/Counter Mode, is a mode of operation
-	// for symmetric key cryptographic block ciphers
-	// - https://en.wikipedia.org/wiki/Galois/Counter_Mode
-	AesGcm, err2 := cipher.NewGCM(Block)
-	// if any error generating new GCM
-	// handle them
-	if err2 != nil {
-		fmt.Println("AesGcm Error:", err2)
+	AesGcm, err := cipher.NewGCM(Block)
+	if err != nil {
+		return "", fmt.Errorf("AES DecryptBitString NewGCM: %w", err)
 	}
 
-	//Get the nonce size
 	NonceSize := AesGcm.NonceSize()
+	if len(BitStringToDecrypt) < NonceSize {
+		return "", errors.New("AES DecryptBitString: ciphertext too short for nonce")
+	}
 
-	//Extract the nonce from the encrypted data
 	Nonce, CipherText := BitStringToDecrypt[:NonceSize], BitStringToDecrypt[NonceSize:]
 
-	//Decrypt the data
-	DecryptedData, err3 := AesGcm.Open(nil, Nonce, CipherText, nil)
-	if err3 != nil {
-		fmt.Println("DecryptedData Error:", err3)
+	DecryptedData, err := AesGcm.Open(nil, Nonce, CipherText, nil)
+	if err != nil {
+		return "", fmt.Errorf("AES DecryptBitString Open (likely wrong password or corrupt ciphertext): %w", err)
 	}
 
-	//Converting DecryptedData back to a BitString
 	DecryptedDataHex := hex.EncodeToString(DecryptedData)
 	DecryptedDataDec.SetString(DecryptedDataHex, 16)
 	BitStringOutput = DecryptedDataDec.Text(2)
-	return BitStringOutput, err3
+
+	ZeroBytes(DecryptedData)
+	ZeroBytes(BitStringToDecrypt)
+	return BitStringOutput, nil
 }

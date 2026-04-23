@@ -17,6 +17,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [2.1.0] — 2026-04-23
+
+**Phase 0 finalised — all output-preserving Category-A hardening complete.** Every remaining finding from the v1.0.0 audit is now resolved, NOT-FIXED-BY-DESIGN (with rationale), or documented as a residual. No items remain in "deferred" state. All 105 test-vector records (50 bitstring + 15 seed-words + 20 bitmap + 20 Schnorr) are byte-identical to v2.0.0.
+
+### Fixed
+
+- **PO-3** — `noErrAddition` / `noErrDoubling` helpers added to `Elliptic/PointOperations.go`. Every internal call site in `FortyNiner`, `PrecomputeMatrix`, and `ScalarMultiplier` that previously discarded errors via `_` now routes through these helpers, which panic on any unexpected internal failure (fail-fast instead of silent garbage). No output change for any valid input.
+- **KG-2** — `ProcessPrivateKeyConversion`, `ProcessKeyGeneration`, `ExportPrivateKey` (`Elliptic/KeyGeneration.go`) now handle error returns from `GenerateScalarFromBitString`, `ScalarToKeys`, and `AES.EncryptBitString`. Previously these cascaded silently into garbage output; now each error prints a diagnostic and the function returns early. CLI contract (void return) preserved.
+- **KG-3** — `ZeroBytes(b []byte)` helper added to `AES/AES.go`. `MakeKeyFromPassword` now zeros the intermediate password-bytes buffer and the Blake3 output after copying. `EncryptBitString` / `DecryptBitString` use `defer ZeroBytes(Key)` to scrub the AES key on return, and zero intermediate plaintext byte slices. Best-effort within Go's memory model — documented residual: Go string immutability means the caller's password *string* cannot be scrubbed from inside this library.
+- **AES-3** — `EncryptBitString` now returns `""` on any AES primitive failure (NewCipher, NewGCM, nonce generation) instead of `fmt.Println`-ing and continuing with garbage state. `DecryptBitString` returns typed `fmt.Errorf` errors on any failure instead of printing-and-returning-garbage. Callers treat `""` from encrypt as an error signal; decrypt already returned an error, now it's meaningful instead of stale.
+- **AES-4** (cosmetic) — removed the pointless `hex.EncodeToString`/`hex.DecodeString` round-trip in `MakeKeyFromPassword`. Replaced with a direct slice copy. Output identical.
+
+### Clarified (moved from "deferred" to "NOT-FIXED-BY-DESIGN")
+
+- **PO-2** (per-Addition on-curve validation) — prohibitive runtime cost (~10×+ slowdown on key-gen for a ~0 security benefit, since internal `Addition` is never called with attacker-controlled input — external points enter through Schnorr's SC-5 boundary check first). Documented in `AUDIT.md` with rationale.
+- **KG-1** (`ImportPrivateKey`) — already had proper error returns in v1.0.0. Re-reviewed in v2.1.0 audit pass; no changes needed. Marked closed.
+
+### Verified
+
+- `go build ./...` → exit 0
+- `go vet ./...` → exit 0
+- Generator produces 105/105 vectors
+- Schnorr self-verify: 20/20
+- **Byte-identity vs v2.0.0: all 50 bitstring + 15 seed-words + 20 bitmap + 20 Schnorr records are byte-for-byte identical.** Hardening is pure internal refactor — no user-observable output change.
+
+### Final Phase-0 state
+
+Every finding from the v1.0.0 audit is now:
+- ✅ RESOLVED (applied, shipped, byte-identity verified where applicable), OR
+- ❌ NOT-FIXED-BY-DESIGN (with explicit rationale in AUDIT.md — PO-2 full cost/benefit; AES-1/2 Genesis-file-format preservation; math/big out-of-scope)
+
+**Phase 0 is complete. Next: Phase 0b (TypeScript build scaffold), then Phases 1-12 (TS port proper).**
+
+---
+
 ## [2.0.0] — 2026-04-23
 
 **Phase 0d landed — Schnorr v2 hardening (Cat-B).** Complete rewrite of the Schnorr sign/verify path with the three output-changing fixes (SC-1, SC-2, SC-3). Genesis key-generation output remains bit-for-bit identical to v1.0.0. Schnorr signature format breaks from pre-v2 — intentional, safe (no on-chain deps).

@@ -7,19 +7,34 @@
 
 ---
 
-## Hardening Status (current as of `v2.0.0`)
+## Hardening Status (current as of `v2.1.0`) — **PHASE 0 COMPLETE**
 
-> **All eleven findings identified in the v1.0.0 audit have been resolved or documented:**
+> **Every finding from the v1.0.0 audit is now resolved, partial-with-rationale, or explicitly not-fixed-by-design. No items remain in "deferred" state.**
 >
-> - **7 of 7 Schnorr items** (SC-1..SC-7) — ✅ RESOLVED
->   - SC-4, SC-5, SC-6, SC-7 in **v1.3.0** (Category-A, output-preserving)
->   - SC-1, SC-2, SC-3 in **v2.0.0** (Category-B, Schnorr v2 format)
-> - **PO-1** (non-constant-time scalar mult) — ✅ RESOLVED in **v1.3.0** (algorithmic constant-time via branch-free linear scan; verified byte-identical on 85 test vectors)
-> - **PO-2** (on-curve validation) — ✅ partial in v1.3.0 (at Schnorr boundary covers the external attack surface); per-Addition deferred to v1.3.x
-> - **PO-3, KG-1, KG-2, KG-3, AES-3** — DEFERRED to v1.3.x patches. These are robustness (error returns, memory hygiene) that do not affect output for valid inputs; scheduled incrementally to keep each change reviewable.
-> - **AES-1, AES-2** (weak password KDF) — DOCUMENTED, not fixed. The AES wrapper is Genesis-frozen in the Go reference (changing the KDF breaks encrypted-file format). The OuronetUI does not use this AES path — it uses ouronet-core's codex encryption. Treated as "user responsibility to choose a strong password" for CLI consumers.
+> **Output-preserving fixes (Category A):**
+> - **PO-1** (non-constant-time scalar mult) — ✅ RESOLVED in **v1.3.0** (branch-free linear scan; verified byte-identical on all test vectors)
+> - **PO-2** (on-curve validation) — ✅ partial in v1.3.0 (Schnorr boundary via SC-5); per-Addition check NOT-FIXED-BY-DESIGN (v2.1.0 decision: 10×+ runtime cost for marginal benefit — internal `Addition` is never called with attacker-controlled points, since external input always passes Schnorr's SC-5 check first)
+> - **PO-3** (silent error discards in point ops) — ✅ RESOLVED in **v2.1.0** (`noErrAddition` / `noErrDoubling` panic on unexpected failures)
+> - **KG-1** (`ImportPrivateKey`) — already had proper error returns pre-v2.1.0; re-reviewed and confirmed in v2.1.0
+> - **KG-2** (`ProcessPrivateKeyConversion`, `ProcessKeyGeneration`, `ExportPrivateKey`) — ✅ RESOLVED in **v2.1.0** (all error paths now print diagnostic + return early instead of continuing with garbage)
+> - **KG-3** (memory hygiene) — ✅ RESOLVED in **v2.1.0** (best-effort — `ZeroBytes` helper; `defer ZeroBytes(Key)` in AES; intermediate plaintext scrubbed. Limited by Go string immutability — documented)
+> - **AES-3** (error propagation) — ✅ RESOLVED in **v2.1.0** (`EncryptBitString` returns "" on failure; `DecryptBitString` returns typed errors)
+> - **SC-4** (s range check) — ✅ RESOLVED in **v2.0.0** (full `(0, Q)` canonical range)
+> - **SC-5** (on-curve check of R) — ✅ RESOLVED in **v1.3.0**
+> - **SC-6** (explicit error returns in Schnorr) — ✅ RESOLVED in **v1.3.0**
+> - **SC-7** (non-CT scalar mult in Schnorr) — ✅ RESOLVED in **v1.3.0** (inherits PO-1)
 >
-> **Genesis key-generation output (bitstring → scalar → public key → address) has remained byte-for-byte identical through every hardening release.** All 85 deterministic test vectors in `testvectors/v1_genesis.json` produce exactly the same output at v1.0.0, v1.2.0, v1.3.0, and v2.0.0.
+> **Output-changing fixes (Category B):**
+> - **SC-1** (length-prefix transcript) — ✅ RESOLVED in **v2.0.0**
+> - **SC-2** (deterministic nonces) — ✅ RESOLVED in **v2.0.0**
+> - **SC-3** (domain-separation tags) — ✅ RESOLVED in **v2.0.0**
+>
+> **Documented, not fixed (by design):**
+> - **AES-1, AES-2** (single-pass Blake3 KDF without salt) — preserved forever to avoid breaking Genesis encrypted-file format. AES is CLI-only; OuronetUI uses ouronet-core's codex encryption. User-responsibility: choose a strong password for CLI use.
+> - **Go `math/big` timing** — CPU-instruction-level residual; closing it requires replacing math/big with a custom limb-oriented implementation (out-of-scope for Go reference). The TypeScript port will use constant-time bigints where available.
+> - **CLI bugs (CLI-1..4)** — Dalos.go CLI driver; not ported to TS (library-only).
+>
+> **Genesis key-generation output has remained byte-for-byte identical through every hardening release (v1.0.0 → v1.2.0 → v1.3.0 → v2.0.0 → v2.1.0).** All 105 test vectors produce exactly the same output. Schnorr signatures are byte-identical from v2.0.0 onward (deterministic).
 
 See [`CHANGELOG.md`](CHANGELOG.md) for per-release detail, [`docs/SCHNORR_V2_SPEC.md`](docs/SCHNORR_V2_SPEC.md) for the hardened Schnorr specification.
 
@@ -152,9 +167,9 @@ Implements the HWCD (Hisil–Wong–Carter–Dawson 2008) twisted Edwards formul
 
 | # | Finding | Severity | Status |
 |---|---------|----------|--------|
-| PO-1 | Scalar multiplication branches on the current digit of the scalar — **timing-channel leak**. | ⚠️ Medium (for local use); Critical (for multi-tenant / remote signing). | **✅ RESOLVED v1.3.0** (branch-free linear scan; byte-identical output verified on 85 test vectors) |
-| PO-2 | No input validation on `addition()` or `doubling()`. Passing a point not on the curve yields undefined (but deterministic) output. | ⚠️ Low–Medium | partial v1.3.0 (Schnorr boundary validates via SC-5); internal-entry validation deferred |
-| PO-3 | Errors from sub-operations silently discarded in `additionV3`. | ⚠️ Low | deferred to v1.3.x |
+| PO-1 | Scalar multiplication branches on the current digit of the scalar — **timing-channel leak**. | ⚠️ Medium (for local use); Critical (for multi-tenant / remote signing). | **✅ RESOLVED v1.3.0** (branch-free linear scan; byte-identical output verified on 105 test vectors) |
+| PO-2 | No input validation on `addition()` or `doubling()`. Passing a point not on the curve yields undefined (but deterministic) output. | ⚠️ Low–Medium | ✅ partial v1.3.0 (Schnorr boundary via SC-5); per-Addition check **NOT-FIXED-BY-DESIGN v2.1.0** (prohibitive runtime cost; internal Addition never receives attacker-controlled input) |
+| PO-3 | Errors from sub-operations silently discarded in internal point ops. | ⚠️ Low | **✅ RESOLVED v2.1.0** (`noErrAddition`/`noErrDoubling` panic on unexpected failures) |
 
 **Remediation for Category-A (output-preserving) fixes** in the TS port:
 - Replace branching scalar mult with Montgomery ladder (same output, constant time) — **✅ APPLIED IN GO AT v1.3.0** (algorithmic constant-time via branch-free linear scan; see PO-1 entry in `CHANGELOG.md`)
@@ -173,12 +188,12 @@ The key-generation API: bitstring → scalar → pubkey → addresses. Also the 
 
 **Findings:**
 
-| # | Finding | Severity |
-|---|---------|----------|
-| KG-1 | `ImportPrivateKey` silently ignores `ReadFile` errors beyond a boolean | ⚠️ Low |
-| KG-2 | `ProcessPrivateKeyConversion` has no error return — bad input causes panic deep in the stack | ⚠️ Low |
-| KG-3 | Passwords flow as plaintext `string` through call frames, never zeroed in memory after use | ⚠️ Low–Medium (Go strings are immutable, hard to zero anyway — language-level concern) |
-| KG-4 | `dalosAddressMaker` relies on the prefix character `Ѻ` / `Σ` being encoded as multi-byte UTF-8 correctly. Works on all modern systems; noted for portability. | ℹ️ Informational |
+| # | Finding | Severity | Status |
+|---|---------|----------|--------|
+| KG-1 | `ImportPrivateKey` silently ignores `ReadFile` errors beyond a boolean | ⚠️ Low | ✅ already had error returns; re-reviewed **v2.1.0** — no changes needed |
+| KG-2 | `ProcessPrivateKeyConversion` / `ProcessKeyGeneration` / `ExportPrivateKey` have no error return — bad input causes silent garbage output | ⚠️ Low | **✅ RESOLVED v2.1.0** (diagnostic print + early return on error paths; CLI contract preserved) |
+| KG-3 | Passwords flow as plaintext `string` through call frames, never zeroed in memory after use | ⚠️ Low–Medium (Go strings are immutable, hard to zero anyway — language-level concern) | **✅ RESOLVED v2.1.0** (`ZeroBytes` helper; AES key scrubbed via `defer ZeroBytes(Key)`; intermediate plaintext byte slices scrubbed. Best-effort within Go's memory model — documented residual: Go string immutability means the caller's password string cannot be scrubbed from outside) |
+| KG-4 | `dalosAddressMaker` relies on the prefix character `Ѻ` / `Σ` being encoded as multi-byte UTF-8 correctly. Works on all modern systems; noted for portability. | ℹ️ Informational | documented; no fix needed |
 
 No mathematical or security-critical findings. All output generated by this file is deterministic and bit-identical for identical inputs.
 
@@ -270,13 +285,13 @@ Now inlined into the repo (was previously in the sibling `Cryptographic-Hash-Fun
 
 **Findings:**
 
-| # | Finding | Severity |
-|---|---------|----------|
-| AES-1 | **Password KDF is single-pass Blake3 — not a true password KDF.** Proper password-based key derivation (PBKDF2, scrypt, Argon2) adds salt + iteration count + memory hardness. Single-hash is brute-forceable at billions/sec on GPU. Weak passwords fall quickly. | ⚠️ Medium (low-entropy pw); Low (high-entropy pw). Category B fix. |
-| AES-2 | **No salt.** Same password always derives the same key → two files encrypted with the same password are decryptable via one key recovery. | ⚠️ Medium. Category B fix. |
-| AES-3 | **Errors printed with `fmt.Println` then execution continues.** Lines 57–59, 67–69, 77–79, 103–105, 113–115, 125–127. If AES block setup, GCM construction, nonce generation, or decryption fails, the function returns garbage bytes with no error signal. | ⚠️ Medium. Category A fix (proper error returns, same output for valid input). |
-| AES-4 | `MakeKeyFromPassword` hex-encodes then hex-decodes the Blake3 output (lines 36–40) — pointless round-trip, but functionally correct. | ℹ️ Cosmetic. |
-| AES-5 | No AAD (associated data) passed to `Seal`/`Open`. Ciphertext is not bound to context (user ID, purpose tag). Not a flaw — a missed feature. | ℹ️ Informational. |
+| # | Finding | Severity | Status |
+|---|---------|----------|--------|
+| AES-1 | **Password KDF is single-pass Blake3 — not a true password KDF.** Proper password-based key derivation (PBKDF2, scrypt, Argon2) adds salt + iteration count + memory hardness. Single-hash is brute-forceable at billions/sec on GPU. Weak passwords fall quickly. | ⚠️ Medium (low-entropy pw); Low (high-entropy pw). | **NOT-FIXED-BY-DESIGN** (Genesis encrypted-file format preserved; CLI-only path not used by OuronetUI; user responsibility to pick strong password). |
+| AES-2 | **No salt.** Same password always derives the same key → two files encrypted with the same password are decryptable via one key recovery. | ⚠️ Medium. | **NOT-FIXED-BY-DESIGN** (same rationale as AES-1). |
+| AES-3 | **Errors printed with `fmt.Println` then execution continues.** If AES block setup, GCM construction, nonce generation, or decryption fails, the function returns garbage bytes with no error signal. | ⚠️ Medium. | **✅ RESOLVED v2.1.0** (`EncryptBitString` returns "" on failure; `DecryptBitString` returns typed error). |
+| AES-4 | `MakeKeyFromPassword` hex-encodes then hex-decodes the Blake3 output — pointless round-trip, but functionally correct. | ℹ️ Cosmetic. | ✅ cleaned up **v2.1.0** (direct slice copy + zeroing). |
+| AES-5 | No AAD (associated data) passed to `Seal`/`Open`. Ciphertext is not bound to context (user ID, purpose tag). Not a flaw — a missed feature. | ℹ️ Informational. | documented; no fix needed (would break Genesis encrypted-file format). |
 
 **Verdict:** AES-GCM is a sound primitive. The construction is **safe for encrypting strong passwords' keys** but provides **no meaningful resistance to low-entropy password brute-force** due to the missing salt + iteration KDF.
 
@@ -288,18 +303,21 @@ Now inlined into the repo (was previously in the sibling `Cryptographic-Hash-Fun
 
 All findings are sorted into two categories based on whether fixing them changes the output observable by users.
 
-### Category A — Output-Preserving Fixes (SHIPPED in v1.3.0 where marked)
+### Category A — Output-Preserving Fixes (ALL SHIPPED)
 
-These fixes change *how* the code computes without changing *what* it outputs. All applied changes verified byte-identical against the 85-record test-vector corpus.
+These fixes change *how* the code computes without changing *what* it outputs. All verified byte-identical against the 105-record test-vector corpus.
 
 | Target | Fix | Affects | Status |
 |--------|-----|---------|--------|
-| PO-1 | Branch-free linear-scan scalar multiplication | Timing channel only. Same bits out. | ✅ **SHIPPED v1.3.0** (85/85 byte-identical) |
-| PO-2, SC-5 | On-curve validation of input points | Rejects invalid input; valid input yields same output. | ✅ SC-5 shipped v1.3.0 (Schnorr boundary); PO-2 per-Addition deferred |
-| SC-4 | Range check on Schnorr `s` | Rejects malformed; valid sigs verify unchanged. | ✅ partial v1.3.0 (`s > 0`); full `(0, Q)` v2.0.0 |
-| KG-1, KG-2, PO-3, SC-6 | Replace silent error swallowing with explicit returns | Control flow; for valid input, output unchanged. | ✅ SC-6 shipped v1.3.0 (SchnorrVerify); KG-1/2/PO-3 deferred to v1.3.x |
-| KG-3 | Memory hygiene for plaintext keys (best-effort) | Side-effect only (RAM state). | deferred to v1.3.x |
-| AES-3 | Proper error returns instead of `fmt.Println` | Control flow; valid output unchanged. | deferred to v1.3.x |
+| PO-1 | Branch-free linear-scan scalar multiplication | Timing channel only. Same bits out. | ✅ **SHIPPED v1.3.0** (105/105 byte-identical) |
+| PO-2, SC-5 | On-curve validation of input points | Rejects invalid input; valid input yields same output. | ✅ SC-5 shipped v1.3.0 (Schnorr boundary); PO-2 per-Addition NOT-FIXED-BY-DESIGN v2.1.0 (cost vs marginal benefit) |
+| PO-3 | `noErrAddition`/`noErrDoubling` panic on unexpected internal failures | Control flow; for valid input, output unchanged. | ✅ **SHIPPED v2.1.0** |
+| SC-4 | Range check on Schnorr `s` | Rejects malformed; valid sigs verify unchanged. | ✅ partial v1.3.0 (`s > 0`); full `(0, Q)` **v2.0.0** |
+| SC-6 | Explicit error returns in SchnorrVerify | Control flow; for valid input, output unchanged. | ✅ **SHIPPED v1.3.0** |
+| KG-1 | `ImportPrivateKey` error handling | already had proper error returns | ✅ re-reviewed **v2.1.0**; no change needed |
+| KG-2 | `Process*` + `ExportPrivateKey` error returns | Control flow; CLI diagnostic instead of garbage | ✅ **SHIPPED v2.1.0** |
+| KG-3 | Memory hygiene for plaintext keys (best-effort) | Side-effect only (RAM state). | ✅ **SHIPPED v2.1.0** (`ZeroBytes` helper; `defer` scrubs in AES) |
+| AES-3 | Proper error returns instead of `fmt.Println` | Control flow; valid output unchanged. | ✅ **SHIPPED v2.1.0** |
 
 ### Category B — Output-Changing Fixes (SHIPPED in v2.0.0 where marked)
 
@@ -324,29 +342,22 @@ This is consistent with how every production blockchain cryptosystem handles the
 
 ## 4. Remediation Status + Roadmap
 
-### Completed (in the Go reference)
+### Completed (in the Go reference) — **PHASE 0 DONE**
 
 | Phase | Tag | What |
 |-------|-----|------|
 | 0 | v1.0.0 → v1.1.x | Initial audit + curve math verification + self-containment + 85 test vectors + author credit + future-research docs |
 | 0a | v1.2.0 | Bitmap 40×40 input type added (6th key-gen path). Pure input reshape, no new crypto. |
-| **0c** | **v1.3.0** | **Category-A hardening**: PO-1 constant-time scalar mult; SC-4 (partial), SC-5, SC-6, SC-7 on Schnorr verify. Key-gen output preserved byte-for-byte. |
+| **0c** | **v1.3.0** | **Category-A hardening (batch 1)**: PO-1 constant-time scalar mult; SC-4 (partial), SC-5, SC-6, SC-7 on Schnorr verify. Key-gen output preserved byte-for-byte. |
 | **0d** | **v2.0.0** | **Category-B Schnorr hardening**: SC-1 length-prefix, SC-2 deterministic nonces, SC-3 domain tags, SC-4 (full). Schnorr v2 format. Key-gen output still preserved byte-for-byte. `docs/SCHNORR_V2_SPEC.md` added. |
-
-### Deferred (tracked for v1.3.x incremental patches)
-
-Robustness improvements that do not affect output for valid inputs. Ship incrementally to keep each change reviewable.
-
-- **PO-2** full (per-Addition on-curve check; Schnorr boundary covers external attack surface today)
-- **PO-3** (sanity panics in internal point-op paths)
-- **KG-1, KG-2** (error returns in `ImportPrivateKey`, `ProcessPrivateKeyConversion`)
-- **KG-3** (memory hygiene for plaintext keys — limited by Go string immutability)
-- **AES-3** (error propagation in the AES wrapper)
+| **0c-finish** | **v2.1.0** | **Category-A hardening (batch 2)**: PO-3 (noErr* helpers panic on unexpected internal failures); KG-2 (error returns in `Process*` + `ExportPrivateKey`); KG-3 (memory hygiene via `ZeroBytes`, `defer` scrubs in AES); AES-3 (short-circuit on AES errors, typed errors from Decrypt); AES-4 (cosmetic cleanup). **All 105 records byte-identical to v2.0.0 verified. Phase 0 fully complete.** |
 
 ### Not being fixed (by design)
 
 - **AES-1, AES-2** (password KDF is single-pass Blake3 without salt). Genesis-frozen in the Go reference and mirrored in the TS port. CLI-only path; OuronetUI doesn't use it. Treated as "user responsibility to pick a strong password". See `docs/FUTURE.md` §4.
+- **PO-2 full** (per-Addition on-curve check) — prohibitive runtime cost (~10×+ slowdown on key-gen for marginal benefit). Internal `Addition` is never called with attacker-controlled input — all external points enter through Schnorr's SC-5 boundary check first. Defense-in-depth not needed at this layer.
 - **CLI-1..CLI-4** (Dalos.go CLI driver bugs). Not ported to TS (library-only, no CLI).
+- **Go `math/big` CPU-instruction-level timing** — closing it requires replacing math/big with a custom limb-oriented implementation. Out-of-scope for the Go reference. TypeScript port will use constant-time bigints where available.
 
 ### In progress (TypeScript port — see [`docs/TS_PORT_PLAN.md`](docs/TS_PORT_PLAN.md))
 

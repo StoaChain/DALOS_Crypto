@@ -370,19 +370,31 @@ func (e *Ellipse) ProcessIntegerFlag(flagValue string, isBase10 bool) string {
     return BitString
 }
 
+// ProcessPrivateKeyConversion derives and prints the key pair + addresses
+// from a bit-string private key.
+//
+// KG-2 hardening (v2.1.0): previously this swallowed any error from
+// GenerateScalarFromBitString silently. Now an invalid bit string
+// produces a clean error message on stderr and the function returns
+// early without printing misleading output. The CLI contract stays
+// the same (no error return), but the failure mode is now visible.
 func (e *Ellipse) ProcessPrivateKeyConversion(BitString string) {
-    Scalar, _ := e.GenerateScalarFromBitString(BitString)
+    Scalar, err := e.GenerateScalarFromBitString(BitString)
+    if err != nil {
+        fmt.Println("Error: invalid bit string:", err)
+        return
+    }
     // Get the Private Key
     PrivateKey, err := e.ScalarToPrivateKey(Scalar)
     if err != nil {
         fmt.Println("Error generating private key:", err)
         return
     }
-    
+
     // Get the Key Pair
     KeyPair, err2 := e.ScalarToKeys(Scalar)
     if err2 != nil {
-        fmt.Println("Error generating key pair:", err)
+        fmt.Println("Error generating key pair:", err2)
         return
     }
     
@@ -410,10 +422,19 @@ func (e *Ellipse) ProcessPrivateKeyConversion(BitString string) {
     fmt.Println("=====================ѺurѺ₿ѺrѺΣ=====================")
 }
 
+// ProcessKeyGeneration runs the full CLI key-generation pipeline:
+// bitstring → scalar → keys → addresses → encrypted file.
+//
+// KG-2 hardening (v2.1.0): an invalid bit string is now reported
+// cleanly instead of cascading silently into downstream garbage.
 func (e *Ellipse) ProcessKeyGeneration(BitString string, smartFlag *bool, password string) {
     // Generate Scalar from BitString
-    Scalar, _ := e.GenerateScalarFromBitString(BitString)
-    
+    Scalar, err := e.GenerateScalarFromBitString(BitString)
+    if err != nil {
+        fmt.Println("Error: invalid bit string:", err)
+        return
+    }
+
     // Get the Private Key
     PrivateKey, err := e.ScalarToPrivateKey(Scalar)
     if err != nil {
@@ -500,10 +521,23 @@ func (e *Ellipse) ExportPrivateKey(BitString, Password string) {
         }
         return "" // Return an empty string on failure
     }
-    EncryptedPK := convertBase2ToBase49(AES.EncryptBitString(BitString, Password))
-    
-    Scalar, _ := e.GenerateScalarFromBitString(BitString)
-    KeyPair, _ := e.ScalarToKeys(Scalar)
+    encryptedRaw := AES.EncryptBitString(BitString, Password)
+    if encryptedRaw == "" {
+        fmt.Println("Error: AES encryption failed; aborting key export.")
+        return
+    }
+    EncryptedPK := convertBase2ToBase49(encryptedRaw)
+
+    Scalar, err := e.GenerateScalarFromBitString(BitString)
+    if err != nil {
+        fmt.Println("Error: invalid bit string in ExportPrivateKey:", err)
+        return
+    }
+    KeyPair, err := e.ScalarToKeys(Scalar)
+    if err != nil {
+        fmt.Println("Error: failed to derive key pair in ExportPrivateKey:", err)
+        return
+    }
     PublicKey := KeyPair.PUBL
     FileName := GenerateFilenameFromPublicKey(PublicKey)
     SmartAddress := DalosAddressMaker(PublicKey, true)

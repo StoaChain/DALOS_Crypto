@@ -380,14 +380,39 @@ func (e *Ellipse) Tripling(P CoordExtended) CoordExtended {
 
 // V Complex Operations
 
+// noErrAddition wraps Addition for internal call sites that invoke it
+// with operands guaranteed by construction to be on-curve. Any error
+// from the inner Addition at such a site is a programming error (not
+// a user-input problem) and is converted to a panic. PO-3 hardening
+// (v2.1.0): silent error swallowing in these paths is replaced with
+// explicit fail-fast behaviour.
+func (e *Ellipse) noErrAddition(P1, P2 CoordExtended) CoordExtended {
+    r, err := e.Addition(P1, P2)
+    if err != nil {
+        panic(fmt.Sprintf("internal Addition failed unexpectedly: %v", err))
+    }
+    return r
+}
+
+// noErrDoubling is the Doubling counterpart to noErrAddition. Used at
+// internal call sites where the input is guaranteed on-curve by
+// construction; any error is a programming error and panics.
+func (e *Ellipse) noErrDoubling(P CoordExtended) CoordExtended {
+    r, err := e.Doubling(P)
+    if err != nil {
+        panic(fmt.Sprintf("internal Doubling failed unexpectedly: %v", err))
+    }
+    return r
+}
+
 //FortyNiner Adds a Point to Itself 49 Times
 func (e *Ellipse) FortyNiner(P CoordExtended) CoordExtended {
     Point03 := e.Tripling(P)
-    Point06, _ := e.Doubling(Point03)
-    Point12, _ := e.Doubling(Point06)
-    Point24, _ := e.Doubling(Point12)
-    Point48, _ := e.Doubling(Point24)
-    Point49, _ := e.Addition(Point48, P)
+    Point06 := e.noErrDoubling(Point03)
+    Point12 := e.noErrDoubling(Point06)
+    Point24 := e.noErrDoubling(Point12)
+    Point48 := e.noErrDoubling(Point24)
+    Point49 := e.noErrAddition(Point48, P)
     return Point49
 }
 
@@ -398,55 +423,55 @@ func (e *Ellipse) PrecomputeMatrixWithGenerator() [7][7]CoordExtended {
 
 func (e *Ellipse) PrecomputeMatrix(P CoordExtended) [7][7]CoordExtended {
     //Creates a Precompute-Matrix using the Curves Generator Point
-    
-    P02, _ := e.Doubling(P)
-    P03, _ := e.Addition(P02, P)
-    P04, _ := e.Doubling(P02)
-    P05, _ := e.Addition(P04, P)
-    P06, _ := e.Doubling(P03)
-    P07, _ := e.Addition(P06, P)
-    P08, _ := e.Doubling(P04)
-    P09, _ := e.Addition(P08, P)
-    P10, _ := e.Doubling(P05)
-    P11, _ := e.Addition(P10, P)
-    P12, _ := e.Doubling(P06)
-    P13, _ := e.Addition(P12, P)
-    P14, _ := e.Doubling(P07)
-    P15, _ := e.Addition(P14, P)
-    P16, _ := e.Doubling(P08)
-    P17, _ := e.Addition(P16, P)
-    P18, _ := e.Doubling(P09)
-    P19, _ := e.Addition(P18, P)
-    P20, _ := e.Doubling(P10)
-    P21, _ := e.Addition(P20, P)
-    P22, _ := e.Doubling(P11)
-    P23, _ := e.Addition(P22, P)
-    P24, _ := e.Doubling(P12)
-    P25, _ := e.Addition(P24, P)
-    P26, _ := e.Doubling(P13)
-    P27, _ := e.Addition(P26, P)
-    P28, _ := e.Doubling(P14)
-    P29, _ := e.Addition(P28, P)
-    P30, _ := e.Doubling(P15)
-    P31, _ := e.Addition(P30, P)
-    P32, _ := e.Doubling(P16)
-    P33, _ := e.Addition(P32, P)
-    P34, _ := e.Doubling(P17)
-    P35, _ := e.Addition(P34, P)
-    P36, _ := e.Doubling(P18)
-    P37, _ := e.Addition(P36, P)
-    P38, _ := e.Doubling(P19)
-    P39, _ := e.Addition(P38, P)
-    P40, _ := e.Doubling(P20)
-    P41, _ := e.Addition(P40, P)
-    P42, _ := e.Doubling(P21)
-    P43, _ := e.Addition(P42, P)
-    P44, _ := e.Doubling(P22)
-    P45, _ := e.Addition(P44, P)
-    P46, _ := e.Doubling(P23)
-    P47, _ := e.Addition(P46, P)
-    P48, _ := e.Doubling(P24)
-    P49, _ := e.Addition(P48, P)
+
+    P02 := e.noErrDoubling(P)
+    P03 := e.noErrAddition(P02, P)
+    P04 := e.noErrDoubling(P02)
+    P05 := e.noErrAddition(P04, P)
+    P06 := e.noErrDoubling(P03)
+    P07 := e.noErrAddition(P06, P)
+    P08 := e.noErrDoubling(P04)
+    P09 := e.noErrAddition(P08, P)
+    P10 := e.noErrDoubling(P05)
+    P11 := e.noErrAddition(P10, P)
+    P12 := e.noErrDoubling(P06)
+    P13 := e.noErrAddition(P12, P)
+    P14 := e.noErrDoubling(P07)
+    P15 := e.noErrAddition(P14, P)
+    P16 := e.noErrDoubling(P08)
+    P17 := e.noErrAddition(P16, P)
+    P18 := e.noErrDoubling(P09)
+    P19 := e.noErrAddition(P18, P)
+    P20 := e.noErrDoubling(P10)
+    P21 := e.noErrAddition(P20, P)
+    P22 := e.noErrDoubling(P11)
+    P23 := e.noErrAddition(P22, P)
+    P24 := e.noErrDoubling(P12)
+    P25 := e.noErrAddition(P24, P)
+    P26 := e.noErrDoubling(P13)
+    P27 := e.noErrAddition(P26, P)
+    P28 := e.noErrDoubling(P14)
+    P29 := e.noErrAddition(P28, P)
+    P30 := e.noErrDoubling(P15)
+    P31 := e.noErrAddition(P30, P)
+    P32 := e.noErrDoubling(P16)
+    P33 := e.noErrAddition(P32, P)
+    P34 := e.noErrDoubling(P17)
+    P35 := e.noErrAddition(P34, P)
+    P36 := e.noErrDoubling(P18)
+    P37 := e.noErrAddition(P36, P)
+    P38 := e.noErrDoubling(P19)
+    P39 := e.noErrAddition(P38, P)
+    P40 := e.noErrDoubling(P20)
+    P41 := e.noErrAddition(P40, P)
+    P42 := e.noErrDoubling(P21)
+    P43 := e.noErrAddition(P42, P)
+    P44 := e.noErrDoubling(P22)
+    P45 := e.noErrAddition(P44, P)
+    P46 := e.noErrDoubling(P23)
+    P47 := e.noErrAddition(P46, P)
+    P48 := e.noErrDoubling(P24)
+    P49 := e.noErrAddition(P48, P)
     
     MR1 := [...]CoordExtended{P, P02, P03, P04, P05, P06, P07}
     MR2 := [...]CoordExtended{P08, P09, P10, P11, P12, P13, P14}
@@ -530,7 +555,7 @@ func (e *Ellipse) ScalarMultiplier(Scalar *big.Int, P CoordExtended) CoordExtend
                 toAdd = PM[row][col]
             }
         }
-        Result, _ = e.Addition(Result, toAdd)
+        Result = e.noErrAddition(Result, toAdd)
 
         if i != len(PrivKey49)-1 {
             Result = e.FortyNiner(Result)

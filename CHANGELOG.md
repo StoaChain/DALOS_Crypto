@@ -17,6 +17,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [1.3.0] — 2026-04-23
+
+**Phase 0c landed — Category-A hardening.** All output-preserving security fixes applied to the Go reference. The Genesis key-generation path (bitstring → scalar → public key → address) produces **bit-for-bit identical output** to v1.2.0 for all 85 deterministic test vectors. Schnorr signatures continue to self-verify 20/20.
+
+### Changed (implementation hardening, output preserved)
+
+- **PO-1 (constant-time scalar multiplication)** — `Elliptic/PointOperations.go:ScalarMultiplier` rewritten. The pre-v1.3.0 version was a 49-case switch on base-49 digit characters, creating a macro-level timing side channel where an attacker observing wall-clock time could learn scalar digits. The new version does a branch-free linear scan over all 48 precompute entries for every digit, so the sequence of Go-level operations is identical for every scalar of the same base-49 length. Per-iteration work is constant regardless of scalar content.
+
+  **Byte-for-byte compatibility**: verified against the full 85-record deterministic corpus (50 bitstring + 15 seed-words + 20 bitmap). Zero byte drift. The new implementation is a drop-in replacement.
+
+  **Known residual**: Go's `math/big` is not constant-time at the CPU-instruction level; individual `Add`/`Mul`/`Mod` operations may still leak timing through data-dependent limb counts. True constant-time would require a custom limb-oriented implementation (out of scope for the Go reference). The macro-level hardening in v1.3.0 closes the most-exploitable channel and raises attacker cost substantially.
+
+- **SC-4 (partial, Schnorr range check)** — `SchnorrVerify` now rejects signatures with `s ≤ 0`. The stricter `s < Q` upper-bound check is deferred to v2.0.0 because the pre-v2.0.0 Schnorr produces `s = z + H(…)·k` without a mod-Q reduction; historically-valid signatures legitimately have `s ≥ Q`. Preserves backward compatibility for v1.3.0.
+
+- **SC-5 (on-curve validation)** — `SchnorrVerify` now calls `IsOnCurve()` on both `R` (the nonce commitment) and `P` (the public key) before running the verification equation. An attacker-prepared off-curve point no longer interacts with addition formulas in undefined ways. Valid signatures with on-curve points are unaffected.
+
+- **SC-6 (explicit error returns)** — `SchnorrVerify` now returns `false` cleanly on every error path: signature parse failure, nil internal components, public-key parse failure, nil Fiat–Shamir hash, or addition error. The pre-v1.3.0 code used an `if err == nil { … }` pattern that left downstream variables in undefined states, risking nil dereferences.
+
+### Deferred to v1.3.x patches or v2.0.0
+
+The remaining Category-A items are robustness improvements that do not affect output for valid inputs. They're scheduled for incremental patch releases to keep each change surgically reviewable:
+
+- **PO-2** (on-curve validation on every Addition entry — expensive, deferred; already handled at Schnorr boundary)
+- **PO-3** (sanity panics in internal paths — deferred)
+- **KG-1, KG-2, KG-3** (better error returns + memory hygiene in KeyGeneration — deferred)
+- **AES-3** (proper error propagation in AES wrapper — deferred)
+
+### Verified
+
+- `go build ./...` → exit 0
+- `go vet ./...` → exit 0
+- All 50 bitstring + 15 seed-words + 20 bitmap test vectors produce **byte-for-byte identical output** to v1.2.0
+- 20/20 Schnorr signatures self-verify under the hardened `SchnorrVerify`
+
+### The v1.3.0 canonical hash
+
+A fresh regeneration of `testvectors/v1_genesis.json` at v1.3.0 produces a different SHA-256 from v1.2.0 because of the timestamp + random Schnorr nonces, but the deterministic-record content is identical. The canonical hash for the **committed** v1.3.0 JSON is recorded in `testvectors/VALIDATION_LOG.md`.
+
+---
+
 ## [1.2.0] — 2026-04-23
 
 **Phase 0a landed.** Adds the 40×40 black/white bitmap as the 6th key-generation input type to the Go reference, with 20 bitmap test vectors committed. Bit-for-bit equivalent to the existing bitstring path; pure input reshaping, no new cryptographic operations. This primes the TypeScript port (Phase 1 onward) with a Go-validated bitmap oracle.

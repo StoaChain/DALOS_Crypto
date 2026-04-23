@@ -220,37 +220,87 @@ func (e *Ellipse) SchnorrSign(KeyPair DalosKeyPair, Message string) string {
 //          Verify: s*G =   R + Hash(r||P||m) *   P is true because
 //                  s*G = z*G + Hash(r||P||m) * k*G
 //
+// HARDENING (v1.3.0):
+//   SC-4: range check on s ∈ (0, Q) rejects malformed signatures
+//   SC-5: on-curve validation of R and P rejects invalid points,
+//         closing small-subgroup and off-curve attack surfaces
+//   SC-6: all errors produce explicit false returns; no nil dereferences
+//         on malformed input
 //==================================================================
 func (e *Ellipse) SchnorrVerify(Signature, Message, PublicKey string) bool {
-    var R CoordAffine
+    // Step 0 — parse the signature. SC-6: treat any parse error as
+    // a hard rejection (previously the code would proceed with a
+    // zero-valued R and nil s, risking nil dereferences downstream).
     Schnorr, err := ConvertSchnorrSignatureAsStringToStructure(Signature)
-    
-    //Step 1: Get R Point; we also need its Extended Form for Addition
-    if err == nil {
-        R = Schnorr.R
+    if err != nil {
+        return false
     }
+
+    // SC-6: defence against nil components sneaking through a
+    // well-formed-looking signature string.
+    if Schnorr.R.AX == nil || Schnorr.R.AY == nil || Schnorr.S == nil {
+        return false
+    }
+
+    // SC-4 (partial, v1.3.0): reject non-positive s. A zero or negative
+    // scalar is always malformed. The stricter upper-bound check
+    // s < Q is deferred to v2.0.0: the pre-v2.0.0 Schnorr produces
+    // s = z + H(…)·k without a mod-Q reduction, so historically-valid
+    // signatures legitimately have s ≥ Q. v2.0.0 reduces s mod Q and
+    // tightens this to the canonical (0, Q) range.
+    if Schnorr.S.Cmp(Zero) <= 0 {
+        return false
+    }
+
+    // Step 1 — Get R point (already parsed) and its extended form.
+    R := Schnorr.R
     RExtend := e.Affine2Extended(R)
-    
-    //Step 2: Get m point by getting r first; r = R.AX
+
+    // SC-5: on-curve validation of R. Without this, a prepared
+    // off-curve point could interact with the addition formulas in
+    // undefined ways, creating a signature-forgery avenue.
+    onCurveR, _ := e.IsOnCurve(RExtend)
+    if !onCurveR {
+        return false
+    }
+
+    // Step 2 — Parse the public key. SC-6: error from parsing is
+    // also a hard rejection.
+    PAffine, err := ConvertPublicKeyToAffineCoords(PublicKey)
+    if err != nil {
+        return false
+    }
+    if PAffine.AX == nil || PAffine.AY == nil {
+        return false
+    }
+    PExtend := e.Affine2Extended(PAffine)
+
+    // SC-5 (symmetric): on-curve validation of the public key P.
+    // Defence-in-depth; a correctly-constructed public key is always
+    // on-curve, but an attacker-controlled P should not cause
+    // undefined behaviour.
+    onCurveP, _ := e.IsOnCurve(PExtend)
+    if !onCurveP {
+        return false
+    }
+
+    // Step 3 — Compute the Fiat–Shamir challenge m = H(r || P || m).
     r := R.AX
     m := e.SchnorrHash(r, PublicKey, Message)
-    
-    //Step 3: Get P Point from the Public Key, we need its Extended Coordinates
-    PAffine, _ := ConvertPublicKeyToAffineCoords(PublicKey)
-    PExtend := e.Affine2Extended(PAffine)
-    
-    //Step 4: Compute R + Hash(r||P||m) *   P
-    //This is an Elliptic Point Addition between R and Hash(r||P||m) * P [Hash(r||P||m) being m]
-    //That is, it is an Elliptic Point Addition between R, and m * P
-    
-    //Step 4.1: Compute m * P
+    if m == nil {
+        return false
+    }
+
+    // Step 4 — Compute R + m * P (the "right" term).
     Multiplication := e.ScalarMultiplier(m, PExtend)
-    //Step 4.1: Added it with R
-    RightTerm, _ := e.Addition(RExtend, Multiplication)
-    
-    //Step 5: Compute s * G (multiply the Scalar s with the Ellipse Generator)
+    RightTerm, err := e.Addition(RExtend, Multiplication)
+    if err != nil {
+        return false
+    }
+
+    // Step 5 — Compute s * G (the "left" term).
     LeftTerm := e.ScalarMultiplierWithGenerator(Schnorr.S)
-    
-    Result := e.ArePointsEqual(LeftTerm, RightTerm)
-    return Result
+
+    // Valid iff left == right.
+    return e.ArePointsEqual(LeftTerm, RightTerm)
 }

@@ -84,3 +84,41 @@ export {
   publicKeyToAddress,
   dalosAddressMaker,
 } from './hashing.js';
+
+// Bitmap input (Phase 4)
+export type { Bitmap } from './bitmap.js';
+export {
+  BITMAP_ROWS,
+  BITMAP_COLS,
+  BITMAP_TOTAL_BITS,
+  bitmapToBitString,
+  bitStringToBitmapReveal,
+  validateBitmap,
+  parseAsciiBitmap,
+  bitmapToAscii,
+  equalBitmap,
+} from './bitmap.js';
+
+// Key generation API (Phase 4) — 6 input paths
+export type {
+  DalosKeyPair,
+  DalosPrivateKey,
+  DalosFullKey,
+  BitStringValidation,
+  PrivateKeyValidation,
+} from './key-gen.js';
+export {
+  validateBitString,
+  validatePrivateKey,
+  generateRandomBitsOnCurve,
+  generateScalarFromBitString,
+  scalarToPrivateKey,
+  scalarToPublicKey,
+  scalarToKeyPair,
+  fromRandom,
+  fromBitString,
+  fromIntegerBase10,
+  fromIntegerBase49,
+  fromSeedWords,
+  fromBitmap,
+} from './key-gen.js';

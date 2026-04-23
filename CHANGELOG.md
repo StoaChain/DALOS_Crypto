@@ -17,6 +17,72 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [2.6.0] — 2026-04-23
+
+**🎯 PHASE 4 LANDED — END-TO-END BYTE-IDENTITY ACHIEVED.** The TypeScript port is now a functionally complete drop-in replacement for the Go reference's key-generation service. Every one of the 85 address-bearing vectors in the committed Go corpus plus all 20 Schnorr-vector public keys reproduces byte-for-byte through the full TypeScript pipeline. **182/182 tests pass.**
+
+### Added
+
+- **`ts/src/gen1/bitmap.ts`** — 40×40 Bitmap type + utilities mirroring the Go `Bitmap/Bitmap.go` package:
+  - `Bitmap` = `readonly (readonly boolean[])[]`  (40 rows × 40 cols)
+  - `BITMAP_ROWS`, `BITMAP_COLS` (= 40), `BITMAP_TOTAL_BITS` (= 1600)
+  - `bitmapToBitString(b)` — row-major TTB-LTR scan, true→'1', false→'0'
+  - `bitStringToBitmapReveal(bits)` — reverse (name flags the secret-sensitive return)
+  - `validateBitmap(b)`, `parseAsciiBitmap(rows)`, `bitmapToAscii(b)`, `equalBitmap(a, b)`
+- **`ts/src/gen1/key-gen.ts`** — the user-facing Key Generation API:
+  - Types: `DalosKeyPair`, `DalosPrivateKey`, `DalosFullKey`
+  - Validators: `validateBitString`, `validatePrivateKey` (base 10 & 49)
+  - Core pipeline: `generateRandomBitsOnCurve`, `generateScalarFromBitString`, `scalarToPrivateKey`, `scalarToPublicKey`, `scalarToKeyPair`
+  - **Six `from*` entry points** matching Genesis input paths:
+    1. `fromRandom()` — `crypto.getRandomValues` → 200 bytes → 1600 bits
+    2. `fromBitString(bits)` — user bitstring
+    3. `fromIntegerBase10(n)` — decimal private-key string (core + clamp bits)
+    4. `fromIntegerBase49(n)` — base-49 private-key string
+    5. `fromSeedWords(words)` — UTF-8 word list via seven-fold Blake3
+    6. `fromBitmap(bitmap)` — 40×40 bitmap
+- **`ts/tests/gen1/bitmap.test.ts`** — 13 tests (round-trips, edge cases, `bitmapToBitString` matches `derived_bitstring` for all 20 bitmap vectors)
+- **`ts/tests/gen1/key-gen.test.ts`** — 27 tests including **the full end-to-end byte-identity gates**
+
+### 🎯 End-to-end byte-identity validation — THE GATE IS CLEARED
+
+Each assertion below is "for all N vectors, the committed Go-produced output equals what the TS pipeline computes from the same input":
+
+| Input path | Vectors | What's validated | Runtime |
+|------------|---------|------------------|---------|
+| `fromBitString(input_bitstring)` | 50 bitstring | `scalar_int10`, `priv_int10`, `priv_int49`, `public_key`, `standard_address`, `smart_address` — **all byte-identical** | 5.6 s |
+| `fromIntegerBase10(priv_int10)` | 50 bitstring | Same 6 fields byte-identical | 5.4 s |
+| `fromIntegerBase49(priv_int49)` | 50 bitstring + 15 seed + 20 Schnorr = 85 | Same 6 fields (minus input_bitstring for seed-words) | 5.3 s + 1.6 s + 2.1 s |
+| `fromSeedWords(input_words)` | 15 (ASCII + Cyrillic + Greek + accented Latin + prefix chars) | Derived bitstring, all keys + addresses | 1.6 s |
+| `fromBitmap(parseAscii(bitmap_ascii))` | 20 (hand-designed + random patterns) | Derived bitstring, all keys + addresses | 2.1 s |
+| `validatePrivateKey(priv_int*, base)` | 50 + 15 + 20 + 20 = 105 | Extracted bitString matches original input | <100 ms |
+
+**Total assertions cleared: 600+ individual byte-identity expectations across all six input paths.**
+
+The TS port now produces **100% byte-identical output to the Go reference** for:
+- 1600-bit bitstring → scalar (clamping)
+- scalar → 3 private-key representations (bitstring, int10, int49)
+- scalar × G → affine public-key point (Phase 2 scalar mult)
+- affine point → public-key string (Phase 3 encoding)
+- public-key string → 160-char address body (Phase 3 seven-fold Blake3 + char matrix)
+- Full `Ѻ.` / `Σ.` address composition
+
+### Verified
+
+- `npm run lint` → 0 errors across 23 files (after auto-fix of template-literal suggestions)
+- `npm run typecheck` → exit 0 (strictest TS flags)
+- `npm run build` → exit 0 (dist/ complete with .js + .d.ts + source maps)
+- `npm test` → **182/182 tests pass in 27 s**
+
+### What this means
+
+The TypeScript port at `@stoachain/dalos-crypto@0.4.0` (scaffold version) can now produce identical Ouronet accounts to the Go service at `go.ouronetwork.io/api/generate` for every input the Go service accepts. In Phase 8 (ouronet-core integration) and Phase 9 (OuronetUI migration) we swap the Go remote call for local TS invocation. Existing accounts remain valid forever; new accounts match Go output exactly.
+
+### Next
+
+Phase 5 ports the AES wrapper (AES-256-GCM + Blake3 KDF) for CLI-compatible encrypted key-file import/export. Phase 6 ports the v2-hardened Schnorr.
+
+---
+
 ## [2.5.0] — 2026-04-23
 
 **Phase 3 landed — TypeScript Hashing + address encoding. 🎯 FIRST BYTE-IDENTITY GATE PASSED.** Complete port of `Elliptic/KeyGeneration.go`'s hashing + address-derivation pipeline, plus the 16×16 Unicode `CharacterMatrix`, plus a Blake3 wrapper at `@stoachain/dalos-crypto/dalos-blake3` (subpath; extracted to a sibling npm package in Phase 11). **142/142 tests pass** including the first real byte-identity validation against the committed Go test-vector corpus.

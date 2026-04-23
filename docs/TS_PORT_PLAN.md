@@ -597,7 +597,28 @@ export function dalosAddressMaker(pk: string, isSmart: boolean): string;
 
 ---
 
-## Phase 4 — TypeScript Key Generation API (1 week)
+## Phase 4 — TypeScript Key Generation API ✅ DONE (v2.6.0, 2026-04-23)
+
+**Landed:** `ts/src/gen1/bitmap.ts` (40×40 Bitmap utilities), `ts/src/gen1/key-gen.ts` (6 input entry points + validators + core pipeline).
+
+**🎯 END-TO-END BYTE-IDENTITY GATE CLEARED.** All 85 address-bearing vectors (50 bitstring + 15 seed-words + 20 bitmap) plus 20 Schnorr-vector public keys reproduce byte-for-byte through the full TypeScript pipeline:
+
+| Path | Vectors | Fields validated byte-identical |
+|------|---------|---------------------------------|
+| `fromBitString` | 50 | scalar_int10, priv_int10, priv_int49, public_key, standard_address, smart_address |
+| `fromIntegerBase10` | 50 | bitString, priv_int49, public_key, both addresses |
+| `fromIntegerBase49` | 85 (50 + 15 + 20) | Same 5-6 fields |
+| `fromSeedWords` | 15 | All fields (Cyrillic, Greek, accented Latin included) |
+| `fromBitmap` | 20 | All fields (hand-designed + random patterns) |
+| `validatePrivateKey` | 105 | Extracted core bitString matches |
+
+**Verified:** 182/182 tests pass in 27s. TypeScript port is a functionally complete drop-in replacement for the Go `go.ouronetwork.io/api/generate` service.
+
+Ready for Phase 5 (AES Encryption Port).
+
+---
+
+## Phase 4 — TypeScript Key Generation API (pre-landing spec; kept for reference) (1 week)
 
 **Goal:** The public key-gen API — all **6 input paths** including the new bitmap.
 

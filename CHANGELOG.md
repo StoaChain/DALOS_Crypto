@@ -17,6 +17,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [2.2.0] — 2026-04-23
+
+**Phase 0b landed — TypeScript build scaffold.** `ts/` subfolder now hosts the `@stoachain/dalos-crypto` package (at v0.0.1), ready for Phase 1 math code to land inside. Zero cryptographic logic yet — pure infrastructure.
+
+### Added
+
+- **`ts/`** subdirectory containing the full TypeScript scaffold:
+  - `package.json` — `@stoachain/dalos-crypto@0.0.1`, ES modules, strict subpath exports (`.`, `./gen1`), author = Kjrekntolopon (AncientHoldings GmbH), npm `publishConfig` pointed at npmjs.org
+  - `tsconfig.json` — TypeScript 5.7, target ES2022, strictest options (`noUncheckedIndexedAccess`, `verbatimModuleSyntax`, `isolatedModules`, all `strict*` flags)
+  - `tsconfig.test.json` — test-only config with Vitest globals
+  - `biome.json` — linter + formatter (2-space indent, single quotes, trailing commas, LF)
+  - `vitest.config.ts` — Node environment, 30s timeout, tests in `tests/` and `src/`
+  - `.gitignore` — dist, node_modules, coverage, tsbuildinfo
+  - `src/index.ts` — scaffold placeholder exporting `SCAFFOLD_VERSION`
+  - `tests/fixtures.ts` — typed loader for `../testvectors/v1_genesis.json` with interfaces `BitStringVector`, `SeedWordsVector`, `BitmapVector`, `SchnorrVector`, `VectorCorpus`
+  - `tests/scaffold.test.ts` — 7 tests proving the corpus loader works and all 105 records are accessible
+  - `README.md` — package overview, Genesis contract, architecture diagram, dev commands, licence reference
+- **`.github/workflows/ts-ci.yml`** — CI matrix across Node 20, 22, 24 with lint + typecheck + build + test steps; uploads dist artifact on Node 24.
+
+### Verified
+
+- `npm install` → 58 packages in 7s (clean install)
+- `npm run typecheck` → exit 0
+- `npm run build` → exit 0 (dist/ produced with `.js` + `.d.ts` + source maps)
+- `npm run lint` → exit 0 (clean after auto-fix of import ordering)
+- `npm test` → 7/7 tests pass in 1.5s
+- All 105 test-vector records accessible via the typed fixture loader
+
+### Next
+
+Phase 1 (TS math foundation) begins in the next push: `src/gen1/math.ts`, `coords.ts`, `curve.ts`, `point-ops.ts`. Every function will be validated byte-for-byte against the Go test-vector corpus.
+
+---
+
 ## [2.1.0] — 2026-04-23
 
 **Phase 0 finalised — all output-preserving Category-A hardening complete.** Every remaining finding from the v1.0.0 audit is now resolved, NOT-FIXED-BY-DESIGN (with rationale), or documented as a residual. No items remain in "deferred" state. All 105 test-vector records (50 bitstring + 15 seed-words + 20 bitmap + 20 Schnorr) are byte-identical to v2.0.0.

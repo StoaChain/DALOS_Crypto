@@ -161,7 +161,7 @@ Semantic versioning, pinned to Genesis freeze:
 | 0a | Bitmap Input to Go Reference | ✅ DONE (v1.2.0) | 2-3 d | `Bitmap/Bitmap.go` + 20 bitmap test vectors |
 | 0c | Go Category-A Hardening | ✅ DONE (v1.3.0) | 5-7 d | PO-1 constant-time scalar mult + SC-4/5/6/7 Schnorr verify hardening |
 | 0d | Go Schnorr Category-B Hardening | ✅ DONE (v2.0.0) | 3 d | SC-1/2/3 (length-prefix, RFC-6979 nonces, domain tag); `docs/SCHNORR_V2_SPEC.md` |
-| 0b | TypeScript Build Scaffold | ⏳ NEXT | 1-2 d | `ts/` with package.json, Vitest, CI (targets v2.0.0 Go reference) |
+| 0b | TypeScript Build Scaffold | ✅ DONE (v2.2.0) | 1-2 d | `ts/` with package.json (0.0.1), TypeScript 5.7, Vitest 2.1, Biome 1.9, CI across Node 20/22/24. 7/7 scaffold tests pass. |
 | 1 | TS Math Foundation | ⏳ | 2 wk | `ts/src/gen1/math+coords+curve+point-ops.ts` |
 | 2 | TS Scalar Multiplication | ⏳ | 1 wk | `ts/src/gen1/scalar-mult.ts` |
 | 3 | TS Hashing + `@stoachain/dalos-blake3` | ⏳ | 2-3 d | Two packages tagged |

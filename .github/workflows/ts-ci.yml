@@ -1,0 +1,63 @@
+name: TypeScript CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ts/**'
+      - 'testvectors/v1_genesis.json'
+      - '.github/workflows/ts-ci.yml'
+  pull_request:
+    paths:
+      - 'ts/**'
+      - 'testvectors/v1_genesis.json'
+      - '.github/workflows/ts-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: build + lint + test (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ts
+
+    strategy:
+      matrix:
+        node-version: ['20', '22', '24']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: ts/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Upload dist (Node 24 only)
+        if: matrix.node-version == '24'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dalos-crypto-dist
+          path: ts/dist/
+          retention-days: 7

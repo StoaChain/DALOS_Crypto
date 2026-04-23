@@ -6,7 +6,58 @@ This file captures the verbatim output of the Go validation suite against the DA
 
 ---
 
-## Run — 2026-04-23
+## Run — 2026-04-23 (v1.2.0, bitmap vectors added)
+
+### Environment
+
+| Item | Value |
+|------|-------|
+| Host OS | Windows 10 (AMD64) |
+| Go version | go1.19.4 windows/amd64 |
+| Generator version | 1.2.0 |
+
+### Checks
+
+| Check | Result |
+|-------|--------|
+| `go build ./...` | ✅ PASS (exit 0) |
+| `go vet ./...` | ✅ PASS (exit 0) |
+| Generator output | ✅ 105 vectors produced (50 bitstring + 15 seed-words + **20 bitmap** + 20 Schnorr) |
+| Schnorr self-verify | ✅ 20/20 true |
+| Bitmap path cross-check | ✅ `GenerateFromBitmap(b) == GenerateFromBitString(BitmapToBitString(b))` for all 20 fixtures |
+| Determinism proof | ✅ Only timestamp + 20 Schnorr sigs vary between runs; **all 85 deterministic records (50+15+20) byte-identical** — diff produced 42 lines, matching `1 timestamp×2 + 20 signatures×2`. |
+
+### Canonical SHA-256 of `v1_genesis.json` at tag `v1.2.0`
+
+```
+SHA-256:  037ac01a4df6e9113de4ea69d8d4021f5adaa2a821eb697ffe3009997d3c24e9
+```
+
+### Bitmap fixtures
+
+| # | Pattern | Notes |
+|---|---------|-------|
+| 1 | all-white (zeros) | baseline — fromBitmap must equal fromBitString("000…0") |
+| 2 | all-black (ones) | baseline — fromBitmap must equal fromBitString("111…1") |
+| 3 | checkerboard-even | (r+c) even = white |
+| 4 | checkerboard-odd | (r+c) even = black |
+| 5 | horizontal-stripes | every 2 rows alternate |
+| 6 | vertical-stripes | every 2 cols alternate |
+| 7 | border-frame | outer ring black |
+| 8 | center-cross | row 20 + col 20 black |
+| 9 | top-half-black | rows 0-19 black |
+| 10 | left-half-black | cols 0-19 black |
+| 11 | diagonal-tl-br | main diagonal black |
+| 12 | diagonal-tr-bl | anti-diagonal black |
+| 13 | center-dot | single pixel (20,20) |
+| 14 | four-corners | 4 corner pixels only |
+| 15 | top-left-quadrant | 20×20 block black |
+| 16 | concentric-squares | rings spaced every 4 |
+| 17-20 | deterministic-random | math/rand seed `0xB17A77` |
+
+---
+
+## Run — 2026-04-23 (v1.1.0, initial corpus)
 
 ### Environment
 

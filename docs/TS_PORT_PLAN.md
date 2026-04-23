@@ -158,8 +158,8 @@ Semantic versioning, pinned to Genesis freeze:
 | # | Phase | State | Effort | Key deliverable |
 |---|-------|-------|--------|-----------------|
 | 0 | Audit + Math Verification + Self-Containment | ✅ DONE | 1 wk | `v1.0.0` … `v1.1.2` |
-| 0a | **Bitmap Input to Go Reference** | ⏳ NEXT | 2-3 d | `Bitmap/Bitmap.go` + bitmap test vectors |
-| 0b | TypeScript Build Scaffold | ⏳ | 1-2 d | `ts/` with package.json, Vitest, CI |
+| 0a | Bitmap Input to Go Reference | ✅ DONE (v1.2.0) | 2-3 d | `Bitmap/Bitmap.go` + 20 bitmap test vectors |
+| 0b | TypeScript Build Scaffold | ⏳ NEXT | 1-2 d | `ts/` with package.json, Vitest, CI |
 | 1 | TS Math Foundation | ⏳ | 2 wk | `ts/src/gen1/math+coords+curve+point-ops.ts` |
 | 2 | TS Scalar Multiplication | ⏳ | 1 wk | `ts/src/gen1/scalar-mult.ts` |
 | 3 | TS Hashing + `@stoachain/dalos-blake3` | ⏳ | 2-3 d | Two packages tagged |
@@ -193,7 +193,7 @@ Semantic versioning, pinned to Genesis freeze:
 
 ---
 
-## Phase 0a — Bitmap Input to Go Reference (2-3 days)
+## Phase 0a — Bitmap Input to Go Reference ✅ DONE (v1.2.0, 2026-04-23)
 
 **Goal:** Add the 40×40 bitmap as a 6th key-gen input path to the Go reference, generate bitmap test vectors, release `v1.2.0`. The TypeScript port (Phase 4) then has Go-validated bitmap vectors to match against.
 
@@ -1025,11 +1025,13 @@ export function createDefaultRegistry(): CryptographicRegistry;  // with DalosGe
 
 # What starts next
 
-**Next phase:** 0a — Bitmap Input to Go Reference.
+**Phase 0a landed as v1.2.0 on 2026-04-23.**  105 test vectors live, bitmap cross-check passes.
 
-**Awaiting user:** `Exec: begin Phase 0a` to kick off.
+**Next phase:** 0b — TypeScript Build Scaffold.
 
-**After Phase 0a lands (v1.2.0):** Phase 0b (TS scaffold), then Phase 1 (math foundation) — coding begins.
+**Awaiting user:** `Exec: begin Phase 0b` to kick off.
+
+**After Phase 0b lands:** Phase 1 (TS math foundation) — coding begins.
 
 ---
 

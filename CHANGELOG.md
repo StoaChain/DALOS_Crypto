@@ -17,6 +17,52 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [1.2.0] — 2026-04-23
+
+**Phase 0a landed.** Adds the 40×40 black/white bitmap as the 6th key-generation input type to the Go reference, with 20 bitmap test vectors committed. Bit-for-bit equivalent to the existing bitstring path; pure input reshaping, no new cryptographic operations. This primes the TypeScript port (Phase 1 onward) with a Go-validated bitmap oracle.
+
+### Added
+
+- **[`Bitmap/Bitmap.go`](Bitmap/Bitmap.go)** — the `Bitmap` package:
+  - `type Bitmap = [40][40]bool` with Genesis conventions **locked**: black pixel = 1, white pixel = 0, row-major TTB-LTR scan, strict pure-B/W (no greys accepted)
+  - `BitmapToBitString(b)` — deterministic reshape to 1600-character bitstring
+  - `BitStringToBitmapReveal(bitsReveal)` — visualisation inverse; parameter intentionally named to flag that the result IS a private key
+  - `ValidateBitmap(b)`, `ParseAsciiBitmap(rows)`, `BitmapToAscii(b)`, `ParsePngFileToBitmap(path)`, `EqualBitmap(a,b)`
+- **`(*Ellipse).GenerateFromBitmap(b Bitmap)`** in [`Elliptic/KeyGeneration.go`](Elliptic/KeyGeneration.go) — the 6th key-gen entry point. Under the hood: `BitmapToBitString` → existing `GenerateScalarFromBitString` → existing `ScalarToKeys`. Pure input reshape.
+- **20 bitmap test vectors** in [`testvectors/v1_genesis.json`](testvectors/v1_genesis.json):
+  - 16 hand-designed patterns (all-white, all-black, checkerboard both parities, horizontal+vertical stripes, border, center cross, top/left halves, both diagonals, center dot, four corners, top-left quadrant, concentric squares)
+  - 4 deterministic random (RNG seeded with `0xB17A77`)
+  - Cross-check assertion in the generator: `GenerateFromBitmap(b)` produces identical keys to `GenerateFromBitString(BitmapToBitString(b))` for all 20 fixtures
+- **Updated generator** [`testvectors/generator/main.go`](testvectors/generator/main.go):
+  - Generator version 1.2.0
+  - Second RNG stream for bitmap randomness (fixed seed `0xB17A77`) so bitstring vectors are unaffected
+  - New `BitmapVector` schema in the JSON corpus (id, pattern, ASCII rendering, derived bitstring, priv/pub/addresses)
+
+### Changed
+
+- **`testvectors/v1_genesis.json`** regenerated. Total vectors: **105** (was 85). Canonical SHA-256: `037ac01a4df6e9113de4ea69d8d4021f5adaa2a821eb697ffe3009997d3c24e9`.
+- [`testvectors/VALIDATION_LOG.md`](testvectors/VALIDATION_LOG.md) — new section for the 2026-04-23 v1.2.0 run; bitmap-path cross-check listed; determinism proof re-run (42 diff lines = exactly 2 timestamp + 40 Schnorr signatures; all 85 deterministic records byte-identical).
+- [`AUDIT.md`](AUDIT.md) — new `Bitmap/Bitmap.go` section, no findings (pure reshape). Test-vector total updated to 105.
+- [`README.md`](README.md) — version badge bumped to 1.2.0; 6 input paths listed (new §0); status table gains bitmap row; repo structure shows `Bitmap/` + `docs/FUTURE.md` + `testvectors/VALIDATION_LOG.md`.
+
+### Verified
+
+- `go build ./...` exit 0
+- `go vet ./...` exit 0
+- Generator produces 105 vectors, all 20 Schnorr sigs self-verify
+- Determinism: all 85 deterministic records (50 bitstring + 15 seed-words + 20 bitmap) byte-identical across regeneration runs; only timestamp and Schnorr signatures vary
+- Bitmap cross-check: 20/20 fixtures pass `fromBitmap == fromBitString(toBitString(bitmap))`
+
+---
+
+## [1.1.3] — 2026-04-23
+
+### Added / Changed
+
+- [`docs/TS_PORT_PLAN.md`](docs/TS_PORT_PLAN.md) rewritten to v2 — comprehensive per-phase specification: Locked Decisions section (8 fixed design choices), Phase 0 marked DONE, Phase 0a + 0b added, Phase 4 updated for 6 input types, Phase 5 locked to AES as-is, Phase 6 enumerates the 7 Schnorr hardening items, cross-phase invariants + versioning policy + all 10 decision points. 14 phases total.
+
+---
+
 ## [1.1.2] — 2026-04-23
 
 ### Added

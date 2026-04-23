@@ -32,10 +32,11 @@ Three passes:
 
 1. **Static code audit** — reading every Go file for correctness, error handling, defensive coding, side-channel resistance.
 2. **Mathematical verification** — independent re-derivation of curve parameters using Python (with `gmpy2` backing) and Sage. See [`verification/VERIFICATION_LOG.md`](verification/VERIFICATION_LOG.md) for full output.
-3. **Test vector generation** — a deterministic Go program (`testvectors/generator/main.go`) produces 85 input/output pairs committed as [`testvectors/v1_genesis.json`](testvectors/v1_genesis.json):
+3. **Test vector generation** — a deterministic Go program (`testvectors/generator/main.go`) produces 105 input/output pairs committed as [`testvectors/v1_genesis.json`](testvectors/v1_genesis.json):
    - 50 bitstring → scalar → keypair → addresses (deterministic RNG seeded with `0xD4105C09702`)
    - 15 seed-word fixtures spanning ASCII, Cyrillic, Greek, accented Latin, 1-word minimum, 12-word long phrases
-   - 20 Schnorr sign+self-verify vectors (signature bytes vary per run due to GCM-style random nonce, but all 20 self-verify as `true`)
+   - **20 bitmap fixtures** — all-white, all-black, checkerboard, stripes, border, diagonals, corners, quadrants, concentric rings, 4 deterministic-random (RNG seeded with `0xB17A77`). Bitmap path cross-check passes: `GenerateFromBitmap(b) == GenerateFromBitString(BitmapToBitString(b))` for all 20 fixtures.
+   - 20 Schnorr sign+self-verify vectors (signature bytes vary per run due to random nonce, but all 20 self-verify as `true`)
    
    These are the oracle for the forthcoming TypeScript port — byte-for-byte equivalence on all non-Schnorr outputs is the correctness criterion.
 
@@ -189,6 +190,35 @@ CLI driver, not cryptographic code. Findings recorded for completeness but not "
 ### `Blake3/*.go` (external dependency: `StoaChain/Blake3`)
 
 Pure-Go Blake3 XOF implementation. **Externally validated by the user against an online Blake3 test tool** — byte-for-byte match on test inputs. No further audit required. The TypeScript port will use [`@noble/hashes/blake3`](https://www.npmjs.com/package/@noble/hashes) (spec-compliant, industry-audited) and will be cross-validated against the Go fork using generated test vectors.
+
+### `Bitmap/Bitmap.go` ✅ (added in v1.2.0)
+
+The 6th key-generation input type: a 40×40 black/white bitmap. 40 × 40 = 1600 pixels = 1600 bits = the DALOS safe-scalar size exactly. **Pure input reshaping — no new cryptographic operations are introduced.** The bitmap is converted to a 1600-character bitstring and the standard `GenerateScalarFromBitString` pipeline runs from there.
+
+**Locked Genesis conventions:**
+
+| Parameter | Value |
+|-----------|-------|
+| Size | 40 × 40 = 1600 pixels |
+| Bit convention | **Black pixel = 1, White pixel = 0** |
+| Scan order | **Row-major top-to-bottom, left-to-right** |
+| Pixel palette | **Strict pure black (R=G=B=0) or pure white (R=G=B=255)**; any other value is rejected as an error |
+
+**Functions (5):**
+
+- `BitmapToBitString(b Bitmap) string` — deterministic reshape, always 1600 chars of "0"/"1"
+- `BitStringToBitmapReveal(bitsReveal string) (Bitmap, error)` — visualisation inverse; parameter named to flag secret sensitivity
+- `ValidateBitmap(b Bitmap) error` — trivially valid (all `[40][40]bool` are structurally OK); hook for future conventions
+- `ParseAsciiBitmap(rows []string) (Bitmap, error)` — parses 40 rows × 40 chars of `#` (= 1) / `.` (= 0)
+- `ParsePngFileToBitmap(path string) (Bitmap, error)` — reads a 40×40 PNG; rejects any non-pure-black/white pixel with position + observed RGB in error
+- `BitmapToAscii(b Bitmap) []string` — reverse for display/test-vector fixtures
+- `EqualBitmap(a, b Bitmap) bool` — equality helper
+
+**Wiring:** `(*Ellipse).GenerateFromBitmap(b Bitmap.Bitmap) (DalosKeyPair, error)` in `Elliptic/KeyGeneration.go`.
+
+**Security note:** A bitmap encodes a private key bit-for-bit. The library contains WARNING comments on every function that returns or displays a bitmap. UI consumers must treat bitmap display with the same operational-security posture as seed-phrase display (explicit reveal action, never photographed, never transmitted unencrypted).
+
+**Audit finding:** none. Pure deterministic reshape, cross-checked against the bitstring path in all 20 committed test vectors.
 
 ### `AES/AES.go` ✅
 

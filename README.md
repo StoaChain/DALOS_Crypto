@@ -2,7 +2,7 @@
 
 [![Audit](https://img.shields.io/badge/Audit-Complete-brightgreen)](AUDIT.md)
 [![Curve](https://img.shields.io/badge/Curve-verified-brightgreen)](verification/VERIFICATION_LOG.md)
-[![Version](https://img.shields.io/badge/Version-1.0.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-1.2.0-blue)](CHANGELOG.md)
 [![Language](https://img.shields.io/badge/Language-Go%201.19-00ADD8)](go.mod)
 [![TypeScript Port](https://img.shields.io/badge/TypeScript%20port-planned-lightgrey)](#roadmap)
 
@@ -21,14 +21,28 @@ This repository is the **canonical Go reference implementation**. Every future l
 | Address encoding | ✅ Audited — sound, output-frozen |
 | Schnorr signatures | ⚠️ Audited — math correct, 7 hardening items tracked for TS port |
 | AES key-file encryption | ✅ Audited — AES-256-GCM, Blake3 KDF, findings in [`AUDIT.md`](AUDIT.md#aesaesgo) |
-| Test-vector corpus | ✅ **85 vectors** committed — [`testvectors/v1_genesis.json`](testvectors/v1_genesis.json) |
+| Test-vector corpus | ✅ **105 vectors** committed — [`testvectors/v1_genesis.json`](testvectors/v1_genesis.json) |
 | Blake3 + AES inlined | ✅ Self-contained — no external Go module dependencies |
+| **40×40 bitmap input** | ✅ **New in v1.2.0** — 6th key-gen path, see [`Bitmap/Bitmap.go`](Bitmap/Bitmap.go) |
 | TypeScript port | 📝 Planned — see [Roadmap](#roadmap) |
 | Third-party cryptographic audit | 📋 Recommended before production Schnorr use |
 
 ---
 
 ## Key Features
+
+### 0. Six key-generation input paths
+
+Ouronet accounts are derived from a 1600-bit private scalar. Any of these six input types reaches the same scalar via deterministic reshaping and/or hashing:
+
+1. **Random** — `crypto/rand` produces 1600 bits
+2. **Bitstring** — user-supplied 1600-character `"01…"` string
+3. **Integer base 10** — user-supplied big-decimal string (clamped & validated)
+4. **Integer base 49** — user-supplied base-49 string (clamped & validated)
+5. **Seed words** — arbitrary UTF-8 word list hashed via seven-fold Blake3 into 1600 bits
+6. **40 × 40 bitmap** — black/white grid; exactly 1600 pixels = 1600 bits (new in v1.2.0)
+
+All six paths produce bit-for-bit identical output for equivalent inputs. The Genesis key-generation path is permanently frozen at v1.0.0 — adding the bitmap in v1.2.0 is pure input reshaping, not a change to the underlying scalar/curve/address derivation.
 
 ### 1. Custom Twisted Edwards Elliptic Curve
 
@@ -110,11 +124,12 @@ DALOS_Crypto/
 ├── Auxilliary/                     Helper functions (rune trimming, etc.)
 ├── Blake3/                         Blake3 XOF (inlined from StoaChain/Blake3)
 ├── AES/                            AES-256-GCM wrapper (inlined)
+├── Bitmap/                         40×40 B/W bitmap input (new v1.2.0)
 ├── Elliptic/
 │   ├── Parameters.go               Ellipse struct + DalosEllipse() + E521Ellipse()
 │   ├── PointConverter.go           Coord types + modular arithmetic + conversions
 │   ├── PointOperations.go          HWCD addition/doubling/tripling + scalar mult
-│   ├── KeyGeneration.go            Key-generation API + 16×16 character matrix
+│   ├── KeyGeneration.go            Key-generation API + 16×16 character matrix + GenerateFromBitmap
 │   └── Schnorr.go                  Schnorr sign/verify
 ├── Dalos.go                        CLI driver (standalone key-gen tool)
 ├── go.mod                          Go module descriptor
@@ -124,10 +139,12 @@ DALOS_Crypto/
 │   ├── verify_dalos_curve.sage     Sage verifier (same 7 tests)
 │   └── VERIFICATION_LOG.md         Verbatim output of the verification run
 ├── testvectors/
-│   ├── v1_genesis.json             85 reproducible input/output vectors
-│   └── generator/main.go           Deterministic Go generator
+│   ├── v1_genesis.json             105 reproducible input/output vectors
+│   ├── generator/main.go           Deterministic Go generator
+│   └── VALIDATION_LOG.md           go vet + build + determinism proof
 ├── docs/
-│   └── TS_PORT_PLAN.md             12-phase TypeScript port roadmap
+│   ├── TS_PORT_PLAN.md             14-phase TypeScript port roadmap
+│   └── FUTURE.md                   Deferred R&D (post-quantum, etc.)
 ├── README.md                       This file
 ├── AUDIT.md                        Full audit report
 ├── CHANGELOG.md                    Repo change history

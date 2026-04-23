@@ -2,6 +2,7 @@ package Elliptic
 
 import (
     "DALOS_Crypto/AES"
+    "DALOS_Crypto/Bitmap"
     "DALOS_Crypto/Blake3"
     aux "DALOS_Crypto/Auxilliary"
     "crypto/rand"
@@ -326,6 +327,35 @@ func (e *Ellipse) ScalarToPublicKey(Scalar *big.Int) string {
     PublicKeyPointsAffine := e.Extended2Affine(PublicKeyPointsExtended)
     PrefixedPublicKey := AffineToPublicKey(PublicKeyPointsAffine)
     return PrefixedPublicKey
+}
+
+// GenerateFromBitmap is the 6th key-generation input path (added in v1.2.0).
+//
+// A 40x40 black/white Bitmap encodes exactly 1600 bits — the DALOS safe-scalar
+// size. The bitmap is converted to a bitstring via row-major top-to-bottom,
+// left-to-right scan (black=1, white=0), then the standard pipeline produces
+// the scalar, private key and public key.
+//
+// This function is pure input reshaping — no new cryptographic operations are
+// introduced. It is equivalent to:
+//
+//     bits := Bitmap.BitmapToBitString(b)
+//     scalar, err := e.GenerateScalarFromBitString(bits)
+//     keys, err := e.ScalarToKeys(scalar)
+//
+// Returns the computed key pair or an error if the intermediate bitstring
+// fails validation (which cannot happen for a structurally valid Bitmap).
+func (e *Ellipse) GenerateFromBitmap(b Bitmap.Bitmap) (DalosKeyPair, error) {
+    var zero DalosKeyPair
+    if err := Bitmap.ValidateBitmap(b); err != nil {
+        return zero, fmt.Errorf("invalid bitmap: %w", err)
+    }
+    bits := Bitmap.BitmapToBitString(b)
+    scalar, err := e.GenerateScalarFromBitString(bits)
+    if err != nil {
+        return zero, fmt.Errorf("bitmap produced invalid bitstring: %w", err)
+    }
+    return e.ScalarToKeys(scalar)
 }
 
 // VII Key Processing

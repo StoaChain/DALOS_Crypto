@@ -783,7 +783,17 @@ function makeKeyFromPassword(password: string): Promise<Uint8Array>;   // single
 
 ---
 
-## Phase 6 — TypeScript Schnorr Signatures, Hardened (1 week)
+## Phase 6 — TypeScript Schnorr v2 ✅ DONE (v2.8.0, 2026-04-23)
+
+**Landed:** `ts/src/gen1/schnorr.ts` with all seven audit items resolved.
+
+**🎯 BYTE-IDENTITY GATE:** All 20 Schnorr test vectors' signatures match the Go corpus **byte-for-byte**. 234/234 tests pass.
+
+Ready for Phase 7 (primitive registry).
+
+---
+
+## Phase 6 — TypeScript Schnorr Signatures, Hardened (pre-landing spec; kept for reference) (1 week)
 
 **Goal:** Port Schnorr sign/verify **with all 7 Category-B hardening items applied**. The resulting signature format is INCOMPATIBLE with Go-generated signatures — but no on-chain Schnorr signatures exist, so no user is affected.
 

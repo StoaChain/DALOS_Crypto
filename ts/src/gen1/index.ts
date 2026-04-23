@@ -134,3 +134,18 @@ export {
   encryptAndPad,
   decryptAndPadToLength,
 } from './aes.js';
+
+// Schnorr v2 signatures (Phase 6)
+export type { SchnorrSignature } from './schnorr.js';
+export {
+  SCHNORR_HASH_DOMAIN_TAG,
+  SCHNORR_NONCE_DOMAIN_TAG,
+  bigIntBytesCanon,
+  serializeSignature,
+  parseSignature,
+  schnorrHash,
+  schnorrMessageDigest,
+  deterministicNonce,
+  schnorrSign,
+  schnorrVerify,
+} from './schnorr.js';

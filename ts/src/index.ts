@@ -8,7 +8,7 @@
  * @see ../../docs/TS_PORT_PLAN.md
  */
 
-export const SCAFFOLD_VERSION = '0.5.0';
+export const SCAFFOLD_VERSION = '0.6.0';
 
 // Re-export the gen1 subpath at the top level for discoverability.
 // Canonical import path is still `@stoachain/dalos-crypto/gen1`.

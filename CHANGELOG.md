@@ -17,6 +17,70 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [2.8.0] — 2026-04-23
+
+**🎯 PHASE 6 LANDED — SCHNORR V2 BYTE-IDENTITY PROVEN.** Complete port of the v2.0.0 hardened Schnorr scheme with all seven audit findings resolved. Signatures match the Go corpus byte-for-byte across all 20 committed vectors. 234/234 tests pass.
+
+### Added
+
+- **`ts/src/gen1/schnorr.ts`** — hardened Schnorr v2:
+  - **Constants**: `SCHNORR_HASH_DOMAIN_TAG` = `'DALOS-gen1/SchnorrHash/v1'`, `SCHNORR_NONCE_DOMAIN_TAG` = `'DALOS-gen1/SchnorrNonce/v1'`
+  - **Types**: `SchnorrSignature` interface
+  - **`bigIntBytesCanon(x)`** — canonical big-endian bytes (zero → `[0x00]`, matches Go)
+  - **`serializeSignature(sig)`** / **`parseSignature(str)`** — `"{R-in-pubkey-form}|{s-base49}"` format, round-trip safe
+  - **`schnorrHash(R, pk, msg)`** — Fiat-Shamir challenge via length-prefixed Blake3(200 bytes) mod Q (SC-1, SC-3)
+  - **`schnorrMessageDigest(msg)`** — 64-byte tagged hash used for nonce derivation
+  - **`deterministicNonce(k, msgDigest)`** — RFC-6979-style via tagged Blake3 XOF (400-byte expansion → mod Q, bias ≤ 2⁻¹⁵⁹⁶) (SC-2)
+  - **`schnorrSign(keyPair, message)`** — fully deterministic signing
+  - **`schnorrVerify(sig, msg, pk)`** — with SC-4 range check, SC-5 on-curve validation, SC-6 explicit errors
+- **`ts/tests/gen1/schnorr.test.ts`** — 26 tests:
+  - Constants + `bigIntBytesCanon` edge cases
+  - Message digest + nonce determinism
+  - Signature serialization round-trip for all 20 committed sigs
+  - **`schnorrSign` reproduces all 20 Go signatures byte-for-byte**
+  - **`schnorrVerify` accepts all 20 committed signatures**
+  - Cross-run determinism (sign twice → identical output)
+  - Different messages → different signatures
+  - Empty message + Unicode (including 𝔸𝔹ℂ supplementary plane)
+  - Negative tests: tampered message / pubkey / s=0 / s≥Q / malformed sig
+
+### 🎯 Byte-identity gate — strongest so far
+
+| Check | Result |
+|-------|--------|
+| `schnorrSign(keyPair, msg)` for each of 20 vectors produces a signature string equal to the committed `v.signature` | ✅ **20/20 byte-identical** |
+| `schnorrVerify(v.signature, v.message, v.public_key)` for each of 20 vectors | ✅ **20/20 true** |
+| Signature parse/serialize round-trip for all 20 | ✅ **20/20 round-trip** |
+| Unicode (BMP + supplementary) messages sign and verify | ✅ pass |
+| Empty message signs and verifies | ✅ pass |
+
+This is the **strongest byte-identity result in the port so far**. Unlike Phase 3/4 (which matched derivations), Phase 6 matches specific signature bytes — meaning the tagged Blake3 KDF, the deterministic nonce derivation, the length-prefixed transcript construction, the scalar multiplication for R, and the serialization all match Go byte-for-byte.
+
+### Verified
+
+- `npm run lint` → 0 errors across 27 files
+- `npm run typecheck` → exit 0
+- `npm run build` → exit 0
+- `npm test` → **234/234 tests pass in 27 s**
+
+### What this means
+
+The cryptographic surface of the TS port is now **feature-complete and functionally interoperable with Go v2.0.0+**:
+- All 6 key-generation input types (Phase 4)
+- AES encrypted-file I/O (Phase 5)
+- Schnorr v2 sign and verify (Phase 6)
+
+Phase 7 adds the `CryptographicPrimitive` registry pattern so future Gen-2 primitives can plug in cleanly, then Phase 8+ handle integration into `@stoachain/ouronet-core` and the OuronetUI migration.
+
+### Updated
+
+- `ts/src/gen1/index.ts` — exports Phase 6 Schnorr surface
+- `ts/src/index.ts` — SCAFFOLD_VERSION `0.5.0` → `0.6.0`
+- `ts/tests/scaffold.test.ts` — version expectation updated
+- `docs/TS_PORT_PLAN.md` — Phase 6 marked DONE
+
+---
+
 ## [2.7.0] — 2026-04-23
 
 **Phase 5 landed — TypeScript AES-256-GCM wrapper.** Complete port of the Go `AES/AES.go` encryption layer with all v2.1.0 hardening applied and one TS-port robustness improvement (nonce-first-nibble constraint that eliminates a latent roundtrip bug in the Go reference). 208/208 tests pass.

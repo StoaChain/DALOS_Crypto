@@ -17,6 +17,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [1.1.1] — 2026-04-23
+
+### Added
+
+- **[`testvectors/VALIDATION_LOG.md`](testvectors/VALIDATION_LOG.md)** — verbatim output of the Go validation suite (`go vet`, `go build`, `gofmt -l`, generator run, determinism proof via diff). Canonical SHA-256 of the committed `v1_genesis.json` is `0ca25d6b6aa9a477fb3a75498cd7bc2082f9f79ccb8b23ab72caad22f28066db`. Anyone can reproduce.
+
+### Verified (again, after v1.1.0 shipped)
+
+- `go vet ./...` — exit 0, no issues
+- `go build ./...` — exit 0, self-contained compile
+- Test-vector determinism: re-running the generator produces **byte-identical output for all 50 bitstring vectors and 15 seed-word vectors**; only timestamp + 20 Schnorr signatures vary (expected — Schnorr uses random nonce). 64 deterministic records × 2 runs = 100% match.
+
+---
+
 ## [1.1.0] — 2026-04-23
 
 **Self-containment release.** The Go reference is now self-contained (no external module dependencies) and ships with a reproducible test-vector corpus.

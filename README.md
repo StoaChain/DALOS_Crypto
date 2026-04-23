@@ -20,7 +20,9 @@ This repository is the **canonical Go reference implementation**. Every future l
 | Key-generation pipeline | ✅ Audited — sound, output-frozen |
 | Address encoding | ✅ Audited — sound, output-frozen |
 | Schnorr signatures | ⚠️ Audited — math correct, 7 hardening items tracked for TS port |
-| AES key-file encryption | ⏳ Pending mode audit |
+| AES key-file encryption | ✅ Audited — AES-256-GCM, Blake3 KDF, findings in [`AUDIT.md`](AUDIT.md#aesaesgo) |
+| Test-vector corpus | ✅ **85 vectors** committed — [`testvectors/v1_genesis.json`](testvectors/v1_genesis.json) |
+| Blake3 + AES inlined | ✅ Self-contained — no external Go module dependencies |
 | TypeScript port | 📝 Planned — see [Roadmap](#roadmap) |
 | Third-party cryptographic audit | 📋 Recommended before production Schnorr use |
 
@@ -106,6 +108,8 @@ Defined in [`Elliptic/Parameters.go`](Elliptic/Parameters.go).
 ```
 DALOS_Crypto/
 ├── Auxilliary/                     Helper functions (rune trimming, etc.)
+├── Blake3/                         Blake3 XOF (inlined from StoaChain/Blake3)
+├── AES/                            AES-256-GCM wrapper (inlined)
 ├── Elliptic/
 │   ├── Parameters.go               Ellipse struct + DalosEllipse() + E521Ellipse()
 │   ├── PointConverter.go           Coord types + modular arithmetic + conversions
@@ -119,9 +123,15 @@ DALOS_Crypto/
 │   ├── verify_dalos_curve.py       Python + gmpy2 verifier (7 tests)
 │   ├── verify_dalos_curve.sage     Sage verifier (same 7 tests)
 │   └── VERIFICATION_LOG.md         Verbatim output of the verification run
+├── testvectors/
+│   ├── v1_genesis.json             85 reproducible input/output vectors
+│   └── generator/main.go           Deterministic Go generator
+├── docs/
+│   └── TS_PORT_PLAN.md             12-phase TypeScript port roadmap
 ├── README.md                       This file
 ├── AUDIT.md                        Full audit report
-└── CHANGELOG.md                    Repo change history
+├── CHANGELOG.md                    Repo change history
+└── LICENSE                         Proprietary licence
 ```
 
 ---
@@ -167,7 +177,7 @@ OuronetUI                    ← Web application            (repo: StoaChain/Our
 3. **Public exposure** — the TypeScript port is published to npm, usable by third parties.
 4. **Full test coverage** — 500+ test vectors generated from the Go reference form the oracle for every port.
 
-Plan document: the 12-phase breakdown (Phase 0 = audit, Phase 1 = math foundation, … Phase 12 = retirement of the Go server) is maintained in the [consumer application's docs](https://github.com/StoaChain/OuronetUI) while it's still shaping up. Once agreed, it will move here as `docs/TS_PORT_PLAN.md`.
+Plan document: the 12-phase breakdown (Phase 0 = audit, Phase 1 = math foundation, … Phase 12 = retirement of the Go server) lives here in [`docs/TS_PORT_PLAN.md`](docs/TS_PORT_PLAN.md).
 
 ### Planned hardening (TypeScript port only)
 
@@ -231,7 +241,9 @@ Found something concerning? Open an issue, or contact the maintainers privately 
 
 ## License
 
-TBD — licensing to be decided before first npm publish of `@stoachain/dalos-crypto`. Until then, treat the code as "all rights reserved" by StoaChain.
+**Proprietary — Copyright © 2026 AncientHoldings GmbH. All rights reserved.** See [`LICENSE`](LICENSE) for full terms.
+
+The licence grants permission to inspect, audit, run the verification scripts, and integrate with sanctioned StoaChain products. Redistribution, derivative works, and commercial use outside the Ouro-Network ecosystem require explicit written permission from AncientHoldings GmbH.
 
 ---
 

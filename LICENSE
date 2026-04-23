@@ -1,0 +1,104 @@
+DALOS Cryptography — Proprietary License
+
+Copyright (C) 2026 AncientHoldings GmbH.  All rights reserved.
+
+This software and associated documentation files (the "Software") — including
+the DALOS cryptographic curve definition, point operation formulas,
+key-generation pipeline, Schnorr signature primitives, address encoding
+scheme, the 16x16 Unicode character matrix, the seven-fold Blake3
+construction, and all accompanying verification scripts and documentation —
+are the proprietary intellectual property of AncientHoldings GmbH, solely
+authored and invented by the Ouro-Network founder.
+
+────────────────────────────────────────────────────────────────────────
+PERMITTED ACTIVITIES
+────────────────────────────────────────────────────────────────────────
+
+Without further permission, any person or entity obtaining a copy of the
+Software may:
+
+  (a) Read, examine, and audit the source code for security,
+      correctness, educational, and research purposes.
+
+  (b) Execute the mathematical verification scripts in the
+      "verification/" directory to independently reproduce the stated
+      curve properties.
+
+  (c) Run the Software locally for the purpose of testing or
+      personal evaluation, provided no derived cryptographic material
+      is used for commercial purposes.
+
+  (d) Cite, reference, and quote excerpts of the Software for academic
+      publication, provided proper attribution is given to
+      AncientHoldings GmbH and the Ouro-Network project.
+
+  (e) Integrate the Software with other StoaChain / Ouro-Network
+      products when authorised by a separate written agreement with
+      AncientHoldings GmbH.
+
+────────────────────────────────────────────────────────────────────────
+RESERVED RIGHTS
+────────────────────────────────────────────────────────────────────────
+
+The following actions are NOT PERMITTED without explicit, prior, written
+permission from AncientHoldings GmbH:
+
+  1. Redistribution of the Software, in whole or in part, in any form
+     (source or binary, modified or unmodified), whether for commercial
+     or non-commercial purposes, outside of the official StoaChain
+     repositories.
+
+  2. Creation of derivative works based on the Software, including
+     ports to other programming languages intended for public release.
+
+  3. Any commercial use of the Software or of cryptographic material
+     (private keys, addresses, signatures) produced by the Software,
+     outside of participation in the Ouro-Network ecosystem.
+
+  4. Publication, sharing, or external distribution of private keys,
+     test vectors containing sensitive material, or other outputs of
+     the Software, except as part of a coordinated third-party security
+     audit agreed in advance with AncientHoldings GmbH.
+
+  5. Filing of patents, registrations, or other intellectual-property
+     claims over the Software or derived concepts by any party other
+     than AncientHoldings GmbH.
+
+────────────────────────────────────────────────────────────────────────
+CONTACT
+────────────────────────────────────────────────────────────────────────
+
+For licensing enquiries, partnership proposals, commercial-use
+requests, or responsible security disclosures:
+
+    AncientHoldings GmbH
+    (contact details to be updated)
+
+    StoaChain organisation on GitHub: https://github.com/StoaChain
+
+────────────────────────────────────────────────────────────────────────
+DISCLAIMER
+────────────────────────────────────────────────────────────────────────
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+IN NO EVENT SHALL ANCIENTHOLDINGS GMBH OR THE AUTHORS BE LIABLE FOR ANY
+CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+No warranty is made regarding the cryptographic strength of the Software
+in contexts beyond its intended use within the Ouro-Network ecosystem.
+An independent third-party cryptographic audit is recommended before any
+production use in environments not explicitly sanctioned by
+AncientHoldings GmbH.
+
+────────────────────────────────────────────────────────────────────────
+
+This licence is a first, provisional proprietary notice pending formal
+legal review.  AncientHoldings GmbH reserves the right to supersede this
+notice with an updated, counsel-reviewed licence without changing the
+substantive rights granted above.
+
+Version 1.0 — 2026-04-23.

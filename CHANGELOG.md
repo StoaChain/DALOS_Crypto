@@ -10,11 +10,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Planned
 
-- TypeScript port (`ts/` subdirectory) — 12-phase roadmap, see [`docs/TS_PORT_PLAN.md`](docs/TS_PORT_PLAN.md) when added.
-- Blake3 inline: merge [`StoaChain/Blake3`](https://github.com/StoaChain/Blake3) as a git submodule or vendored copy, make this repo self-contained.
-- Test-vector corpus: 500+ input/output pairs generated from the Go reference, committed to `testvectors/`. Becomes the oracle for the TypeScript port.
-- `AES/` audit — mode, IV handling, KDF.
-- `docs/SCHNORR_HARDENING.md` — detailed fix plan for the 7 Schnorr findings.
+- TypeScript port (`ts/` subdirectory) — begin Phase 1 of [`docs/TS_PORT_PLAN.md`](docs/TS_PORT_PLAN.md) (math foundation).
+- Expand test-vector corpus from 85 → 500+ — edge cases (all-zero, all-ones, boundary scalars), invalid-input rejection vectors.
+- `docs/SCHNORR_HARDENING.md` — detailed fix plan for the 7 Schnorr findings (Category B, applied in the TS port).
+- Third-party cryptographic audit engagement.
+
+---
+
+## [1.1.0] — 2026-04-23
+
+**Self-containment release.** The Go reference is now self-contained (no external module dependencies) and ships with a reproducible test-vector corpus.
+
+### Added
+
+- **[`LICENSE`](LICENSE)** — Proprietary notice: Copyright © 2026 AncientHoldings GmbH. All rights reserved. Grants inspection, audit, verification-script-execution, and sanctioned-integration rights. Reserves redistribution, derivative works, and commercial-use rights.
+- **`Blake3/`** — Blake3 XOF implementation inlined from [`StoaChain/Blake3`](https://github.com/StoaChain/Blake3) (was previously imported as `Cryptographic-Hash-Functions/Blake3`).
+- **`AES/`** — AES-256-GCM wrapper with Blake3 KDF, inlined from the same sibling repo. Audit findings added to [`AUDIT.md`](AUDIT.md) (mode: GCM ✅, KDF: single-pass Blake3 ⚠️, error handling: needs hardening ⚠️).
+- **[`testvectors/v1_genesis.json`](testvectors/v1_genesis.json)** — **85 reproducible input/output vectors**:
+  - 50 bitstring → keypair → address vectors (deterministic `math/rand` seed `0xD4105C09702`)
+  - 15 seed-word vectors spanning ASCII, Cyrillic, Greek, accented Latin
+  - 20 Schnorr sign+self-verify vectors (all pass `verify == true`)
+- **[`testvectors/generator/main.go`](testvectors/generator/main.go)** — deterministic Go generator, reproducible by any consumer via `go run testvectors/generator/main.go`.
+- **[`docs/TS_PORT_PLAN.md`](docs/TS_PORT_PLAN.md)** — 12-phase TypeScript port plan (628 lines, moved in from the consumer-app docs).
+
+### Changed
+
+- `Elliptic/KeyGeneration.go`, `Elliptic/Schnorr.go`, `AES/AES.go` — import paths updated:
+  - `"Cryptographic-Hash-Functions/Blake3"` → `"DALOS_Crypto/Blake3"`
+  - `"Cryptographic-Hash-Functions/AES"` → `"DALOS_Crypto/AES"`
+  
+  These are **import-path changes only**. No cryptographic logic was modified. The Genesis key-generation path remains bit-for-bit identical to v1.0.0.
+- [`README.md`](README.md) — added Blake3/AES/test-vectors entries to the repository structure and status table, updated licence section, linked to the now-local TS port plan.
+- [`AUDIT.md`](AUDIT.md) — AES audit section now marked complete with findings.
+
+### Verified
+
+- `go build ./...` completes clean with no errors from the repo root
+- All 85 test-vector generation operations succeed
+- 20/20 Schnorr signatures self-verify
+
+---
 
 ---
 

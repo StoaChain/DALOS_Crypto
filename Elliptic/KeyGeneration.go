@@ -1,8 +1,8 @@
 package Elliptic
 
 import (
-    "Cryptographic-Hash-Functions/AES"
-    "Cryptographic-Hash-Functions/Blake3"
+    "DALOS_Crypto/AES"
+    "DALOS_Crypto/Blake3"
     aux "DALOS_Crypto/Auxilliary"
     "crypto/rand"
     "encoding/hex"

@@ -1,7 +1,7 @@
 package Elliptic
 
 import (
-    "Cryptographic-Hash-Functions/Blake3"
+    "DALOS_Crypto/Blake3"
     "fmt"
     "math/big"
     "strconv"

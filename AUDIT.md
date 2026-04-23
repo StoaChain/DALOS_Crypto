@@ -32,7 +32,12 @@ Three passes:
 
 1. **Static code audit** — reading every Go file for correctness, error handling, defensive coding, side-channel resistance.
 2. **Mathematical verification** — independent re-derivation of curve parameters using Python (with `gmpy2` backing) and Sage. See [`verification/VERIFICATION_LOG.md`](verification/VERIFICATION_LOG.md) for full output.
-3. **Test vector generation** (pending) — 500+ input/output pairs to be generated from the Go reference and checked byte-for-byte against the forthcoming TypeScript port.
+3. **Test vector generation** — a deterministic Go program (`testvectors/generator/main.go`) produces 85 input/output pairs committed as [`testvectors/v1_genesis.json`](testvectors/v1_genesis.json):
+   - 50 bitstring → scalar → keypair → addresses (deterministic RNG seeded with `0xD4105C09702`)
+   - 15 seed-word fixtures spanning ASCII, Cyrillic, Greek, accented Latin, 1-word minimum, 12-word long phrases
+   - 20 Schnorr sign+self-verify vectors (signature bytes vary per run due to GCM-style random nonce, but all 20 self-verify as `true`)
+   
+   These are the oracle for the forthcoming TypeScript port — byte-for-byte equivalence on all non-Schnorr outputs is the correctness criterion.
 
 ---
 
@@ -185,9 +190,27 @@ CLI driver, not cryptographic code. Findings recorded for completeness but not "
 
 Pure-Go Blake3 XOF implementation. **Externally validated by the user against an online Blake3 test tool** — byte-for-byte match on test inputs. No further audit required. The TypeScript port will use [`@noble/hashes/blake3`](https://www.npmjs.com/package/@noble/hashes) (spec-compliant, industry-audited) and will be cross-validated against the Go fork using generated test vectors.
 
-### `AES/AES.go` (external dependency)
+### `AES/AES.go` ✅
 
-⏳ **Pending audit.** This file lives in the `Cryptographic-Hash-Functions` / `AES` tree and is referenced from `Elliptic/KeyGeneration.go` for encrypted key-file storage. Audit item for the next pass: determine the AES mode (CBC/CTR/GCM), IV handling, KDF derivation. Does not block the Genesis audit since AES is only used for standalone key-file export (not for on-curve signing).
+Now inlined into the repo (was previously in the sibling `Cryptographic-Hash-Functions` tree). 135-line wrapper around Go stdlib `crypto/aes` + `crypto/cipher`, used by `Elliptic/KeyGeneration.go` for encrypted private-key file storage.
+
+**Mode of operation:** **AES-256-GCM** — Galois/Counter Mode, an authenticated-encryption-with-associated-data (AEAD) construction. This is the **best general-purpose choice** — provides confidentiality + integrity + authenticity in one pass. Go stdlib implementation, not custom crypto.
+
+**Key derivation:** `MakeKeyFromPassword(password string) []byte` hashes the password via **single-pass Blake3 with 32-byte output** to produce the AES-256 key.
+
+**Nonce handling:** Fresh 96-bit nonce per encryption via `crypto/rand`, prepended to ciphertext. Standard GCM pattern, correct.
+
+**Findings:**
+
+| # | Finding | Severity |
+|---|---------|----------|
+| AES-1 | **Password KDF is single-pass Blake3 — not a true password KDF.** Proper password-based key derivation (PBKDF2, scrypt, Argon2) adds salt + iteration count + memory hardness. Single-hash is brute-forceable at billions/sec on GPU. Weak passwords fall quickly. | ⚠️ Medium (low-entropy pw); Low (high-entropy pw). Category B fix. |
+| AES-2 | **No salt.** Same password always derives the same key → two files encrypted with the same password are decryptable via one key recovery. | ⚠️ Medium. Category B fix. |
+| AES-3 | **Errors printed with `fmt.Println` then execution continues.** Lines 57–59, 67–69, 77–79, 103–105, 113–115, 125–127. If AES block setup, GCM construction, nonce generation, or decryption fails, the function returns garbage bytes with no error signal. | ⚠️ Medium. Category A fix (proper error returns, same output for valid input). |
+| AES-4 | `MakeKeyFromPassword` hex-encodes then hex-decodes the Blake3 output (lines 36–40) — pointless round-trip, but functionally correct. | ℹ️ Cosmetic. |
+| AES-5 | No AAD (associated data) passed to `Seal`/`Open`. Ciphertext is not bound to context (user ID, purpose tag). Not a flaw — a missed feature. | ℹ️ Informational. |
+
+**Verdict:** AES-GCM is a sound primitive. The construction is **safe for encrypting strong passwords' keys** but provides **no meaningful resistance to low-entropy password brute-force** due to the missing salt + iteration KDF. The TypeScript port will replace `MakeKeyFromPassword` with **Argon2id** (salted, memory-hard, tunable) while keeping AES-256-GCM as the cipher. This is a **Category B change** — new ciphertexts will differ from Go-generated ciphertexts — and therefore does NOT apply to the key-generation path (which doesn't use AES). Only the standalone encrypted-key-file format gets upgraded, and it's not used in the Ouronet UI anyway (the codex uses its own V1/V2 encryption in ouronet-core).
 
 ---
 
@@ -228,7 +251,7 @@ This is consistent with how every production blockchain cryptosystem handles the
 
 ## 4. Remediation Roadmap
 
-See [`docs/TS_PORT_PLAN.md`](docs/TS_PORT_PLAN.md) (to be added in a follow-up commit) for the full 12-phase TypeScript port plan. Summary:
+See [`docs/TS_PORT_PLAN.md`](docs/TS_PORT_PLAN.md) for the full 12-phase TypeScript port plan. Summary:
 
 1. **Genesis port** (Phases 1–4): bit-identical to Go reference. All Category-A robustness fixes applied. Key-gen path frozen.
 2. **Schnorr hardening** (Phase 6): All Category-B fixes applied. New signature format incompatible with Go reference sigs (but no such sigs exist in the wild).

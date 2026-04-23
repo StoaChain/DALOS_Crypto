@@ -164,15 +164,19 @@ Implements Fiat–Shamir Schnorr over the DALOS curve. **Core math is textbook c
 
 | # | Finding | Severity | Fixable? | Status |
 |---|---------|----------|----------|--------|
-| SC-1 | **Fiat–Shamir transcript is ambiguous.** Concatenates `R.Text(2) + P.AX.Text(2) + P.AY.Text(2) + m.Text(2)` — but `big.Int.Text(2)` strips leading zeros. Two different (R, P, m) triples can produce the same concat string. | ⚠️ Medium | Cat. B (changes sig output) | scheduled v2.0.0 |
-| SC-2 | **Nonce generated from `crypto/rand` only.** No RFC-6979 deterministic option. If `crypto/rand` is weak or repeats, private key leaks (Sony PS3 / Playstation ECDSA bug). | ⚠️ Medium | Cat. B (changes sig output) | scheduled v2.0.0 |
-| SC-3 | **No domain-separation tag** in the hash. Collides namespace-wise with other protocols using Blake3-1600. | ⚠️ Low–Medium | Cat. B | scheduled v2.0.0 |
-| SC-4 | **No range check on `s`** in `SchnorrVerify` (should enforce `0 < s < Q`). | ⚠️ Low | Cat. A (output-preserving, just adds rejection) | **partial v1.3.0** (0 < s; upper bound v2.0.0) |
+| SC-1 | **Fiat–Shamir transcript is ambiguous.** Concatenates `R.Text(2) + P.AX.Text(2) + P.AY.Text(2) + m.Text(2)` — but `big.Int.Text(2)` strips leading zeros. Two different (R, P, m) triples can produce the same concat string. | ⚠️ Medium | Cat. B (changes sig output) | **✅ RESOLVED v2.0.0** (4-byte length prefix on every component; see `docs/SCHNORR_V2_SPEC.md`) |
+| SC-2 | **Nonce generated from `crypto/rand` only.** No RFC-6979 deterministic option. If `crypto/rand` is weak or repeats, private key leaks (Sony PS3 / Playstation ECDSA bug). | ⚠️ Medium | Cat. B (changes sig output) | **✅ RESOLVED v2.0.0** (tagged Blake3 KDF from (priv, msg); Schnorr fully deterministic) |
+| SC-3 | **No domain-separation tag** in the hash. Collides namespace-wise with other protocols using Blake3-1600. | ⚠️ Low–Medium | Cat. B | **✅ RESOLVED v2.0.0** (distinct tags for challenge-hash and nonce-derivation) |
+| SC-4 | **No range check on `s`** in `SchnorrVerify` (should enforce `0 < s < Q`). | ⚠️ Low | Cat. A (output-preserving, just adds rejection) | **✅ RESOLVED v2.0.0** (full `(0, Q)` check active; v1.3.0 was partial with only `s > 0`) |
 | SC-5 | **No on-curve validation of R** in `SchnorrVerify`. | ⚠️ Medium | Cat. A | **✅ RESOLVED v1.3.0** (R and P both validated) |
 | SC-6 | Errors silently discarded on lines 147, 161, 229, 239 — if point parsing fails, `SchnorrHashOutput` is nil → nil deref on next use. | ⚠️ Medium | Cat. A | **✅ RESOLVED v1.3.0** (explicit false returns) |
 | SC-7 | Non-constant-time scalar mult inherited from `ScalarMultiplier`. Same caveat as PO-1. | ⚠️ Low (for local); Critical (for remote signing) | Cat. A (new primitive) | **✅ RESOLVED v1.3.0** (inherits PO-1 hardening) |
 
-**Since DALOS Schnorr is NOT used on-chain today**, SC-1 through SC-7 can ALL be fixed in the forthcoming TypeScript port, including the Category-B ones (SC-1, SC-2, SC-3) which change signature output. No existing signatures depend on the current behavior.
+**Since DALOS Schnorr is NOT used on-chain today**, SC-1 through SC-7 can ALL be fixed — and all seven have been resolved as of v2.0.0 (2026-04-23):
+- SC-4, SC-5, SC-6, SC-7 landed in **v1.3.0** (Category-A, output-preserving)
+- SC-1, SC-2, SC-3 landed in **v2.0.0** (Category-B, signature format changes; see [`docs/SCHNORR_V2_SPEC.md`](docs/SCHNORR_V2_SPEC.md))
+
+The v2.0.0 signature format is NOT interoperable with pre-v2.0.0 signatures. This is intentional and safe — no DALOS Schnorr signatures are used on-chain.
 
 ### `Dalos.go` ℹ️
 

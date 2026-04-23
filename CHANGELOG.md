@@ -17,6 +17,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [2.0.0] — 2026-04-23
+
+**Phase 0d landed — Schnorr v2 hardening (Cat-B).** Complete rewrite of the Schnorr sign/verify path with the three output-changing fixes (SC-1, SC-2, SC-3). Genesis key-generation output remains bit-for-bit identical to v1.0.0. Schnorr signature format breaks from pre-v2 — intentional, safe (no on-chain deps).
+
+**Canonical SHA-256 of `testvectors/v1_genesis.json` at v2.0.0: `45c89ec36c30847a92dbd5b696b42d94159900dddb6ce7ad35fca58f4bba16f3`**
+
+### Fixed
+
+- **SC-1** — Length-prefixed Fiat–Shamir transcript. `SchnorrHash` now computes `Blake3(len32(tag) || tag || len32(r) || r || len32(P.x) || P.x || len32(P.y) || P.y || len32(m) || m) mod Q` with 4-byte big-endian length prefixes on every component. Eliminates the pre-v2 leading-zero ambiguity from `big.Int.Text(2)` concatenation.
+- **SC-2** — RFC-6979-style deterministic nonces adapted for Blake3. The nonce `z` is now derived from `(private_key, Blake3(tag_msg || message))` via a tagged Blake3 KDF, not `crypto/rand`. Consequence: **`SchnorrSign(k, m)` is now fully deterministic** — same inputs produce byte-identical signatures across runs and across implementations. Eliminates the Sony-PS3 random-nonce-reuse attack family.
+- **SC-3** — Domain-separation tags on both the challenge hash (`"DALOS-gen1/SchnorrHash/v1"`) and the nonce derivation (`"DALOS-gen1/SchnorrNonce/v1"`). Prevents hash collisions with any other Blake3-based protocol.
+- **SC-4 (full)** — `s` is now reduced mod Q in `SchnorrSign`; `SchnorrVerify` rejects any signature with `s ≥ Q` or `s ≤ 0`. Canonical range `(0, Q)` enforced by both signer and verifier.
+
+### Added
+
+- [`docs/SCHNORR_V2_SPEC.md`](docs/SCHNORR_V2_SPEC.md) — normative specification of the v2 signature format. Implementers porting to other languages (TypeScript port, Rust, etc.) use this as their reference. Contains canonical encodings, signing/verification algorithms, determinism contract, security properties, known residuals, and the pre-v2 incompatibility note.
+
+### Changed
+
+- `Elliptic/Schnorr.go` — `SchnorrSign` and `SchnorrHash` fully rewritten. `SchnorrVerify`'s `s < Q` upper-bound check now active. `deterministicNonce` added as an internal helper.
+- `testvectors/v1_genesis.json` — regenerated. All 20 Schnorr signatures now deterministic (stable across runs — verified by running generator twice, byte-identical Schnorr output on second run).
+
+### Verified
+
+- `go build ./...` → exit 0
+- `go vet ./...` → exit 0
+- Key-gen path: **all 85 deterministic records byte-identical to v1.3.0 and v1.2.0** (50 bitstring + 15 seed-words + 20 bitmap). Genesis preservation held.
+- Schnorr self-verify: 20/20 signatures verify under the new `SchnorrVerify`.
+- Schnorr determinism: 20/20 signatures produce byte-identical output when the generator runs twice with the same inputs.
+- Schnorr format break: 20/20 signatures differ from pre-v2.0.0 signatures (expected — SC-1/SC-2/SC-3 all change the output).
+
+### Incompatibility
+
+v2.0.0 signatures fail to verify under pre-v2.0.0 code, and vice versa. No deployed consumer carries Schnorr signatures across this boundary.
+
+### Documented known residual
+
+Go's `math/big` is not constant-time at the CPU-instruction level. v1.3.0's PO-1 hardening closed the macro-level timing channel; v2.0.0 inherits that. Fully-constant-time signing would require a custom limb-oriented big-int implementation — out of scope for the Go reference. Applies only to signers (verifiers observe public inputs).
+
+---
+
 ## [1.3.0] — 2026-04-23
 
 **Phase 0c landed — Category-A hardening.** All output-preserving security fixes applied to the Go reference. The Genesis key-generation path (bitstring → scalar → public key → address) produces **bit-for-bit identical output** to v1.2.0 for all 85 deterministic test vectors. Schnorr signatures continue to self-verify 20/20.

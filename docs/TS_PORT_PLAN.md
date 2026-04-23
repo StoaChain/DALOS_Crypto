@@ -159,7 +159,9 @@ Semantic versioning, pinned to Genesis freeze:
 |---|-------|-------|--------|-----------------|
 | 0 | Audit + Math Verification + Self-Containment | ✅ DONE | 1 wk | `v1.0.0` … `v1.1.2` |
 | 0a | Bitmap Input to Go Reference | ✅ DONE (v1.2.0) | 2-3 d | `Bitmap/Bitmap.go` + 20 bitmap test vectors |
-| 0b | TypeScript Build Scaffold | ⏳ NEXT | 1-2 d | `ts/` with package.json, Vitest, CI |
+| 0c | Go Category-A Hardening | ✅ DONE (v1.3.0) | 5-7 d | PO-1 constant-time scalar mult + SC-4/5/6/7 Schnorr verify hardening |
+| 0d | Go Schnorr Category-B Hardening | ✅ DONE (v2.0.0) | 3 d | SC-1/2/3 (length-prefix, RFC-6979 nonces, domain tag); `docs/SCHNORR_V2_SPEC.md` |
+| 0b | TypeScript Build Scaffold | ⏳ NEXT | 1-2 d | `ts/` with package.json, Vitest, CI (targets v2.0.0 Go reference) |
 | 1 | TS Math Foundation | ⏳ | 2 wk | `ts/src/gen1/math+coords+curve+point-ops.ts` |
 | 2 | TS Scalar Multiplication | ⏳ | 1 wk | `ts/src/gen1/scalar-mult.ts` |
 | 3 | TS Hashing + `@stoachain/dalos-blake3` | ⏳ | 2-3 d | Two packages tagged |
@@ -1027,7 +1029,11 @@ export function createDefaultRegistry(): CryptographicRegistry;  // with DalosGe
 
 **Phase 0a landed as v1.2.0 on 2026-04-23.**  105 test vectors live, bitmap cross-check passes.
 
-**Next phase:** 0b — TypeScript Build Scaffold.
+**Phase 0c landed as v1.3.0 on 2026-04-23.**  Category-A hardening — constant-time scalar mult + Schnorr verify hardening. Key-gen output byte-identical to v1.0.0; 20/20 Schnorr still self-verify.
+
+**Phase 0d landed as v2.0.0 on 2026-04-23.**  Schnorr v2 format — length-prefixed Fiat-Shamir, deterministic nonces, domain tags. Key-gen output still byte-identical to v1.0.0. Schnorr now fully deterministic (20/20 signatures stable across regeneration runs). Canonical test-vector hash: `45c89ec36c30847a92dbd5b696b42d94159900dddb6ce7ad35fca58f4bba16f3`.
+
+**Next phase:** 0b — TypeScript Build Scaffold. TS port now targets the hardened v2.0.0 Go reference.
 
 **Awaiting user:** `Exec: begin Phase 0b` to kick off.
 

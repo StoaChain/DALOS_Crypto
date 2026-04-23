@@ -6,6 +6,58 @@ This file captures the verbatim output of the Go validation suite against the DA
 
 ---
 
+## Run — 2026-04-23 (v2.0.0, Schnorr v2 hardening)
+
+### Environment
+
+| Item | Value |
+|------|-------|
+| Generator version | 1.2.0 (unchanged; only Schnorr output format changes) |
+
+### Checks
+
+| Check | Result |
+|-------|--------|
+| `go build ./...` | ✅ PASS (exit 0) |
+| `go vet ./...` | ✅ PASS (exit 0) |
+| Generator output | ✅ 105 vectors (50 bitstring + 15 seed-words + 20 bitmap + 20 Schnorr) |
+| **Genesis key-gen byte-identity vs v1.2.0** | ✅ **ALL 85 deterministic records byte-identical** (50+15+20). Genesis contract held through Phase 0c + 0d. |
+| Schnorr self-verify | ✅ 20/20 under v2 format |
+| **Schnorr determinism** (regenerate twice, compare) | ✅ **20/20 signatures byte-identical across runs** — the v2.0.0 RFC-6979-style nonce derivation delivers full determinism |
+| Schnorr format break vs v1.x | ✅ **20/20 signatures differ from pre-v2.0.0** (expected — SC-1/SC-2/SC-3 all change bytes) |
+
+### Canonical SHA-256 of `v1_genesis.json` at tag `v2.0.0`
+
+```
+SHA-256:  45c89ec36c30847a92dbd5b696b42d94159900dddb6ce7ad35fca58f4bba16f3
+```
+
+### What this run proves
+
+1. **Genesis preservation held through 3 hardening releases (v1.2.0 → v1.3.0 → v2.0.0).** Every bitstring, seed-word, and bitmap derivation produces byte-identical keys/addresses.
+2. **PO-1 hardening (v1.3.0) is correct.** Constant-time scalar mult, verified against full corpus.
+3. **SC-4, SC-5, SC-6 (v1.3.0) work correctly.** Schnorr verify rejects invalid inputs while passing valid ones.
+4. **SC-1, SC-2, SC-3 (v2.0.0) work correctly.** New format is self-consistent; sign produces deterministic output that verify accepts.
+
+---
+
+## Run — 2026-04-23 (v1.3.0, Category-A hardening)
+
+Abridged re-run after Phase 0c Category-A fixes.
+
+### Checks
+
+| Check | Result |
+|-------|--------|
+| `go build ./...` | ✅ PASS |
+| `go vet ./...` | ✅ PASS |
+| Key-gen byte-identity vs v1.2.0 | ✅ all 85 deterministic records byte-identical |
+| Schnorr self-verify | ✅ 20/20 (still using v1 Schnorr format) |
+
+Canonical hash recorded in commit `v1.3.0` CHANGELOG entry: `dca92bc33589fdde798f77cd5ce12ce5f3e08701606bfc62c893d852bde29fd7`.
+
+---
+
 ## Run — 2026-04-23 (v1.2.0, bitmap vectors added)
 
 ### Environment

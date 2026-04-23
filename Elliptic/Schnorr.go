@@ -2,11 +2,59 @@ package Elliptic
 
 import (
     "DALOS_Crypto/Blake3"
+    "bytes"
+    "encoding/binary"
     "fmt"
     "math/big"
     "strconv"
     "strings"
 )
+
+// ============================================================================
+// Schnorr v2.0.0 hardened constants  (Phase 0d, Cat-B fixes)
+// ============================================================================
+//
+// SC-1: length-prefixed Fiat–Shamir transcript (fixes leading-zero
+//       ambiguity of big.Int.Text(2) concatenation)
+// SC-2: RFC-6979-style deterministic nonce derivation adapted for
+//       Blake3 (removes dependency on crypto/rand at sign time)
+// SC-3: domain-separation tags on both the challenge hash and the
+//       nonce derivation (eliminates hash-reuse across protocols)
+//
+// Output format: NOT backward-compatible with pre-v2.0.0 signatures.
+//                Pre-v2.0.0 signatures fail to verify under v2.0.0.
+//                v2.0.0 signatures fail to verify under pre-v2.0.0.
+//                This is intentional and safe: no DALOS Schnorr
+//                signatures are used on-chain today.
+//
+// Security upgrade: signatures become deterministic (sign(k, m) twice
+//                   yields identical bytes), closing the Sony-PS3
+//                   random-nonce-reuse attack family. s is now
+//                   canonically reduced to [0, Q-1].
+const (
+    schnorrHashDomainTag  = "DALOS-gen1/SchnorrHash/v1"
+    schnorrNonceDomainTag = "DALOS-gen1/SchnorrNonce/v1"
+)
+
+// writeLenPrefixed appends a 4-byte big-endian length followed by data.
+// Fixed width length prefix eliminates the leading-zero ambiguity that
+// plain concatenation of variable-width binary strings has.
+func writeLenPrefixed(buf *bytes.Buffer, data []byte) {
+    var lenBytes [4]byte
+    binary.BigEndian.PutUint32(lenBytes[:], uint32(len(data)))
+    buf.Write(lenBytes[:])
+    buf.Write(data)
+}
+
+// bigIntBytesCanon returns the canonical big-endian byte encoding of x.
+// For non-negative x this is x.Bytes(). Nil and zero produce a single
+// 0x00 byte so the length prefix remains well-defined.
+func bigIntBytesCanon(x *big.Int) []byte {
+    if x == nil || x.Sign() == 0 {
+        return []byte{0x00}
+    }
+    return x.Bytes()
+}
 
 type SchnorrSignature struct {
     R CoordAffine
@@ -130,40 +178,81 @@ func ConvertPublicKeyToAffineCoords(publicKey string) (CoordAffine, error) {
     return coords, nil
 }
 
-// SchnorrHash computes the Hash(r||P||m) that is used in SchnorrSign Function
+// SchnorrHash computes the Fiat–Shamir challenge e = H(domain || R_x || P.x || P.y || m).
+//
+// v2.0.0 transcript format (SC-1, SC-3):
+//
+//   domain = "DALOS-gen1/SchnorrHash/v1"
+//   transcript =  len32(domain) || domain
+//              || len32(R_x)    || R_x
+//              || len32(P.x)    || P.x
+//              || len32(P.y)    || P.y
+//              || len32(m)      || m
+//   digest = Blake3_SumCustom(transcript, e.S / 8)
+//   e = bigint(digest) mod Q           // canonicalised to (0, Q)
+//
+// Each component has a 4-byte big-endian length prefix, eliminating the
+// leading-zero ambiguity that arose in the pre-v2.0.0 code from
+// concatenating variable-width big.Int.Text(2) strings.
+//
+// Returns nil only on catastrophic internal failure (pubkey parse);
+// callers treat nil as a verification rejection.
 func (e *Ellipse) SchnorrHash(R *big.Int, PublicKey string, Message string) *big.Int {
-    var (
-        PublicKeyStringX  string
-        PublicKeyStringY  string
-        SchnorrHashOutput *big.Int
-    )
-    //Convert R to its base 2 Representation as string
-    RAsBinaryString := R.Text(2)
-    
-    //Retrieve the Affine Coordinates from the PublicKey, and gets their base 2 Representation as strings
     PublicKeyAffine, err := ConvertPublicKeyToAffineCoords(PublicKey)
-    if err == nil {
-        PublicKeyStringX = PublicKeyAffine.AX.Text(2)
-        PublicKeyStringY = PublicKeyAffine.AY.Text(2)
-        
+    if err != nil {
+        return nil
     }
-    
-    //Converts the string Message to []byte , then to its base 2 representation
-    BinaryMessage := Hash2BigInt([]byte(Message)).Text(2)
-    
-    //Concatenate all 4 Resulted Binary Strings
-    ConcatenatedBinaryString := RAsBinaryString + PublicKeyStringX + PublicKeyStringY + BinaryMessage
-    //Converts the ConcatenatedBinaryString representing a BitString to []byte
-    ConcatenatedBinaryStringToByteSlice, err2 := BinaryStringToBytes(ConcatenatedBinaryString)
-    
-    //Going Forward, the ConcatenatedBinaryStringToByteSlice is hashed with Blake3, creating an output in bit size
-    //using the Curve Safe Scalar size divided by 8.
-    if err2 == nil {
-        OutputSizeInBytes := int(e.S) / 8
-        Hash := Blake3.SumCustom(ConcatenatedBinaryStringToByteSlice, OutputSizeInBytes)
-        SchnorrHashOutput = Hash2BigInt(Hash)
+    if PublicKeyAffine.AX == nil || PublicKeyAffine.AY == nil {
+        return nil
     }
-    return SchnorrHashOutput
+
+    var buf bytes.Buffer
+    writeLenPrefixed(&buf, []byte(schnorrHashDomainTag))
+    writeLenPrefixed(&buf, bigIntBytesCanon(R))
+    writeLenPrefixed(&buf, bigIntBytesCanon(PublicKeyAffine.AX))
+    writeLenPrefixed(&buf, bigIntBytesCanon(PublicKeyAffine.AY))
+    writeLenPrefixed(&buf, []byte(Message))
+
+    outputSize := int(e.S) / 8
+    digest := Blake3.SumCustom(buf.Bytes(), outputSize)
+
+    hashInt := new(big.Int).SetBytes(digest)
+    hashInt.Mod(hashInt, &e.Q)
+    return hashInt
+}
+
+// deterministicNonce derives a scalar z ∈ [1, Q-1] from (k, messageHash)
+// via a tagged Blake3 expansion. SC-2 replacement for the crypto/rand
+// nonce: same (k, m) always yields the same z, eliminating the Sony-PS3
+// random-nonce-reuse attack family.
+//
+// Construction:
+//
+//   seed = tag || 0x00 || canonical(k) || canonical(msgHash)
+//   expansion = Blake3_SumCustom(seed, 2 * e.S / 8)   // double-width
+//   candidate = bigint(expansion) mod Q
+//   if candidate == 0: return 1 (negligibly rare; 1 is a valid nonce)
+//
+// Doubled-width expansion minimises the modular bias — with 2·1600 bits
+// of hash reduced mod the 1604-bit Q, the bias is ≤ 2^-(1596), well
+// below any practical cryptanalytic threshold.
+func (e *Ellipse) deterministicNonce(k *big.Int, messageHash []byte) *big.Int {
+    var seed bytes.Buffer
+    seed.WriteString(schnorrNonceDomainTag)
+    seed.WriteByte(0x00)
+    seed.Write(bigIntBytesCanon(k))
+    seed.Write(messageHash)
+
+    // 2x safe-scalar bytes of expansion, for bias-free modular reduction.
+    expansionSize := 2 * int(e.S) / 8
+    expansion := Blake3.SumCustom(seed.Bytes(), expansionSize)
+
+    z := new(big.Int).SetBytes(expansion)
+    z.Mod(z, &e.Q)
+    if z.Sign() == 0 {
+        z.SetInt64(1) // negligibly rare; 1 is a valid in-range nonce
+    }
+    return z
 }
 
 // SchnorrSign Schnorr Signature Creation:
@@ -183,32 +272,56 @@ func (e *Ellipse) SchnorrHash(R *big.Int, PublicKey string, Message string) *big
 //          and || denotes binary concatenation
 //          Signature = (R, s)     (curve point, integer)
 //==================================================================
+// SchnorrSign produces a Schnorr signature (R, s) over Message using
+// KeyPair's private scalar k.
+//
+// v2.0.0 changes from pre-v2.0.0:
+//   SC-2: nonce z is now deterministic — derived from (k, H(message))
+//         via the tagged Blake3 KDF in deterministicNonce(). Same
+//         (k, message) always yields the same (R, s). Eliminates the
+//         random-nonce-reuse attack family.
+//   SC-3: the transcript tag in SchnorrHash isolates this signature
+//         from any other protocol using Blake3.
+//   SC-4 (full): s = z + e·k is now reduced mod Q → canonical (0, Q).
+//         Older s values could exceed Q; v2.0.0 rejects those. Both
+//         signer and verifier agree on the canonical range.
+//
+// Output format: "R-in-public-key-form | s-in-base49" — encoding
+//                itself is unchanged; only the byte values of R and s
+//                differ from pre-v2.0.0.
 func (e *Ellipse) SchnorrSign(KeyPair DalosKeyPair, Message string) string {
-    //Outputs the SchnorrSignature as a string, in a special format
     var Signature SchnorrSignature
-    
-    //Generate a random number z
-    RandomBits := e.GenerateRandomBitsOnCurve()
-    z, _ := e.GenerateScalarFromBitString(RandomBits)
-    
-    //Calculate Curve Point R = z*G (we need r = R.AX for further computations)
-    RExtended := e.ScalarMultiplierWithGenerator(z)
-    RAffine := e.Extended2Affine(RExtended) //Part of the Output Signature
-    r := RAffine.AX
-    
-    //Calculate Message-Hash m as integer, using Inputs (r, PublicKey of the Signer, and Message of the Signer)
-    m := e.SchnorrHash(r, KeyPair.PUBL, Message)
-    
-    //Calculate s = z + Hash(r||P||m)*k (Part of the Output Signature)
+
+    // Parse private key
     k := ConvertBase49toBase10(KeyPair.PRIV)
-    s := new(big.Int).Add(z, new(big.Int).Mul(m, k))
-    
-    //Output Computed Values into the Signature.
+
+    // Hash the message (separately from the Fiat–Shamir challenge) for
+    // nonce derivation. Tagged, Blake3, fixed-width output.
+    msgHashInput := append([]byte(schnorrNonceDomainTag+"/msg"), []byte(Message)...)
+    msgDigest := Blake3.SumCustom(msgHashInput, 64)
+
+    // Derive deterministic nonce z in [1, Q-1]
+    z := e.deterministicNonce(k, msgDigest)
+
+    // R = z * G
+    RExtended := e.ScalarMultiplierWithGenerator(z)
+    RAffine := e.Extended2Affine(RExtended)
+    r := RAffine.AX
+
+    // Fiat–Shamir challenge e = H(domain || r || P || message) mod Q
+    challenge := e.SchnorrHash(r, KeyPair.PUBL, Message)
+    if challenge == nil {
+        return ""
+    }
+
+    // s = (z + e * k) mod Q  — canonically reduced.
+    s := new(big.Int).Mul(challenge, k)
+    s.Add(s, z)
+    s.Mod(s, &e.Q)
+
     Signature.R = RAffine
     Signature.S = s
-    SignatureAsString := ConvertSchnorrSignatureToString(Signature)
-    
-    return SignatureAsString
+    return ConvertSchnorrSignatureToString(Signature)
 }
 
 //SchnorrVerify  Schnorr Signature Verification
@@ -242,13 +355,12 @@ func (e *Ellipse) SchnorrVerify(Signature, Message, PublicKey string) bool {
         return false
     }
 
-    // SC-4 (partial, v1.3.0): reject non-positive s. A zero or negative
-    // scalar is always malformed. The stricter upper-bound check
-    // s < Q is deferred to v2.0.0: the pre-v2.0.0 Schnorr produces
-    // s = z + H(…)·k without a mod-Q reduction, so historically-valid
-    // signatures legitimately have s ≥ Q. v2.0.0 reduces s mod Q and
-    // tightens this to the canonical (0, Q) range.
-    if Schnorr.S.Cmp(Zero) <= 0 {
+    // SC-4 (full, v2.0.0): reject s outside the canonical range (0, Q).
+    // v2.0.0 sign reduces s mod Q; any signature with s ≥ Q or s ≤ 0
+    // is malformed and must be rejected. (Pre-v2.0.0 signatures often
+    // have s ≥ Q and will correctly fail verification here —
+    // intentional format break.)
+    if Schnorr.S.Cmp(Zero) <= 0 || Schnorr.S.Cmp(&e.Q) >= 0 {
         return false
     }
 

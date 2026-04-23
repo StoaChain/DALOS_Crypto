@@ -2,7 +2,7 @@
 
 [![Audit](https://img.shields.io/badge/Audit-Complete-brightgreen)](AUDIT.md)
 [![Curve](https://img.shields.io/badge/Curve-verified-brightgreen)](verification/VERIFICATION_LOG.md)
-[![Version](https://img.shields.io/badge/Version-1.2.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-2.0.0-blue)](CHANGELOG.md)
 [![Language](https://img.shields.io/badge/Language-Go%201.19-00ADD8)](go.mod)
 [![TypeScript Port](https://img.shields.io/badge/TypeScript%20port-planned-lightgrey)](#roadmap)
 
@@ -19,7 +19,7 @@ This repository is the **canonical Go reference implementation**. Every future l
 | Curve parameters | ✅ **Mathematically verified** — see [`AUDIT.md`](AUDIT.md) |
 | Key-generation pipeline | ✅ Audited — sound, output-frozen |
 | Address encoding | ✅ Audited — sound, output-frozen |
-| Schnorr signatures | ⚠️ Audited — math correct, 7 hardening items tracked for TS port |
+| Schnorr signatures | ✅ **v2.0.0 hardened** — all 7 audit items resolved (SC-1 length-prefix, SC-2 deterministic nonces, SC-3 domain tag, SC-4 canonical range, SC-5 on-curve checks, SC-6 error returns, SC-7 constant-time). See [`docs/SCHNORR_V2_SPEC.md`](docs/SCHNORR_V2_SPEC.md) |
 | AES key-file encryption | ✅ Audited — AES-256-GCM, Blake3 KDF, findings in [`AUDIT.md`](AUDIT.md#aesaesgo) |
 | Test-vector corpus | ✅ **105 vectors** committed — [`testvectors/v1_genesis.json`](testvectors/v1_genesis.json) |
 | Blake3 + AES inlined | ✅ Self-contained — no external Go module dependencies |

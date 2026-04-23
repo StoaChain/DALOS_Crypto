@@ -261,7 +261,9 @@ See [`docs/TS_PORT_PLAN.md`](docs/TS_PORT_PLAN.md) for the full 12-phase TypeScr
 
 ## 5. Sign-off
 
-**Audit conducted by:** Claude (Anthropic), acting as an automated reviewer, on behalf of StoaChain.
+**Original author of the audited work:** Kjrekntolopon (Geschäftsführer, AncientHoldings GmbH). Contact: Kjrekntolopon@ancientholdings.eu.
+
+**Audit conducted by:** Claude (Anthropic), acting as an automated reviewer, on behalf of StoaChain / AncientHoldings GmbH.
 **Audit scope disclaimer:** This is an *internal audit* — rigorous source review + independent mathematical verification. It is **not a substitute for a third-party cryptographic audit** by an accredited firm. A third-party audit is **strongly recommended** before:
 - DALOS Schnorr is used for on-chain authentication
 - DALOS primitives are used in multi-tenant server environments where timing attacks are possible

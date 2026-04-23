@@ -249,7 +249,7 @@ The licence grants permission to inspect, audit, run the verification scripts, a
 
 ## Acknowledgements
 
-- **The DALOS author** — for designing the custom curve, running multi-day prime-search computations before AI assistance existed, and building this from scratch.
+- **DALOS author — [Kjrekntolopon](mailto:Kjrekntolopon@ancientholdings.eu)**, Geschäftsführer of AncientHoldings GmbH. Designed the custom 1606-bit Twisted Edwards curve, ran multi-day parallel prime searches on a Ryzen 5950X before AI-assisted development existed, built the full DALOS stack (curve, key generation, Schnorr, seven-fold Blake3, 16×16 character matrix, Demiourgos account structure) from scratch.
 - **[hyperelliptic.org/EFD](https://www.hyperelliptic.org/EFD/g1p/auto-twisted-extended.html)** — source of the HWCD formulas.
 - **Bernstein, Lange, Hisil, Wong, Carter, Dawson** — foundational work on Twisted Edwards curves.
 - **The Blake3 team** — spec + reference Go implementation.

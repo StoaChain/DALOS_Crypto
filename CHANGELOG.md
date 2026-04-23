@@ -17,6 +17,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [1.1.2] — 2026-04-23
+
+### Added
+
+- **[`docs/FUTURE.md`](docs/FUTURE.md)** — deferred research directions:
+  - Post-quantum primitive families (priority: HIGH; bigger curves explicitly not pursued)
+  - Bitmap scan-order variants (opt-in future feature, Genesis locked to row-major TTB-LTR)
+  - Additional key-gen input types (audio, geolocation, handwriting — community-driven)
+  - Bigger curves — **deliberately not on the roadmap**, with reasoning
+  - Third-party audit candidates and budget notes
+  - Hardware wallet integration (Ledger/Trezor)
+
+### Changed
+
+- **[`LICENSE`](LICENSE)** — author credit updated with explicit attribution:
+  - Kjrekntolopon, Geschäftsführer of AncientHoldings GmbH
+  - Contact: Kjrekntolopon@ancientholdings.eu
+- **[`README.md`](README.md) Acknowledgements** — same attribution plus brief credit describing the original design and prime-search work on 32-thread Ryzen 5950X.
+- **[`AUDIT.md`](AUDIT.md) Sign-off** — same author attribution added.
+
+### Confirmed (design decisions)
+
+- **AES stays as-is.** Single-pass Blake3 KDF, AES-256-GCM. Argon2id upgrade deferred — the AES wrapper is used only for standalone encrypted-key-file export (not by the Ouronet UI, which uses ouronet-core's codex encryption). Changing the KDF would break the encrypted-file format without affecting account addresses; the trade-off is not worth it for Genesis. Weak-KDF note remains in AUDIT.md as "user responsibility to choose strong password".
+- **Bitmap conventions for Genesis** (locked):
+  - 40 × 40 = 1600 pixels = 1600 bits
+  - Black pixel = 1, White pixel = 0
+  - Row-major top-to-bottom, left-to-right scan
+  - Strict black/white (pure 0x000000 or 0xFFFFFF); reject any other pixel value
+
+---
+
 ## [1.1.1] — 2026-04-23
 
 ### Added

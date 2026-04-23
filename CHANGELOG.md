@@ -17,6 +17,82 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [2.9.0] — 2026-04-23
+
+**Phase 7 landed — Cryptographic Primitive Registry.** Adds the abstraction layer that lets future Gen-2 primitives register alongside Gen-1 without breaking existing Ouronet accounts. No new cryptography; pure architecture. **268/268 tests pass.**
+
+The TypeScript port's Gen-1 cryptographic surface is now FEATURE-COMPLETE and registry-ready.
+
+### Added
+
+- **`ts/src/registry/primitive.ts`** — the `CryptographicPrimitive` interface:
+  - Value types: `KeyPair`, `PrivateKeyForms`, `FullKey`, `PrimitiveMetadata`
+  - Core interface: `CryptographicPrimitive` (all primitives must implement: 4 keygen paths + address derivation + detection + optional sign/verify)
+  - Extension interface: `DalosGenesisPrimitive` (adds `generateFromBitmap`)
+  - Type guard: `isDalosGenesisPrimitive(p)`
+- **`ts/src/registry/genesis.ts`** — `DalosGenesis` primitive instance:
+  - Thin adapter wrapping `ts/src/gen1/*.ts` into the primitive interface
+  - Stable id: `"dalos-gen-1"`, version 1, generation `"genesis"`
+  - Rich metadata: curve params + bitmap dims + address prefixes + hashing scheme + Schnorr v2 domain tags
+  - `detectGeneration(address)` returns true for `Ѻ.xxx` / `Σ.xxx`
+- **`ts/src/registry/registry.ts`** — `CryptographicRegistry` class + `createDefaultRegistry()` factory:
+  - `register(p)` — throws on duplicate id; first-registered becomes default
+  - `unregister(id)` — reassigns default to first remaining; clears default if empty
+  - `get(id)`, `has(id)`, `all()`, `size()` — inspection
+  - `detect(address)` — find primitive by `detectGeneration` match
+  - `default()` / `setDefault(id)` / `defaultIdOf()` — default management
+- **`ts/src/registry/index.ts`** — public surface for `@stoachain/dalos-crypto/registry` subpath
+- **`ts/tests/registry/registry.test.ts`** — 34 tests covering:
+  - DalosGenesis identity + metadata correctness
+  - All 5 keygen paths reproduce Go corpus through the primitive interface
+  - Generate-then-round-trip for random keys
+  - `detectGeneration` accepts Ѻ./Σ. and rejects others
+  - Signing byte-identical to Go corpus (smoke-tested on vector[0])
+  - Tampered-message verification rejection
+  - Full lifecycle: register / duplicate-id / unregister / unknown-id / empty registry / setDefault
+  - Multi-primitive dispatch via a stub Gen-2 with `Ω.` detection
+  - End-to-end scenario: create account → detect by address → sign → verify
+
+### Subpath export
+
+Added `"./registry"` to `package.json` exports. Consumers can now import as:
+
+```typescript
+import { createDefaultRegistry, DalosGenesis } from '@stoachain/dalos-crypto/registry';
+```
+
+### Architecture implications
+
+Future Gen-2 primitive (e.g., a post-quantum scheme) plugs in by:
+
+```typescript
+const registry = createDefaultRegistry();
+registry.register(DalosGen2);
+// Existing Ѻ./Σ. addresses still dispatch to DalosGenesis via .detect()
+// New addresses (e.g., 'Q.xxx') dispatch to DalosGen2
+// registry.setDefault('dalos-gen-2') makes new keygen use Gen-2
+```
+
+### Verified
+
+- `npm run lint` → 0 errors across 32 files
+- `npm run typecheck` → exit 0
+- `npm run build` → exit 0
+- `npm test` → **268/268 tests pass in 27 s**
+
+### Updated
+
+- `ts/src/index.ts` — SCAFFOLD_VERSION `0.6.0` → `0.7.0`; added top-level `export * as registry`
+- `ts/tests/scaffold.test.ts` — version expectation updated
+- `ts/package.json` — new `"./registry"` subpath export
+- `docs/TS_PORT_PLAN.md` — Phase 7 marked DONE
+
+### Next
+
+Phase 8 — integration into `@stoachain/ouronet-core`. The ouronet-core library at npm will start consuming `@stoachain/dalos-crypto` via the registry surface. Codex / key storage / signing flows begin using the TS port instead of the `go.ouronetwork.io/api/generate` call.
+
+---
+
 ## [2.8.0] — 2026-04-23
 
 **🎯 PHASE 6 LANDED — SCHNORR V2 BYTE-IDENTITY PROVEN.** Complete port of the v2.0.0 hardened Schnorr scheme with all seven audit findings resolved. Signatures match the Go corpus byte-for-byte across all 20 committed vectors. 234/234 tests pass.

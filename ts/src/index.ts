@@ -8,8 +8,13 @@
  * @see ../../docs/TS_PORT_PLAN.md
  */
 
-export const SCAFFOLD_VERSION = '0.6.0';
+export const SCAFFOLD_VERSION = '0.7.0';
 
 // Re-export the gen1 subpath at the top level for discoverability.
 // Canonical import path is still `@stoachain/dalos-crypto/gen1`.
 export * as gen1 from './gen1/index.js';
+
+// Re-export the registry subpath — the idiomatic entry point for
+// consumers who want to work at the primitive-registry level rather
+// than calling gen1 functions directly.
+export * as registry from './registry/index.js';

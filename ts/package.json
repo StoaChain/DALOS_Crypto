@@ -18,6 +18,10 @@
     "./dalos-blake3": {
       "types": "./dist/dalos-blake3/index.d.ts",
       "import": "./dist/dalos-blake3/index.js"
+    },
+    "./registry": {
+      "types": "./dist/registry/index.d.ts",
+      "import": "./dist/registry/index.js"
     }
   },
   "files": [

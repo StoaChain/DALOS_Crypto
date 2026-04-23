@@ -857,7 +857,15 @@ function schnorrHash(r: bigint, pk: string, msg: Uint8Array): bigint;
 
 ---
 
-## Phase 7 — TypeScript Modular Primitive Registry (1 week)
+## Phase 7 — Cryptographic Primitive Registry ✅ DONE (v2.9.0, 2026-04-23)
+
+**Landed:** `ts/src/registry/*.ts` — full primitive + registry surface exposed as subpath `@stoachain/dalos-crypto/registry`. 34 new tests (268 total). Gen-2 primitives can now register cleanly.
+
+Ready for Phase 8 (integration into `@stoachain/ouronet-core`).
+
+---
+
+## Phase 7 — TypeScript Modular Primitive Registry (pre-landing spec; kept for reference) (1 week)
 
 **Goal:** Wrap everything in the registry pattern so Gen-2 can plug in later.
 

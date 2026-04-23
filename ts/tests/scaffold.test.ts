@@ -15,8 +15,8 @@ import {
 } from './fixtures.js';
 
 describe('scaffold', () => {
-  it('exports SCAFFOLD_VERSION (bumped to 0.2.0 at Phase 2 landing)', () => {
-    expect(SCAFFOLD_VERSION).toBe('0.2.0');
+  it('exports SCAFFOLD_VERSION (bumped to 0.3.0 at Phase 3 landing)', () => {
+    expect(SCAFFOLD_VERSION).toBe('0.3.0');
   });
 });
 

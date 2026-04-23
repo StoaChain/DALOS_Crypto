@@ -17,6 +17,71 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [2.5.0] — 2026-04-23
+
+**Phase 3 landed — TypeScript Hashing + address encoding. 🎯 FIRST BYTE-IDENTITY GATE PASSED.** Complete port of `Elliptic/KeyGeneration.go`'s hashing + address-derivation pipeline, plus the 16×16 Unicode `CharacterMatrix`, plus a Blake3 wrapper at `@stoachain/dalos-crypto/dalos-blake3` (subpath; extracted to a sibling npm package in Phase 11). **142/142 tests pass** including the first real byte-identity validation against the committed Go test-vector corpus.
+
+### Added
+
+- **`ts/src/dalos-blake3/index.ts`** — Blake3 XOF wrapper over `@noble/hashes@2.2.0`:
+  - `blake3SumCustom(input, outputBytes)` — matches Go's `Blake3.SumCustom` interface
+  - `sevenFoldBlake3(input, outputBytes)` — applies Blake3 seven times (the DALOS construction)
+  - Exposed as subpath export `@stoachain/dalos-crypto/dalos-blake3` (will be extracted to a separate `@stoachain/dalos-blake3` package at Phase 11)
+- **`ts/src/gen1/character-matrix.ts`** — the 256-rune 16×16 matrix from `CharacterMatrix()` in Elliptic/KeyGeneration.go:
+  - `CHARACTER_MATRIX_FLAT` — 256-char string in row-major order (BMP chars only; UTF-16 indexing returns single chars)
+  - `CHARACTER_MATRIX` — 2D view, `readonly string[][]`
+  - `STANDARD_ACCOUNT_PREFIX` = `'Ѻ'` (U+047A, at [0][10])
+  - `SMART_ACCOUNT_PREFIX` = `'Σ'` (U+03A3, at [11][9])
+- **`ts/src/gen1/hashing.ts`** — hashing + address + public-key format:
+  - `toUtf8Bytes(s)` — UTF-8 encode matching Go's `[]byte(string)`
+  - `parseBigIntInBase(s, 10|49)` — parse decimal or base-49 strings
+  - `seedWordsToBitString(words)` — seed-words → 1600-bit bitstring (seven-fold Blake3 @ 200 bytes)
+  - `convertHashToBitString(hash, bitLength)` — pad-leading-zeros bit-string renderer
+  - `affineToPublicKey(coord)` — affine → `"prefixLen.base49XY"` format
+  - `publicKeyToAffineCoords(pk)` — reverse of above
+  - `dalosAddressComputer(publicKeyInt)` — pubkey-int → 160-char address body (seven-fold Blake3 @ 160 bytes → character matrix)
+  - `convertToLetters(hash)` — bytes → CHARACTER_MATRIX lookups
+  - `publicKeyToAddress(pk)` — full pubkey string → address body
+  - `dalosAddressMaker(pk, isSmart)` — adds `Σ.` or `Ѻ.` prefix
+- **`ts/tests/dalos-blake3/blake3.test.ts`** — 9 tests (XOF correctness, determinism, seven-fold identity)
+- **`ts/tests/gen1/character-matrix.test.ts`** — 15 tests (256 unique BMP chars, key positions Ѻ/Σ, 2D ↔ flat consistency)
+- **`ts/tests/gen1/hashing.test.ts`** — 26 tests including **the byte-identity gates against the Go corpus**
+
+### 🎯 Byte-identity gates — FIRST CROSS-IMPLEMENTATION VALIDATION
+
+| Gate | Check | Result |
+|------|-------|--------|
+| Seed-words → bitstring | `seedWordsToBitString(input_words) === derived_bitstring` for all 15 seed-word vectors (ASCII + Cyrillic + Greek + accented Latin + account prefix chars) | ✅ **15/15 byte-identical** |
+| Public-key → standard address | `dalosAddressMaker(public_key, false) === standard_address` for all 85 address-bearing vectors | ✅ **85/85 byte-identical** |
+| Public-key → smart address | `dalosAddressMaker(public_key, true) === smart_address` for all 85 address-bearing vectors | ✅ **85/85 byte-identical** |
+| Public-key round-trip | `affineToPublicKey(publicKeyToAffineCoords(pk)) === pk` for all 105 vectors | ✅ **105/105 preserved** |
+
+These validations prove that ALL of the following are correct:
+- The Blake3 wrapper at `@stoachain/dalos-crypto/dalos-blake3` produces identical output to the Go Blake3 reference
+- The seven-fold construction is applied correctly
+- UTF-8 encoding matches Go's `[]byte(string)`
+- The 256-rune character matrix matches the Go `CharacterMatrix()` at every position
+- The `bigIntToBase49` and `base49 → bigint` converters match Go's `big.Int.Text(49)` and `SetString(s, 49)`
+- The public-key format (`{prefixLen}.{xyBase49}`) is encoded identically
+
+### Architecture note
+
+The plan called for `@stoachain/dalos-blake3` as a sibling npm package. For Phase 3 implementation, the Blake3 wrapper lives as a subpath at `@stoachain/dalos-crypto/dalos-blake3`. The code layout (its own directory, its own tests, its own subpath export) is ready for extraction: at Phase 11 when we publish to npm, we copy `ts/src/dalos-blake3/` to a new `StoaChain/Blake3/ts/` repo and publish it as `@stoachain/dalos-blake3`, then update `@stoachain/dalos-crypto` to depend on it. This deferral avoids publishing overhead while the port is still mid-flight.
+
+### Verified
+
+- `npm run lint` → clean across 19 files
+- `npm run typecheck` → exit 0
+- `npm run build` → exit 0
+- `npm test` → **142/142 tests pass in 2.7s**
+- `@noble/hashes@2.2.0` installed as first runtime dependency (subpath `@noble/hashes/blake3.js`)
+
+### Next
+
+Phase 4 assembles the full key-generation API (all 6 input paths: random, bitstring, int base-10, int base-49, seed words, bitmap). The end-to-end byte-identity gate against the Go corpus opens up here — every record's `input_bitstring`/`input_words`/bitmap pattern must reproduce the committed `priv_int49`, `public_key`, `standard_address`, `smart_address` fields exactly.
+
+---
+
 ## [2.4.0] — 2026-04-23
 
 **Phase 2 landed — TypeScript Scalar Multiplication.** Complete port of the base-49 Horner evaluator matching the v1.3.0+ Go reference's branch-free linear-scan implementation. The **critical `[Q]·G = O` proof passed** — a full 1604-bit scalar multiplication produces the identity element, closing the loop on curve-order correctness end-to-end in TypeScript. 92/92 tests pass.

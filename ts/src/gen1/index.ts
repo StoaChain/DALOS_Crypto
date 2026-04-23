@@ -62,3 +62,25 @@ export {
   scalarMultiplier,
   scalarMultiplierWithGenerator,
 } from './scalar-mult.js';
+
+// Character matrix (Phase 3)
+export {
+  CHARACTER_MATRIX,
+  CHARACTER_MATRIX_FLAT,
+  STANDARD_ACCOUNT_PREFIX,
+  SMART_ACCOUNT_PREFIX,
+} from './character-matrix.js';
+
+// Hashing + address encoding (Phase 3)
+export {
+  toUtf8Bytes,
+  parseBigIntInBase,
+  seedWordsToBitString,
+  convertHashToBitString,
+  affineToPublicKey,
+  publicKeyToAffineCoords,
+  dalosAddressComputer,
+  convertToLetters,
+  publicKeyToAddress,
+  dalosAddressMaker,
+} from './hashing.js';

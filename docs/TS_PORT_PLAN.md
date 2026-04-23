@@ -511,7 +511,22 @@ Ready for Phase 3 (hashing + `@stoachain/dalos-blake3`).
 
 ---
 
-## Phase 3 — TypeScript Hashing + `@stoachain/dalos-blake3` (2-3 days)
+## Phase 3 — TypeScript Hashing + Blake3 wrapper ✅ DONE (v2.5.0, 2026-04-23)
+
+**Landed:** `ts/src/dalos-blake3/index.ts` (Blake3 XOF + seven-fold via `@noble/hashes@2.2.0`), `ts/src/gen1/character-matrix.ts` (256-rune 16×16 matrix), `ts/src/gen1/hashing.ts` (seed-words → bitstring, public-key format, character-matrix address encoding).
+
+**🎯 FIRST BYTE-IDENTITY GATE PASSED:**
+- 15/15 seed-words vectors: `seedWordsToBitString` output matches Go's `derived_bitstring` byte-for-byte
+- 85/85 address-bearing vectors × 2 prefixes = **170 address byte-identity matches** vs Go corpus
+- 105/105 public-key round-trips preserved
+
+**Verified:** 142/142 tests pass in 2.7s.
+
+Ready for Phase 4 (key-generation API + full end-to-end byte-identity).
+
+---
+
+## Phase 3 — TypeScript Hashing + `@stoachain/dalos-blake3` (pre-landing spec; kept for reference) (2-3 days)
 
 **Goal:** Ship `@stoachain/dalos-blake3` v1.0.0 to npm, port the hashing pipeline (seven-fold Blake3 + character-matrix encoding), confirm bit-identity against Go test vectors.
 

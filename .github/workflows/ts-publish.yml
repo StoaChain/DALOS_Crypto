@@ -1,0 +1,81 @@
+name: Publish @stoachain/dalos-crypto to npmjs
+
+# Triggered by pushing a tag matching ts-vX.Y.Z. The tag's version
+# must match the version in ts/package.json. Publishing uses the
+# NPMPUSHER secret (mirrors the pattern established in
+# StoaChain/OuronetCore's publish workflow).
+
+on:
+  push:
+    tags:
+      - 'ts-v*.*.*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build + publish ts/ package to npmjs
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ts
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: ts/package-lock.json
+
+      - name: Extract package version from tag
+        id: tag_version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/ts-v}"
+          echo "tag_version=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Tag-derived version: $TAG"
+
+      - name: Verify ts/package.json version matches tag
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${{ steps.tag_version.outputs.tag_version }}"
+          echo "package.json version: $PKG_VERSION"
+          echo "Tag version:          $TAG_VERSION"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Version mismatch: package.json $PKG_VERSION vs tag $TAG_VERSION"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Write .npmrc with auth token
+        run: |
+          cat > .npmrc <<EOF
+          //registry.npmjs.org/:_authToken=${{ secrets.NPMPUSHER }}
+          @stoachain:registry=https://registry.npmjs.org
+          always-auth=true
+          EOF
+
+      - name: Publish to npmjs.org
+        run: npm publish --access public
+
+      - name: Verify tarball contents (sanity)
+        if: always()
+        run: npm pack --dry-run

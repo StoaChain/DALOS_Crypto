@@ -50,6 +50,18 @@ jobs:
             exit 1
           fi
 
+      - name: Verify NPMPUSHER secret is configured
+        env:
+          NPMPUSHER: ${{ secrets.NPMPUSHER }}
+        run: |
+          if [ -z "$NPMPUSHER" ]; then
+            echo "::error::NPMPUSHER secret is not configured on this repository."
+            echo "::error::Add it at: https://github.com/StoaChain/DALOS_Crypto/settings/secrets/actions"
+            echo "::error::The token must have publish permission for the @stoachain npm scope."
+            exit 1
+          fi
+          echo "NPMPUSHER secret is present (length: ${#NPMPUSHER})"
+
       - name: Install dependencies
         run: npm ci --no-fund --no-audit
 

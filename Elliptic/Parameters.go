@@ -219,6 +219,145 @@ func DalosEllipse() Ellipse {
     e.G.AY = new(big.Int) // Allocate memory for AY
     e.G.AX.SetInt64(2)
     e.G.AY.SetString("479577721234741891316129314062096440203224800598561362604776518993348406897758651324205216647014453759416735508511915279509434960064559686580741767201752370055871770203009254182472722342456597752506165983884867351649283353392919401537107130232654743719219329990067668637876645065665284755295099198801899803461121192253205447281506198423683290960014859350933836516450524873032454015597501532988405894858561193893921904896724509904622632232182531698393484411082218273681226753590907472", 10)
-    
+
+    return e
+}
+
+//=============================================================================
+// HISTORICAL CURVES
+//
+// Three novel Twisted-Edwards curves from the author's original
+// Cryptoplasm research phase, named after the Delian family — LETO (the
+// mother), ARTEMIS, and APOLLO (the twin children) — matching the
+// aesthetic of DALOS itself (the sacred island).
+//
+// Same structural family as DALOS_ELLIPSE (Twisted Edwards, cofactor 4,
+// negative D). Preserved here for historical purposes and
+// cross-reference from the TypeScript port's /historical subpath.
+//
+// NOT used to mint Ouronet addresses — every production Ouronet account
+// is derived exclusively from DalosEllipse.
+//
+// See docs/HISTORICAL_CURVES.md for provenance and
+// verification/VERIFICATION_LOG.md for the full 7-test audit per curve.
+//=============================================================================
+
+// LetoEllipse — smallest of the historical curves.
+//   P = 2^551 + 335  (552-bit prime)
+//   Q = 2^549 − rest (549-bit prime subgroup order)
+//   R = 4, a = 1, d = −1874
+//   S = 545 bits → 2^545 ≈ 1.15 × 10^164 keys
+// Formerly TEC_S545_Pr551p335_m1874 in the Cryptoplasm roster.
+func LetoEllipse() Ellipse {
+    var (
+        e Ellipse
+        P PrimePowerTwo
+        Q PrimePowerTwo
+    )
+    e.Name = "LETO"
+
+    P.Power = 551
+    P.RestString = "335"
+    P.Sign = true
+    e.P = MakePrime(P)
+
+    Q.Power = 549
+    Q.RestString = "32999719876419924862440765771944715506860861139489669592317112655962959048275399831"
+    Q.Sign = false
+    e.Q = MakePrime(Q)
+
+    e.T.SetString("131998879505679699449763063087778862027443444557958678369268450623851836193101599660", 10)
+    e.R = ComputeCofactor(e.P, e.Q, e.T)
+
+    e.S = 545
+
+    e.A.SetInt64(1)
+    e.D.SetInt64(-1874)
+
+    e.G.AX = new(big.Int)
+    e.G.AY = new(big.Int)
+    e.G.AX.SetInt64(5)
+    e.G.AY.SetString("4518488039903337342061416616304793185577751419009710712882273229786958102867981468569632796010757506367702155510163192445896310025029799220155797291359909742186717128", 10)
+
+    return e
+}
+
+// ArtemisEllipse — smaller twin of APOLLO.
+//   P = 2^1029 + 639  (1030-bit prime; shared with APOLLO)
+//   Q = 2^1027 − rest (1027-bit prime subgroup order)
+//   R = 4, a = 1, d = −200
+//   S = 1023 bits → 2^1023 ≈ 9.0 × 10^307 keys
+// Formerly TEC_S1023_Pr1029p639_m200 in the Cryptoplasm roster.
+func ArtemisEllipse() Ellipse {
+    var (
+        e Ellipse
+        P PrimePowerTwo
+        Q PrimePowerTwo
+    )
+    e.Name = "ARTEMIS"
+
+    P.Power = 1029
+    P.RestString = "639"
+    P.Sign = true
+    e.P = MakePrime(P)
+
+    Q.Power = 1027
+    Q.RestString = "13048810356164098687722578038659254541745638134607534327178785488911851451225729494174990871326244818073066727207431577242595505052831067258628249533735995"
+    Q.Sign = false
+    e.Q = MakePrime(Q)
+
+    e.T.SetString("52195241424656394750890312154637018166982552538430137308715141955647405804902917976699963485304979272292266908829726308970382020211324269034512998134944620", 10)
+    e.R = ComputeCofactor(e.P, e.Q, e.T)
+
+    e.S = 1023
+
+    e.A.SetInt64(1)
+    e.D.SetInt64(-200)
+
+    e.G.AX = new(big.Int)
+    e.G.AY = new(big.Int)
+    e.G.AX.SetInt64(18)
+    e.G.AY.SetString("5006392512810367543241026017186205828475671321699765938632799901604288413670061260105487647663536568022230479638139010351335665470173712718298837530633945899923869302110921390691280063917337749102198086546109683731403172016859789550276802795383170944526602213977392860793115308281053135496569817870067300616902", 10)
+
+    return e
+}
+
+// ApolloEllipse — larger twin of ARTEMIS.
+//   P = 2^1029 + 639  (1030-bit prime; shared with ARTEMIS)
+//   Q = 2^1027 + rest (1028-bit prime subgroup order)
+//   R = 4, a = 1, d = −729
+//   S = 1024 bits → 2^1024 ≈ 1.8 × 10^308 keys (double ARTEMIS's)
+// Formerly TEC_S1024_Pr1029p639_m729 in the Cryptoplasm roster.
+func ApolloEllipse() Ellipse {
+    var (
+        e Ellipse
+        P PrimePowerTwo
+        Q PrimePowerTwo
+    )
+    e.Name = "APOLLO"
+
+    P.Power = 1029
+    P.RestString = "639"
+    P.Sign = true
+    e.P = MakePrime(P)
+
+    Q.Power = 1027
+    Q.RestString = "9418258840691661048958693280848051387209299408194089012775090979625514940291099061879232380228215863338991692577868713164205283324554730781862605682126581"
+    Q.Sign = true
+    e.Q = MakePrime(Q)
+
+    e.T.SetString("-37673035362766644195834773123392205548837197632776356051100363918502059761164396247516929520912863453355966770311474852656821133298218923127450422728505684", 10)
+    e.R = ComputeCofactor(e.P, e.Q, e.T)
+
+    e.S = 1024
+
+    e.A.SetInt64(1)
+    e.D.SetInt64(-729)
+
+    e.G.AX = new(big.Int)
+    e.G.AY = new(big.Int)
+    e.G.AX.SetInt64(18)
+    e.G.AY.SetString("215278369951571488896917596155404324026002302190181825431681175816997859909367143653000579666656344456792257669605762582468610930751115704301503268336066379058325768607564533090162357247378501333085803173440477981455490888754538866823680129180124913908161391361773138634347515375569488540295649449731695734303", 10)
+
     return e
 }

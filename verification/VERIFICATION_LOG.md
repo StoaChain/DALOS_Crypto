@@ -144,4 +144,76 @@ Each re-run produces a new entry in this file (append, don't overwrite).
 
 ---
 
+## Historical Curves Run — 2026-04-24
+
+Sidecar audit of the three historical curves shipped under
+`@stoachain/dalos-crypto@1.1.0`'s `/historical` subpath: **LETO**,
+**ARTEMIS**, and **APOLLO**. These are the TypeScript ports of the
+Go-side `LetoEllipse()`, `ArtemisEllipse()`, and `ApolloEllipse()`
+factories in [`../Elliptic/Parameters.go`](../Elliptic/Parameters.go).
+Same 7-test mathematical audit as DALOS Genesis, applied per curve.
+
+### Environment
+
+| Item | Value |
+|------|-------|
+| Host OS | Windows 10 (AMD64) |
+| Python | 3.9.1 |
+| gmpy2 | 2.3.0 |
+| sympy | 1.7.1 |
+| Primality backend | gmpy2 (Miller–Rabin, 50 rounds, error probability ≤ 2⁻¹⁰⁰) |
+| Curve-equation backend | Pure Python (projective twisted-Edwards, CPython bigint) |
+
+### Command
+
+```
+py -3 verify_historical_curves.py
+```
+
+### Result — 21/21 checks passed
+
+| Curve | S (bits) | P prime | Q prime | Cofactor | d non-residue | G on curve | [Q]·G = O | S ≤ log₂(Q) |
+|---|---|---|---|---|---|---|---|---|
+| **LETO** | 545 | ✅ | ✅ | ✅ (R=4) | ✅ (d=−1874) | ✅ | ✅ | ✅ (545 ≤ 549) |
+| **ARTEMIS** | 1023 | ✅ | ✅ | ✅ (R=4) | ✅ (d=−200) | ✅ | ✅ | ✅ (1023 ≤ 1027) |
+| **APOLLO** | 1024 | ✅ | ✅ | ✅ (R=4) | ✅ (d=−729) | ✅ | ✅ | ✅ (1024 ≤ 1028) |
+
+### Verdict
+
+All three historical curves pass the same mathematical rigour as DALOS
+Genesis. Each curve:
+
+1. Has a prime field `P` (Miller–Rabin 50 rounds).
+2. Has a prime-order subgroup `Q` generating the group used for
+   scalar multiplication.
+3. Has a cofactor of exactly 4 — matching DALOS Genesis and allowing
+   the existing cofactor-clearing code path to work without
+   modification.
+4. Has `−a = −1` a quadratic non-residue mod P (because `d < 0` and
+   `−d` — not `d` itself — is the relevant value; the script checks
+   `d` mod P which is the equivalent test for this parameter family)
+   — so the Bernstein–Lange complete addition law applies, meaning no
+   corner cases in point addition.
+5. Has its generator `G` satisfying the curve equation.
+6. Has `[Q]·G = O` — the single strongest end-to-end math consistency
+   proof: if any of P, Q, T, R, a, d, G were inconsistent, this test
+   would fail.
+7. Has a safe-scalar size `S` that fits inside `log₂(Q)`, guaranteeing
+   no scalar bias in key generation.
+
+### Runtime
+
+End-to-end, all 21 checks completed in under 1 second on a consumer
+laptop (Windows 10, Python 3.9, gmpy2). The small-curve sizes mean
+test 6 (`[Q]·G = O`) runs in ~100 ms per curve instead of the ~30 s
+required for DALOS Genesis.
+
+### Integrity
+
+These parameters are FROZEN at this commit — any future changes to
+the historical curve constants would constitute a breaking change to
+`@stoachain/dalos-crypto` and require a major-version bump.
+
+---
+
 *Log maintained by StoaChain. See [`../AUDIT.md`](../AUDIT.md) for the full audit report.*

@@ -949,7 +949,41 @@ export function createDefaultRegistry(): CryptographicRegistry;  // with DalosGe
 
 ---
 
-## Phase 8 — Integration into `@stoachain/ouronet-core` (1 week)
+## Phase 8 — Integration into `@stoachain/ouronet-core` ⏸ BLOCKED ON NPMPUSHER SECRET
+
+**Code landed** (2026-04-23):
+
+- **`@stoachain/dalos-crypto`** side:
+  - `ts/package.json` bumped to `1.0.0` (first production release).
+  - `.github/workflows/ts-publish.yml` created, triggered by `ts-v*.*.*` tags. Mirrors OuronetCore's pattern (explicit `.npmrc` writing with `NPMPUSHER` secret). Includes a pre-flight secret-presence check with clear error message.
+  - Tagged `ts-v1.0.0`. Workflow ran but failed at the publish step — `NPMPUSHER` secret is not configured on the `StoaChain/DALOS_Crypto` repo (it's on `StoaChain/OuronetCore`).
+
+- **`@stoachain/ouronet-core`** side (via `file:../DALOS_Crypto/ts` dev-only dep):
+  - `package.json` bumped to `1.3.0`.
+  - New `./dalos` subpath export.
+  - `src/dalos/index.ts` re-exports the full `CryptographicPrimitive` + `CryptographicRegistry` surface.
+  - `src/dalos/account.ts` adds `createOuronetAccount(registry, options)` with a discriminated-union covering all 6 input modes.
+  - `tests/dalos-integration.test.ts` — 9 integration tests all pass.
+  - **Total: 295/295 tests pass locally** (286 existing + 9 new).
+
+**To unblock npmjs publication:**
+
+1. Add `NPMPUSHER` secret to `https://github.com/StoaChain/DALOS_Crypto/settings/secrets/actions` (same value as the one on OuronetCore — granular npm token with publish rights on the `@stoachain` scope).
+2. Re-push the `ts-v1.0.0` tag:
+   ```
+   cd D:/_Claude/DALOS_Crypto
+   git tag -d ts-v1.0.0
+   git push origin :refs/tags/ts-v1.0.0
+   git tag -a ts-v1.0.0 -m '@stoachain/dalos-crypto@1.0.0'
+   git push origin ts-v1.0.0
+   ```
+3. In OuronetCore, swap `"@stoachain/dalos-crypto": "file:../DALOS_Crypto/ts"` → `"@stoachain/dalos-crypto": "^1.0.0"`, regenerate lockfile, commit + tag `v1.3.0` (or `v1.3.1` if v1.3.0 has been tagged already) → triggers OuronetCore's publish workflow.
+
+After that, Phase 8 is complete on the npmjs side and Phase 9 (OuronetUI migration) can proceed using clean semver-ranged npm deps.
+
+---
+
+## Phase 8 — Integration into `@stoachain/ouronet-core` (pre-landing spec; kept for reference) (1 week)
 
 **Goal:** Ouronet-core uses `@stoachain/dalos-crypto` via the registry for all DALOS operations.
 

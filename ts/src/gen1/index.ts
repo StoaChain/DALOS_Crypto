@@ -53,3 +53,12 @@ export {
   fortyNiner,
   precomputeMatrix,
 } from './point-ops.js';
+
+// Scalar multiplication (Phase 2)
+export {
+  BASE49_ALPHABET,
+  digitValueBase49,
+  bigIntToBase49,
+  scalarMultiplier,
+  scalarMultiplierWithGenerator,
+} from './scalar-mult.js';

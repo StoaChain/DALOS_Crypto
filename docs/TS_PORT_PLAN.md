@@ -435,7 +435,17 @@ Ready for Phase 2 (base-49 Horner scalar multiplication).
 
 ---
 
-## Phase 2 — TypeScript Scalar Multiplication (1 week)
+## Phase 2 — TypeScript Scalar Multiplication ✅ DONE (v2.4.0, 2026-04-23)
+
+**Landed:** `ts/src/gen1/scalar-mult.ts` with `BASE49_ALPHABET`, `digitValueBase49`, `bigIntToBase49`, `scalarMultiplier`, `scalarMultiplierWithGenerator`.
+
+**Verified:** 92/92 tests pass. **Critical `[Q]·G = O` test passed in ~800 ms** — a full 1604-bit scalar multiplication producing the identity element, proving end-to-end correctness of both the Phase 2 algorithm and all Phase 1 point operations.
+
+Ready for Phase 3 (hashing + `@stoachain/dalos-blake3`).
+
+---
+
+## Phase 2 — TypeScript Scalar Multiplication (pre-landing spec; kept for reference) (1 week)
 
 **Goal:** Port `PrecomputeMatrix` and `ScalarMultiplier` — base-49 Horner evaluator — plus a constant-time Montgomery ladder variant.
 

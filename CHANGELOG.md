@@ -17,6 +17,57 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [2.4.0] — 2026-04-23
+
+**Phase 2 landed — TypeScript Scalar Multiplication.** Complete port of the base-49 Horner evaluator matching the v1.3.0+ Go reference's branch-free linear-scan implementation. The **critical `[Q]·G = O` proof passed** — a full 1604-bit scalar multiplication produces the identity element, closing the loop on curve-order correctness end-to-end in TypeScript. 92/92 tests pass.
+
+### Added
+
+- **`ts/src/gen1/scalar-mult.ts`** — scalar-multiplication module:
+  - `BASE49_ALPHABET` = `"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLM"` (matches Go's `big.Int.Text(49)` exactly)
+  - `digitValueBase49(c)` — maps a base-49 digit character to its 0..48 numeric value, with Go's default-0 semantics for invalid chars
+  - `bigIntToBase49(n)` — non-negative bigint → base-49 string, matching Go's `big.Int.Text(49)`
+  - `scalarMultiplier(scalar, P, e, m, precomputed?)` — branch-free base-49 Horner. Optional pre-built PrecomputeMatrix parameter for hot paths.
+  - `scalarMultiplierWithGenerator(scalar)` — shortcut for `scalar · G`
+- **`ts/tests/gen1/scalar-mult.test.ts`** — 29 tests covering:
+  - Alphabet integrity (49 unique chars, order matches Go)
+  - `digitValueBase49` round-trip across all 49 slots
+  - `bigIntToBase49` parse round-trip for 500 small scalars + Q-sized scalar
+  - Small-scalar identities: `scalarMultiplier(0, G) = O`, `= 1 = G`, `= 2 = 2G`, `= 3 = 3G`, `= 49 = fortyNiner(G)`, chain-of-k for k in 1..20
+  - Multi-digit cases: `scalarMultiplier(50, G)` (first 2-digit scalar exercises the fortyNiner transition)
+  - Linearity: `mult(a+b) = mult(a) + mult(b)`, `mult(2k) = double(mult(k))`
+  - **CRITICAL `[Q]·G = O`**: full 1604-bit scalar mult producing identity (Phase 2 exit criterion)
+  - Alternate `[Q-1]·G + G = O` verification
+  - On-curve property for 1000-bit pseudo-random scalar
+
+### Algorithm details (hardened, matches Go v1.3.0+)
+
+For every base-49 digit `d` of the scalar:
+1. Scan all 48 precompute entries linearly (never exits early)
+2. Conditionally select `PM[(d-1)/7][(d-1)%7]` if `d > 0`, else infinity
+3. Add the selected point to the accumulator (always, even if selected = infinity — no-op)
+4. If not the last digit, multiply accumulator by 49 via `fortyNiner`
+
+Go-level operation sequence is identical for every scalar of the same base-49 length. Closes the macro-level timing channel that the pre-v1.3.0 switch-on-digit code exposed.
+
+### Verified
+
+- `npm run lint` → 0 errors across 13 files
+- `npm run typecheck` → exit 0
+- `npm run build` → exit 0
+- `npm test` → **92/92 tests pass in 2.5s**
+- `[Q]·G = O` verified end-to-end in ~800 ms (285 base-49 digits × 48 PM scans × full 1606-bit arithmetic)
+
+### Performance note
+
+`[Q]·G` runtime (~800 ms in Node 24 with native bigint) is a baseline for Phase 10's optional perf optimisation decision. UX threshold for key-gen: ~1 second per operation is acceptable. Below 3 seconds means no WASM needed.
+
+### Next
+
+Phase 3 adds hashing: `@stoachain/dalos-blake3` (new npm package, published from `StoaChain/Blake3/ts/`) and `ts/src/gen1/hashing.ts` for the seven-fold Blake3 pipeline + 16×16 character-matrix address encoding.
+
+---
+
 ## [2.3.0] — 2026-04-23
 
 **Phase 1 landed — TypeScript Math Foundation.** Complete port of the pure-arithmetic layer from `Elliptic/PointOperations.go` and `Elliptic/PointConverter.go` to TypeScript. Every function is a line-for-line mirror of the Go reference with preserved intermediate variable names. 63/63 tests pass.

@@ -10,7 +10,7 @@
 
 **Ouro-Network Cryptography**, codename **DALOS**, is the cryptographic foundation of the **Ouro-Network Blockchain**. It is built around a custom Twisted Edwards elliptic curve defined over a 1606-bit prime field, supporting **2¹⁶⁰⁰ unique private keys** — vastly more than the 2²⁵⁶ space of traditional blockchains.
 
-This repository is the **canonical Go reference implementation**. Every future language port (TypeScript, Rust, etc.) is validated bit-for-bit against this reference.
+This repository is the **canonical Go reference implementation**. The **TypeScript port** in `ts/` is published as [`@stoachain/dalos-crypto`](https://www.npmjs.com/package/@stoachain/dalos-crypto) on npmjs, validated byte-for-byte against this reference on every commit. Additional language ports (Rust, etc.) will follow the same contract.
 
 ---
 
@@ -25,8 +25,9 @@ This repository is the **canonical Go reference implementation**. Every future l
 | AES key-file encryption | ✅ Audited — AES-256-GCM, Blake3 KDF, findings in [`AUDIT.md`](AUDIT.md#aesaesgo) |
 | Test-vector corpus | ✅ **105 vectors** committed — [`testvectors/v1_genesis.json`](testvectors/v1_genesis.json) |
 | Blake3 + AES inlined | ✅ Self-contained — no external Go module dependencies |
-| **40×40 bitmap input** | ✅ **New in v1.2.0** — 6th key-gen path, see [`Bitmap/Bitmap.go`](Bitmap/Bitmap.go) |
-| TypeScript port | 📝 Planned — see [Roadmap](#roadmap) |
+| **40×40 bitmap input** | ✅ **Added in v1.2.0** — 6th key-gen path, see [`Bitmap/Bitmap.go`](Bitmap/Bitmap.go) |
+| **Historical curves** | ✅ **Added in v2.1.0** — LETO / ARTEMIS / APOLLO, see [`docs/HISTORICAL_CURVES.md`](docs/HISTORICAL_CURVES.md) |
+| **TypeScript port** | ✅ **Live on npm** as [`@stoachain/dalos-crypto@1.1.0`](https://www.npmjs.com/package/@stoachain/dalos-crypto) — byte-identical with this Go reference (301/301 tests). |
 | Third-party cryptographic audit | 📋 Recommended before production Schnorr use |
 
 ---
@@ -204,15 +205,16 @@ OuronetUI                    ← Browser DEX                (repo: DemiourgosHol
 
 Plan document: the 14-phase breakdown (Phase 0 = audit, Phase 1 = math foundation, … Phase 12 = retirement of the Go server) lives in [`docs/TS_PORT_PLAN.md`](docs/TS_PORT_PLAN.md) — phases 0–11 are complete.
 
-### Hardening landed in the TypeScript port
+### Hardening catalogue
 
-All Category-A fixes (output-preserving) from the original audit:
+**Hardening was performed in the Go reference first**, then preserved byte-for-byte in the TypeScript port. Phase 0 of the TS port plan was explicitly a Go-side hardening pass — all subsequent phases (1–11) port that hardened Go code to TypeScript and verify bit-identical output. The TypeScript port is not where hardening "landed"; the Go reference is.
+
+Category-A fixes (output-preserving) landed in the Go reference:
 - ✅ Branch-free base-49 scalar-multiplication (linear scan over precompute matrix)
-- ✅ Input validation on all public entry points (explicit throws with reason codes)
+- ✅ Input validation on all public entry points (explicit errors with reason codes)
 - ✅ Explicit error returns throughout
-- ✅ IV-nibble constraint fixing the AES Go-era round-trip bug (≈6% failure rate eliminated on the TS side)
 
-Category-B fixes (Schnorr, output-changing — v2.0.0):
+Category-B fixes (Schnorr, output-changing — v2.0.0 of the Schnorr signature format) landed in the Go reference:
 - ✅ SC-1 — length-prefixed Fiat–Shamir transcript
 - ✅ SC-2 — RFC-6979 deterministic nonces
 - ✅ SC-3 — `"dalos-schnorr-v2"` domain-separation tag
@@ -221,8 +223,13 @@ Category-B fixes (Schnorr, output-changing — v2.0.0):
 - ✅ SC-6 — structured `VerifyResult` errors, no silent false-true
 - ✅ SC-7 — constant-time byte comparisons
 
-See [`docs/SCHNORR_V2_SPEC.md`](docs/SCHNORR_V2_SPEC.md) for the full spec
-and [`AUDIT.md § 3`](AUDIT.md#3-fix-classification) for the finding catalogue.
+**All of the above are preserved in the TypeScript port** (v1.0.0+), validated by the byte-identity CI against the 105-vector Go-reference corpus. Nothing about hardening diverges between the two implementations.
+
+One **TS-only improvement** — strictly additive, not changing wire format:
+- The TS port constrains the AES IV's high nibble to be non-zero. This sidesteps a latent round-trip edge case in the Go reference's IV serialisation (a `big.Int → hex → bytes` path that drops the high nibble when it's zero — ≈ 6% of random IVs). Ciphertexts produced by the TS port always decrypt in both TS and Go; Go-produced ciphertexts round-trip correctly in TS as long as their IV landed in the 94% safe range. This is an implementation-level avoidance rather than a spec change.
+
+See [`docs/SCHNORR_V2_SPEC.md`](docs/SCHNORR_V2_SPEC.md) for the full Schnorr v2 spec
+and [`AUDIT.md § 3`](AUDIT.md#3-fix-classification) for the finding catalogue that drove the Go-side hardening.
 
 ---
 
@@ -230,10 +237,10 @@ and [`AUDIT.md § 3`](AUDIT.md#3-fix-classification) for the finding catalogue.
 
 | Repository | Role |
 |------------|------|
-| [`StoaChain/DALOS_Crypto`](https://github.com/StoaChain/DALOS_Crypto) | **This repo** — Go reference cryptographic implementation |
+| [`StoaChain/DALOS_Crypto`](https://github.com/StoaChain/DALOS_Crypto) | **This repo** — Go reference + TypeScript port (`ts/`, published as `@stoachain/dalos-crypto`) |
 | [`StoaChain/Blake3`](https://github.com/StoaChain/Blake3) | Blake3 hash function (Go reference; externally validated) |
-| [`StoaChain/OuronetCore`](https://github.com/StoaChain/OuronetCore) | TypeScript client SDK (consumer of future `@stoachain/dalos-crypto`) |
-| [`StoaChain/OuronetUI`](https://github.com/StoaChain/OuronetUI) | Reference web application (Ouronet DEX) |
+| [`StoaChain/OuronetCore`](https://github.com/StoaChain/OuronetCore) | TypeScript client SDK — consumes `@stoachain/dalos-crypto` via its `./dalos` subpath since v1.3.0 |
+| [`DemiourgosHoldings/OuronetUI`](https://github.com/DemiourgosHoldings/OuronetUI) | Reference web application (Ouronet DEX) — consumes `@stoachain/ouronet-core` |
 
 ---
 
@@ -241,25 +248,30 @@ and [`AUDIT.md § 3`](AUDIT.md#3-fix-classification) for the finding catalogue.
 
 ### What has been verified
 
-- Mathematical soundness of all curve parameters (7-test suite, reproducible)
+- Mathematical soundness of all curve parameters (7-test suite, reproducible) — DALOS Genesis + LETO + ARTEMIS + APOLLO
 - Correctness of HWCD point-operation formulas against the Explicit-Formulas Database
-- Correctness of the base-49 scalar-multiplication path
+- Correctness of the base-49 scalar-multiplication path (branch-free linear scan — see Hardening catalogue above)
 - Determinism of key-generation pipeline for all valid inputs
 - Character matrix has no duplicate runes
 - Seven-fold Blake3 construction is cryptographically benign (no attack surface)
+- Byte-identity between the Go reference and the TypeScript port — 105-vector corpus + 20 Schnorr sign-and-verify
 
-### What is documented but not fixed
+### Findings catalogue — all resolved
 
-The Go reference is **frozen** — fixes live in the forthcoming TypeScript port. The known findings documented in [`AUDIT.md`](AUDIT.md):
+Every finding from the original audit has been addressed in the Go reference (v2.0.0 / v2.1.0) and preserved in the TypeScript port (v1.0.0+). For each item below, the "Status" column points at where the fix lives.
 
-- **Scalar multiplication is non-constant-time.** Timing-channel leak; low impact for local wallet use, higher concern for multi-tenant or remote-signing deployments.
-- **Silent error discards** in several places — affects robustness, not correctness for valid inputs.
-- **Schnorr hardening items** — 7 findings on transcript ambiguity, determinism, domain separation, range/on-curve checks. Schnorr is **not used on-chain** today, so these can be fixed without breaking anything.
-- **AES mode audit pending** — the AES wrapper in the sibling Blake3 hash-functions tree needs mode verification (CBC/CTR/GCM?).
+| Original finding | Status |
+|---|---|
+| Scalar multiplication was non-constant-time | ✅ **Fixed** — branch-free base-49 Horner linear-scan over the precompute matrix. Runtime + memory access pattern independent of the secret digit. |
+| Silent error discards in several places | ✅ **Fixed** — explicit error returns / typed errors throughout the Go reference; `throw` with descriptive messages in the TS port. |
+| Schnorr hardening items (7 findings) | ✅ **Fixed** — Schnorr v2.0.0 ships SC-1…SC-7 (length-prefixed Fiat–Shamir, RFC-6979 deterministic nonces, `dalos-schnorr-v2` domain tag, canonical `s ∈ [0,Q)`, on-curve checks, structured errors, constant-time comparisons). See [`docs/SCHNORR_V2_SPEC.md`](docs/SCHNORR_V2_SPEC.md). |
+| AES mode audit pending | ✅ **Resolved** — AES-256-GCM with Blake3 KDF confirmed + documented in [`docs/DALOS_CRYPTO_GEN1.md § 7`](docs/DALOS_CRYPTO_GEN1.md#7-aes-256-gcm-encryption). TS port additionally works around a latent Go-era IV nibble bug (see Hardening catalogue, TS-only improvement). |
+
+Full audit trace lives in [`AUDIT.md`](AUDIT.md). No open findings at v2.1.0 (Go) / v1.1.0 (TS).
 
 ### What we recommend before deeper production use
 
-1. **Third-party cryptographic audit** by an accredited firm, especially before DALOS Schnorr is activated for on-chain authentication.
+1. **Third-party cryptographic audit** by an accredited firm — a second independent review of the Schnorr v2 construction and the AES-256-GCM integration. Especially valuable if DALOS Schnorr is scheduled for on-chain authentication.
 2. **Independent re-run of the verification suite** — on a different OS with a different gmpy2/sympy version — to rule out toolchain peculiarities.
 3. **Adversarial test-vector corpus** — edge cases (zero-bitstrings, boundary scalars near Q, invalid points) contributed by external reviewers.
 

@@ -37,6 +37,7 @@ import type { Bitmap } from './bitmap.js';
 import { bitmapToBitString, validateBitmap } from './bitmap.js';
 import { DALOS_ELLIPSE, type Ellipse, extended2Affine } from './curve.js';
 import { affineToPublicKey, dalosAddressMaker, seedWordsToBitString } from './hashing.js';
+import { Modular } from './math.js';
 import { bigIntToBase49, scalarMultiplierWithGenerator } from './scalar-mult.js';
 
 // ============================================================================
@@ -208,12 +209,22 @@ function digitValueBase49(c: string): number {
  * instead).
  */
 export function generateRandomBitsOnCurve(e: Ellipse = DALOS_ELLIPSE): string {
-  const bytesNeeded = e.s / 8;
+  // Byte-align the randomness draw. DALOS has s=1600 → 200 bytes
+  // exactly (back-compat preserved). Historical curves with
+  // non-byte-aligned safe-scalars (LETO s=545, ARTEMIS s=1023) round up
+  // to the next whole byte; the surplus bits above `e.s` are trimmed
+  // below so the returned string is exactly `e.s` chars long.
+  const bytesNeeded = Math.ceil(e.s / 8);
   const buf = new Uint8Array(bytesNeeded);
   globalThis.crypto.getRandomValues(buf);
   let out = '';
   for (const b of buf) {
     out += b.toString(2).padStart(8, '0');
+  }
+  // Trim off any excess bits introduced by ceiling — take the low `e.s`
+  // bits (right-most, consistent with big-endian bigint interpretation).
+  if (out.length > e.s) {
+    out = out.slice(out.length - e.s);
   }
   return out;
 }
@@ -275,8 +286,13 @@ export function scalarToPrivateKey(scalar: bigint, e: Ellipse = DALOS_ELLIPSE): 
  * Matches Go's `(*Ellipse).ScalarToPublicKey`.
  */
 export function scalarToPublicKey(scalar: bigint, e: Ellipse = DALOS_ELLIPSE): string {
-  const ext = scalarMultiplierWithGenerator(scalar, e);
-  const aff = extended2Affine(ext);
+  // v1.2.0: thread a curve-specific Modular so historical curves (with
+  // different P) don't silently fall back to DALOS_FIELD. DALOS's own
+  // path is unchanged — e.p === DALOS_ELLIPSE.p produces an equivalent
+  // Modular instance.
+  const m = new Modular(e.p);
+  const ext = scalarMultiplierWithGenerator(scalar, e, m);
+  const aff = extended2Affine(ext, m);
   return affineToPublicKey(aff);
 }
 

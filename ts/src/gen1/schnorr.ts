@@ -39,7 +39,7 @@ import {
 } from './curve.js';
 import { affineToPublicKey, parseBigIntInBase, publicKeyToAffineCoords } from './hashing.js';
 import type { DalosKeyPair } from './key-gen.js';
-import { bigIntToBytesBE, bytesToBigIntBE } from './math.js';
+import { Modular, bigIntToBytesBE, bytesToBigIntBE } from './math.js';
 import { addition } from './point-ops.js';
 import { bigIntToBase49, scalarMultiplier, scalarMultiplierWithGenerator } from './scalar-mult.js';
 
@@ -193,7 +193,11 @@ export function schnorrHash(
     encodeMessage(message),
   ]);
 
-  const outputSize = e.s / 8; // 200 bytes for DALOS
+  // Byte-align. DALOS s=1600 → 200 bytes exactly (back-compat
+  // preserved). Historical curves (LETO s=545, ARTEMIS s=1023) use
+  // Math.ceil; the reduction `hashInt % e.q` below naturally absorbs
+  // the surplus bits, so this is safe and preserves determinism.
+  const outputSize = Math.ceil(e.s / 8);
   const digest = blake3SumCustom(transcript, outputSize);
 
   const hashInt = bytesToBigIntBE(digest);
@@ -234,7 +238,11 @@ export function deterministicNonce(
   offset += kBytes.length;
   seed.set(messageHash, offset);
 
-  const expansionSize = (2 * e.s) / 8; // 400 bytes
+  // Byte-align. DALOS s=1600 → 400 bytes exactly (back-compat). For
+  // non-byte-aligned safe-scalars (LETO s=545 → 137 bytes, ARTEMIS
+  // s=1023 → 256 bytes) we round up; the surplus is absorbed by the
+  // `% e.q` reduction below.
+  const expansionSize = Math.ceil((2 * e.s) / 8);
   const expansion = blake3SumCustom(seed, expansionSize);
 
   let z = bytesToBigIntBE(expansion) % e.q;
@@ -276,6 +284,13 @@ export function schnorrSign(
   message: string | Uint8Array,
   e: Ellipse = DALOS_ELLIPSE,
 ): string {
+  // Curve-specific Modular instance — DALOS_FIELD is tied to
+  // DALOS_ELLIPSE.p and is the default in every arithmetic helper, so
+  // a Schnorr call on any non-DALOS curve MUST construct + thread its
+  // own Modular or every operation below silently does math in the
+  // wrong prime field. v1.2.0 fix.
+  const m = new Modular(e.p);
+
   // Parse private key from base-49
   const k = parseBigIntInBase(keyPair.priv, 49);
 
@@ -286,8 +301,8 @@ export function schnorrSign(
   const z = deterministicNonce(k, msgDigest, e);
 
   // R = z · G
-  const rExtended = scalarMultiplierWithGenerator(z, e);
-  const rAffine = extended2Affine(rExtended);
+  const rExtended = scalarMultiplierWithGenerator(z, e, m);
+  const rAffine = extended2Affine(rExtended, m);
   const rX = rAffine.ax;
 
   // Fiat–Shamir challenge (may fail if pubkey unparseable)
@@ -322,6 +337,9 @@ export function schnorrVerify(
   publicKey: string,
   e: Ellipse = DALOS_ELLIPSE,
 ): boolean {
+  // Curve-specific Modular — see schnorrSign for rationale. v1.2.0 fix.
+  const m = new Modular(e.p);
+
   const sig = parseSignature(signature);
   if (sig === null) return false;
 
@@ -332,8 +350,8 @@ export function schnorrVerify(
   if (sig.s <= 0n || sig.s >= e.q) return false;
 
   // SC-5: R on curve
-  const rExtended = affine2Extended(sig.r);
-  const [onCurveR] = isOnCurve(rExtended, e);
+  const rExtended = affine2Extended(sig.r, m);
+  const [onCurveR] = isOnCurve(rExtended, e, m);
   if (!onCurveR) return false;
 
   // Parse public key
@@ -346,8 +364,8 @@ export function schnorrVerify(
   if (pkAffine.ax === undefined || pkAffine.ay === undefined) return false;
 
   // SC-5: P on curve
-  const pExtended = affine2Extended(pkAffine);
-  const [onCurveP] = isOnCurve(pExtended, e);
+  const pExtended = affine2Extended(pkAffine, m);
+  const [onCurveP] = isOnCurve(pExtended, e, m);
   if (!onCurveP) return false;
 
   // Fiat–Shamir challenge
@@ -355,16 +373,16 @@ export function schnorrVerify(
   if (challenge === null) return false;
 
   // Compute right term: R + e·P
-  const ePExt = scalarMultiplier(challenge, pExtended, e);
+  const ePExt = scalarMultiplier(challenge, pExtended, e, m);
   let rightTerm: ReturnType<typeof addition>;
   try {
-    rightTerm = addition(rExtended, ePExt, e);
+    rightTerm = addition(rExtended, ePExt, e, m);
   } catch {
     return false;
   }
 
   // Compute left term: s·G
-  const leftTerm = scalarMultiplierWithGenerator(sig.s, e);
+  const leftTerm = scalarMultiplierWithGenerator(sig.s, e, m);
 
-  return arePointsEqual(leftTerm, rightTerm);
+  return arePointsEqual(leftTerm, rightTerm, m);
 }

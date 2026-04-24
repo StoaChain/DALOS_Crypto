@@ -84,7 +84,13 @@ export function seedWordsToBitString(
 ): string {
   const joined = seedWords.join(' ');
   const bytes = toUtf8Bytes(joined);
-  const outputSize = e.s / 8; // 1600 / 8 = 200
+  // Byte-align the hash output size. DALOS has s=1600 → 200 bytes
+  // exactly (back-compat preserved). Historical curves with
+  // non-byte-aligned safe-scalars (LETO s=545, ARTEMIS s=1023) round up
+  // to the next whole byte; the extra bits are discarded by
+  // `convertHashToBitString(digest, e.s)` which truncates / left-pads
+  // to exactly `e.s` chars.
+  const outputSize = Math.ceil(e.s / 8);
   const digest = sevenFoldBlake3(bytes, outputSize);
   return convertHashToBitString(digest, e.s);
 }
@@ -100,16 +106,26 @@ export function seedWordsToBitString(
  *   4. left-pad with '0' to exactly `bitLength` characters
  */
 export function convertHashToBitString(hash: Uint8Array, bitLength: number): string {
-  // bytes → bigint (big-endian, same as Go's big.Int.SetBytes)
-  let n = 0n;
+  // Build the full big-endian bit-string from bytes — each byte
+  // contributes exactly 8 characters, no leading-zero stripping. This
+  // produces identical output to the old `n.toString(2) + leftPad` path
+  // for DALOS (where `hash.length * 8 === bitLength` exactly), so
+  // byte-identity against the Go reference is preserved.
+  let full = '';
   for (const b of hash) {
-    n = (n << 8n) | BigInt(b);
+    full += b.toString(2).padStart(8, '0');
   }
-  const binary = n.toString(2);
-  if (binary.length >= bitLength) {
-    return binary;
+  if (full.length === bitLength) return full;
+  if (full.length > bitLength) {
+    // Take the high-order `bitLength` bits — conventional when
+    // extracting N bits from a Blake3 XOF output of N+ bits. Used by
+    // the historical curves (LETO s=545, ARTEMIS s=1023) where
+    // `Math.ceil(e.s / 8)` rounds up to the next whole byte and we
+    // discard the surplus low bits here.
+    return full.slice(0, bitLength);
   }
-  return '0'.repeat(bitLength - binary.length) + binary;
+  // full.length < bitLength — left-pad with zeros.
+  return '0'.repeat(bitLength - full.length) + full;
 }
 
 // ============================================================================
@@ -232,16 +248,46 @@ export function publicKeyToAddress(publicKey: string): string {
 }
 
 /**
- * Compose a full Ouronet account address from a public-key string.
+ * Prefix pair used by a cryptographic primitive to brand its addresses.
  *
- * - `isSmart = true`   → `"Σ." + address-body`
- * - `isSmart = false`  → `"Ѻ." + address-body`
- *
- * Matches Go's `DalosAddressMaker`.
+ * Both characters **must come from the DALOS 256-rune character matrix**
+ * (`CHARACTER_MATRIX_FLAT`) so they render natively through every
+ * downstream tool. DalosGenesis uses `Ѻ` / `Σ`; historical curves each
+ * reserve their own pair.
  */
-export function dalosAddressMaker(publicKey: string, isSmart: boolean): string {
+export interface AddressPrefixPair {
+  readonly standard: string;
+  readonly smart: string;
+}
+
+/** DALOS Genesis — unchanged, from `character-matrix.ts`. */
+export const DALOS_PREFIXES: AddressPrefixPair = {
+  standard: STANDARD_ACCOUNT_PREFIX,
+  smart: SMART_ACCOUNT_PREFIX,
+};
+
+/**
+ * Compose a full Ouronet-style account address from a public-key string.
+ *
+ * - `isSmart = true`   → `"<smartPrefix>." + address-body`
+ * - `isSmart = false`  → `"<standardPrefix>." + address-body`
+ *
+ * Default prefixes are DALOS Genesis (`Ѻ` / `Σ`). Other primitives
+ * (LETO / ARTEMIS / APOLLO historical curves, or any future Gen-N)
+ * pass their own `prefixes` so the resulting address string uniquely
+ * identifies the primitive that minted it. The 160-character body is
+ * derived identically for all curves (seven-fold Blake3 over the
+ * public-key integer, mapped through the 16×16 character matrix).
+ *
+ * Matches Go's `DalosAddressMaker` when called with default prefixes.
+ */
+export function dalosAddressMaker(
+  publicKey: string,
+  isSmart: boolean,
+  prefixes: AddressPrefixPair = DALOS_PREFIXES,
+): string {
   const body = publicKeyToAddress(publicKey);
-  const prefix = isSmart ? SMART_ACCOUNT_PREFIX : STANDARD_ACCOUNT_PREFIX;
+  const prefix = isSmart ? prefixes.smart : prefixes.standard;
   return `${prefix}.${body}`;
 }
 

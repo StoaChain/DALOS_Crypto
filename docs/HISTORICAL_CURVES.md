@@ -96,30 +96,85 @@ The CPU time invested is considerable. They have sentimental value to
 the author beyond their technical merit. The inclusion of this subpath
 in the library is an act of preservation, not a recommendation for use.
 
+## Production-ready as of v1.2.0
+
+Each historical curve now has a **full `CryptographicPrimitive` wrapper**
+exported from `@stoachain/dalos-crypto/registry`. Every one supports:
+
+- 5 key-generation input paths (random / bitString / integerBase10 /
+  integerBase49 / seedWords) — same API as DalosGenesis
+- Schnorr v2 sign + verify — curve-agnostic, byte-determined by the
+  curve parameters
+- `detectGeneration(address)` routing via unique prefix pairs
+- Full registry interoperation — register alongside DalosGenesis, the
+  registry dispatches correctly per-curve
+
+The 40×40 bitmap input path is **intentionally not supported** by the
+historical primitives — it's tied to DALOS's 1600-bit safe-scalar
+design. The other five paths cover every programmable use case.
+
+### Address prefix pairs (all in the DALOS 256-rune matrix)
+
+| Primitive | Standard | Smart | Example |
+|---|---|---|---|
+| `DalosGenesis` | `Ѻ` | `Σ` | `Ѻ.xxxxx…` (unchanged Ouronet behaviour) |
+| `Leto` | `Ł` | `Λ` | `Ł.xxxxx…` / `Λ.xxxxx…` |
+| `Artemis` | `R` | `Ř` | `R.xxxxx…` / `Ř.xxxxx…` |
+| `Apollo` | `₱` | `Π` | `₱.xxxxx…` / `Π.xxxxx…` |
+
+Every prefix character is a rune already present in the DALOS character
+matrix, so addresses render natively in every downstream tool.
+
 ## Usage
 
+### As first-class registry primitives (v1.2.0+)
+
 ```ts
-import { LETO, ARTEMIS, APOLLO } from '@stoachain/dalos-crypto/historical';
 import {
-  Modular,
-  affine2Extended,
-  isOnCurve,
-  scalarMultiplierWithGenerator,
-} from '@stoachain/dalos-crypto/gen1';
+  createDefaultRegistry,
+  CryptographicRegistry,
+  DalosGenesis,
+  Leto,
+  Artemis,
+  Apollo,
+} from '@stoachain/dalos-crypto/registry';
 
-const curve = LETO;
-const field = new Modular(curve.p);
+// Default registry is DalosGenesis-only (Ouronet behaviour).
+const def = createDefaultRegistry();
+console.log(def.size()); // 1 — DalosGenesis only
 
-// Sanity check: G is on the curve
-const [onCurve] = isOnCurve(affine2Extended(curve.g, field), curve, field);
-console.log(onCurve); // true
+// To use the historical primitives, build your own registry:
+const r = new CryptographicRegistry();
+r.register(DalosGenesis);
+r.register(Leto);
+r.register(Artemis);
+r.register(Apollo);
 
-// Derive a public point from a random scalar
-const scalar = 42n; // in practice, something much larger
-const pubPoint = scalarMultiplierWithGenerator(scalar, curve, field);
+// Mint accounts on any primitive:
+const letoKey = Leto.generateRandom();
+console.log(letoKey.standardAddress); // "Ł.xxxxx…"
+
+// Sign + verify:
+const sig = Leto.sign!(letoKey.keyPair, 'hello world');
+const ok = Leto.verify!(sig, 'hello world', letoKey.keyPair.publ);
+console.log(ok); // true
+
+// Registry detect() routes by address prefix:
+console.log(r.detect(letoKey.standardAddress)?.id); // "dalos-leto"
 ```
 
-In Go:
+### Low-level direct use (pre-v1.2.0 API, still supported)
+
+```ts
+import { LETO } from '@stoachain/dalos-crypto/historical';
+import { scalarToKeyPair, schnorrSign, schnorrVerify } from '@stoachain/dalos-crypto/gen1';
+
+const kp = scalarToKeyPair(42n, LETO);
+const sig = schnorrSign(kp, 'hello', LETO);
+const ok = schnorrVerify(sig, 'hello', kp.publ, LETO);
+```
+
+### In Go
 
 ```go
 import "DALOS_Crypto/Elliptic"
@@ -129,16 +184,29 @@ _ = curve.S                        // 545 — max scalar bit-width
 _ = curve.G                        // affine generator
 ```
 
+## Ouronet remains DALOS-only
+
+The default registry registers only `DalosGenesis`. OuronetUI and
+AncientHoldings HUB use the default registry — they never touch
+historical primitives. The historical curves are exposed by the package
+for third-party cryptographic consumers; Ouronet's own address space
+stays `Ѻ.` / `Σ.`.
+
 ## What they are NOT
 
-- **NOT production primitives.** They are not registered in the
-  `CryptographicRegistry`. You cannot mint Ouronet accounts from them.
-- **NOT Schnorr-ready.** The signature layer (`@stoachain/dalos-crypto`
-  Schnorr v2) is hard-coded to DALOS_ELLIPSE. Using these curves for
-  signatures requires writing that layer yourself.
-- **NOT a suggested upgrade path.** DALOS Genesis is frozen
-  permanently; there is no Gen-2 / Gen-3 migration plan that would
-  replace it with a smaller curve.
+- **NOT a suggested upgrade path for Ouronet.** DALOS Genesis is
+  frozen permanently; Ouronet will not migrate off it. The historical
+  primitives coexist as additional options, never as replacements.
+- **NOT byte-identical with any Go test-vector corpus.** DALOS Genesis
+  has 105 canonical test vectors from the Go reference; the historical
+  curves don't have such a corpus. Their assurance comes from:
+  mathematical soundness of curve parameters (7-test Python audit per
+  curve, all passing), Schnorr round-trip self-consistency in CI, and
+  `[Q]·G = O` verification in both TS and Go.
+- **NOT third-party audited.** Only DALOS Genesis has undergone
+  external cryptographic review. The historical curves' math is the
+  same family and same engine, but external auditors have not
+  specifically reviewed them. Use accordingly.
 
 ## Tests
 
@@ -169,12 +237,12 @@ laptop.
 
 ## Status
 
-| Curve | TS port | Go port | Python audit | Byte-identity | Production-ready |
-|---|---|---|---|---|---|
-| DALOS_ELLIPSE | ✅ v1.0.0 | ✅ | ✅ Phase 0 + ongoing | ✅ 85 Go vectors | ✅ Yes (Genesis) |
-| LETO | ✅ v1.1.0 | ✅ | ✅ v1.1.0 audit | n/a (no test corpus) | No (historical only) |
-| ARTEMIS | ✅ v1.1.0 | ✅ | ✅ v1.1.0 audit | n/a | No (historical only) |
-| APOLLO | ✅ v1.1.0 | ✅ | ✅ v1.1.0 audit | n/a | No (historical only) |
+| Curve | TS port | Go port | Python audit | Byte-identity vs Go corpus | Registry primitive | Third-party audit |
+|---|---|---|---|---|---|---|
+| DALOS_ELLIPSE | ✅ v1.0.0 | ✅ | ✅ Phase 0 + ongoing | ✅ 105 vectors | ✅ `DalosGenesis` (default) | ✅ complete |
+| LETO | ✅ v1.1.0 | ✅ | ✅ 7/7 passing | n/a (no corpus yet) | ✅ `Leto` (v1.2.0+) | ❌ not yet |
+| ARTEMIS | ✅ v1.1.0 | ✅ | ✅ 7/7 passing | n/a | ✅ `Artemis` (v1.2.0+) | ❌ not yet |
+| APOLLO | ✅ v1.1.0 | ✅ | ✅ 7/7 passing | n/a | ✅ `Apollo` (v1.2.0+) | ❌ not yet |
 
 ---
 

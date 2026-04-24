@@ -378,14 +378,37 @@ interface DalosGenesisPrimitive extends CryptographicPrimitive {
 registered as the default primitive — what every OuronetUI /
 AncientHoldings consumer uses today.
 
-### Primitive vs. sub-path
+### Gen-1 family factory (v1.2.0+)
 
-Historical curves (LETO, ARTEMIS, APOLLO) are **NOT** registered as
-primitives — they're raw `Ellipse` constants, usable only by calling
-the exported point-ops / scalar-mult functions directly with the curve
-as a parameter. This is deliberate: registering them would imply they
-produce addresses, which they don't (no Genesis-compatible char-matrix
-derivation exists for them, by design).
+`createGen1Primitive(config)` is a shared factory that builds a full
+`CryptographicPrimitive` from any `Ellipse` + `AddressPrefixPair` pair.
+The factory is used internally by the `Leto` / `Artemis` / `Apollo`
+primitives; it's also exported so third-party consumers can expose
+their own curves in the same infrastructure (e.g. a research-only
+experimental curve), without duplicating the key-gen / Schnorr
+wiring. The factory does not produce `DalosGenesisPrimitive`
+instances — it produces plain `CryptographicPrimitive` (5 input
+paths, no bitmap).
+
+### Historical primitives (v1.2.0+)
+
+Three primitives live at `@stoachain/dalos-crypto/registry`:
+
+| ID              | Curve                      | Standard | Smart | Safe scalar |
+|-----------------|----------------------------|----------|-------|-------------|
+| `dalos-leto`    | LETO (TEC_S545)            | `Ł`      | `Λ`   | 545 bits    |
+| `dalos-artemis` | ARTEMIS (TEC_S1023)        | `R`      | `Ř`   | 1023 bits   |
+| `dalos-apollo`  | APOLLO (TEC_S1024)         | `₱`      | `Π`   | 1024 bits   |
+
+All three implement the same `CryptographicPrimitive` interface as
+`DalosGenesis` (5 input paths + Schnorr v2 + registry detection), but
+are **NOT** included in the default registry. Consumers who want them
+build a custom registry and register them explicitly. Prefix
+characters are all members of the DALOS 256-rune matrix so they
+render natively in downstream tooling.
+
+Ouronet itself uses only `DalosGenesis` — the historical primitives
+are exposed by the package for third-party cryptographic consumers.
 
 ---
 

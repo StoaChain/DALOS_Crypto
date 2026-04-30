@@ -250,6 +250,9 @@ export async function encryptAndPad(
   password: string,
 ): Promise<{ ciphertext: string; ciphertextBits: number }> {
   const ct = await encryptBitString(bitString, password);
+  if (ct === '') {
+    throw new Error('encryptAndPad: underlying encryption failed');
+  }
   return { ciphertext: ct, ciphertextBits: ct.length };
 }
 

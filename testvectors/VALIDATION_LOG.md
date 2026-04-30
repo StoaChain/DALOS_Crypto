@@ -6,6 +6,50 @@ This file captures the verbatim output of the Go validation suite against the DA
 
 ---
 
+## Run — 2026-04-30 (v3.0.1, error-handling closure)
+
+### Environment
+
+| Item | Value |
+|------|-------|
+| Host OS | Windows 10 (AMD64), Git Bash |
+| Go version | go1.19.4 windows/amd64 |
+| Generator version | 3.0.1 |
+| `core.autocrlf` | true (CRLF working tree, LF in git blob) |
+
+### Checks
+
+| Check | Result |
+|-------|--------|
+| `go build ./...` | ✅ PASS (exit 0) |
+| `go vet ./...` | ✅ PASS (exit 0) |
+| `go test ./...` | ✅ PASS (Auxilliary 13 + Elliptic <N> + new error-handling regression tests) |
+| Generator output | ✅ 105 Genesis + 60 historical vectors |
+| **DALOS Genesis byte-identity** (post-v2.0.0 procedurally-reproducible, extended-elided) | ✅ Stable: `082f7a40405d4c075f1975af0a6075bb0228bbccae60a53b05b350a09ce223ae` (byte-identical to v3.0.0) |
+| TS test suite (`npm test` from `ts/`) | ✅ 347/347 tests pass (16 test files; +1 new failure-injection test from T1.2 — or 348/348 if T1.2 split into two cases) |
+
+### Canonical SHA-256 values at tag `v3.0.1` (extended-elided: timestamp + version + host)
+
+Reproduce with this one-liner from repo root (extends the documented elision to also strip `generator_version` and `host`, matching the spec's "timestamp+version-elided" wording):
+
+```bash
+sed -e 's/"generated_at_utc": "[^"]*"/"generated_at_utc": "ELIDED"/' \
+    -e 's/"generator_version": "[^"]*"/"generator_version": "ELIDED"/' \
+    -e 's/"host": "[^"]*"/"host": "ELIDED"/' \
+    testvectors/v1_genesis.json | sha256sum
+```
+
+```
+testvectors/v1_genesis.json     SHA-256: 082f7a40405d4c075f1975af0a6075bb0228bbccae60a53b05b350a09ce223ae
+testvectors/v1_historical.json  SHA-256: 80c93f4d4956e01236808f81f518d17eeaad431f4fedb7c26233d2508f06e68b
+```
+
+Both values are byte-identical to the v3.0.0-committed corpus (verified via `git show v3.0.0:... | sha256sum` against the regenerated v3.0.1 file under the same elision recipe — diff returns 0 lines). Phase 1's error-handling work introduced ZERO substantive diff in deterministic content; the corpus is unchanged.
+
+**Reference-hash clarification (inherited mis-citation correction):** The hash `037ac01a4df6e9113de4ea69d8d4021f5adaa2a821eb697ffe3009997d3c24e9` cited at `CLAUDE.md:17,120`, `CHANGELOG.md:658`, and earlier VALIDATION_LOG.md entries is the RAW-BYTES hash of the v1.2.0 committed `v1_genesis.json` snapshot (timestamp baked in, no elision). It is NOT procedurally reproducible from any post-v2.0.0 corpus because the v2.0.0 Schnorr-v2 wire-format break (CLAUDE.md invariant 2) intentionally changed all 20 Schnorr signature payloads. The post-v2.0.0 stable baseline is `082f7a40...` (extended-elided). The v1.2.0 raw-bytes hash `037ac01a...` remains the historical anchor for the frozen v1.2.0 commit and continues to verify against `git show v1.2.0:testvectors/v1_genesis.json | sha256sum` exactly.
+
+---
+
 ## Run — 2026-04-30 (v3.0.0, Phase 8 cross-curve byte-identity + historical corpus)
 
 ### Environment

@@ -10,7 +10,7 @@
  *   - 1600-bit round-trips against the 50 bitstring test vectors
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   bitStringToBytes,
   bytesToBitString,
@@ -236,6 +236,14 @@ describe('1600-bit round-trip: vectors that avoid the odd-nibble Go-wrapper bug'
 // ============================================================================
 
 describe('encryptAndPad / decryptAndPadToLength', () => {
+  // Approach used: vi.spyOn directly on globalThis.crypto.subtle.encrypt installs
+  // successfully on Node 20+ WebCrypto without TS-cast or module-level mock.
+  // Smoke-tested before authoring assertions; the spy reference is non-undefined
+  // and mockRejectedValueOnce takes effect on the next call.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('returns ciphertext + its bit length', async () => {
     const { ciphertext, ciphertextBits } = await encryptAndPad('1111000011110000', 'pw');
     expect(ciphertext.length).toBe(ciphertextBits);
@@ -243,6 +251,16 @@ describe('encryptAndPad / decryptAndPadToLength', () => {
     // be around 8×(12 + 16 + plainBytes) = 224 + 8×plainBytes bits.
     // For a 2-byte plaintext that's ~240 bits.
     expect(ciphertextBits).toBeGreaterThan(100);
+  });
+
+  it('throws when the underlying AES-GCM encrypt rejects', async () => {
+    const spy = vi
+      .spyOn(globalThis.crypto.subtle, 'encrypt')
+      .mockRejectedValueOnce(new Error('induced failure'));
+    await expect(encryptAndPad('1111000011110000', 'pw')).rejects.toThrow(
+      /encryptAndPad: underlying encryption failed/,
+    );
+    expect(spy).toHaveBeenCalled();
   });
 
   it('decryptAndPadToLength pads leading zeros back', async () => {

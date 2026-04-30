@@ -8,7 +8,6 @@ import (
     "crypto/rand"
     "errors"
     "fmt"
-    "log"
     "math/big"
     "os"
     "strings"
@@ -361,7 +360,7 @@ func (e *Ellipse) ProcessIntegerFlag(flagValue string, isBase10 bool) string {
     isValid, BitString := e.ValidatePrivateKey(flagValue, isBase10)
     if !isValid {
         fmt.Println("Error: Invalid private key.")
-        os.Exit(1)
+        return ""
     }
     return BitString
 }
@@ -547,7 +546,8 @@ func (e *Ellipse) ExportPrivateKey(BitString, Password string) {
     
     OutputFile, err := os.Create(FileName)
     if err != nil {
-        log.Fatal(err)
+        fmt.Println("Error: failed to create export file:", err)
+        return
     }
     defer OutputFile.Close()
     

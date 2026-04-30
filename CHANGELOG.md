@@ -17,6 +17,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [3.0.1] — 2026-04-30
+
+**Error-handling closure (patch).** Closes three HIGH-severity error-handling stragglers from the 2026-04-29 audit (F-ERR-001, F-ERR-002, F-ERR-003) that completes the KG-2 hardening missed in v2.1.0. **347/347 TS tests pass (was 346/346 in v3.0.0; +1 new failure-injection test from T1.2); Go test suite green.** (348/348 acceptable upper bound if T1.2 split into two test cases.)
+
+### Changed
+
+- **F-ERR-001** (TS port `encryptAndPad`): `ts/src/gen1/aes.ts:248-254` now throws `Error('encryptAndPad: underlying encryption failed')` when the underlying `encryptBitString` returns the empty-string sentinel. Previously silently returned `{ ciphertext: '', ciphertextBits: 0 }` — a data-loss vector that masked AES-GCM primitive failures. Underlying `encryptBitString:178-180` empty-string return preserved (Go byte-identity).
+- **F-ERR-002** (Go `ExportPrivateKey`): `Elliptic/KeyGeneration.go:548-551` `os.Create` failure path no longer calls `log.Fatal(err)`. Replaced with the v2.1.0 KG-2 sibling pattern (`fmt.Println("Error: failed to create export file:", err); return`). Library code no longer kills its host process. Void signature preserved; zero caller changes.
+- **F-ERR-003** (Go `ProcessIntegerFlag`): `Elliptic/KeyGeneration.go:363-365` `os.Exit(1)` removed. Function returns `""` on invalid input (matches `EncryptBitString` / `SchnorrSign` v2.1.0 sentinel vocabulary). Library code no longer kills its host process. The 5 CLI call sites in `Dalos.go` (lines 197, 202, 214, 218, 239) updated to check the empty-string sentinel and bail at the driver level. `string` return type preserved.
+
+### Added
+
+- **`ts/tests/gen1/aes.test.ts`** — new `vi.spyOn` failure-injection test for `encryptAndPad` (codebase's first `vi.spyOn` use). Asserts that an induced `subtle.encrypt` rejection causes `encryptAndPad` to throw rather than silently return garbage.
+- **`Elliptic/KeyGeneration_test.go`** — new stdout-capture regression test for `ExportPrivateKey`'s `os.Create` failure branch (codebase's first Go stdout-capture test). Asserts the function prints the expected diagnostic and returns cleanly without process termination.
+- **`Elliptic/KeyGeneration_test.go`** — new function-level test for `ProcessIntegerFlag` invalid-input → `""` return.
+- **`dalos_smoke_test.go`** (or equivalent) — new CLI smoke-test invoking `Dalos.go` with an invalid integer flag and asserting non-zero exit + diagnostic output.
+
+### Verified
+
+- **Static evidence:** `grep -rn "log\.Fatal\|os\.Exit" Elliptic/` returns zero matches post-fix (was 2 matches pre-fix).
+- **Genesis 105-vector corpus byte-identity:** SHA-256 (timestamp+version-elided) of `testvectors/v1_genesis.json` remains `037ac01a4df6e9113de4ea69d8d4021f5adaa2a821eb697ffe3009997d3c24e9`. Error-path edits do not perturb deterministic happy-path output.
+- **Historical corpus byte-identity:** `testvectors/v1_historical.json` deterministic content unchanged.
+- **TS test suite:** 347/347 tests pass (was 346/346 in v3.0.0; +1 new failure-injection test added by T1.2). 348/348 acceptable upper bound if T1.2 split into two test cases.
+- **Go test suite:** `go test ./...` exits 0.
+
+### Doc/Audit
+
+- **`AUDIT.md`** — KG-2 row reclassified from `RESOLVED v2.1.0` to `COMPLETED v3.0.1 (partial in v2.1.0; stragglers F-ERR-002/F-ERR-003)`; AES-3 row reclassified analogously (straggler F-ERR-001). New v3.0.1 remediation row added. Genesis-frozen-through-versions chain extended.
+
+### Migration Guide
+
+- **No action required for any user.** No public API changes (sibling-mirror keeps `ExportPrivateKey` void; empty-string sentinel keeps `ProcessIntegerFlag` `string` return; `encryptAndPad` throw matches dominant TS pattern). Patch bump per semver.
+
+Implementation mode: **premium**. Spec lifecycle: `/bee:audit` (2026-04-29) → `/bee:new-spec` (2026-04-30 error-handling-fixes) → `/bee:plan-phase` (1 phase, 13 tasks) → `/bee:execute-phase` → `/bee:ship`.
+
+---
+
 ## [3.0.0] — 2026-04-30
 
 **Phase 8 landed — Historical curves byte-identity (LETO + ARTEMIS) and unified version bump.** The Go reference is realigned with the TypeScript port at four cross-curve byte-identity sites (XCURVE-1..4), formalizing the byte-identity contract for all four production curves (DALOS Genesis + LETO + ARTEMIS + APOLLO). **346/346 tests pass.**

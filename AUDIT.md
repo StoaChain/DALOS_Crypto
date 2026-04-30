@@ -2,12 +2,12 @@
 
 **Audit target:** `StoaChain/DALOS_Crypto` (Go reference implementation)
 **Initial audit date:** 2026-04-23 (against commit `d136e8d` / tag `v1.0.0`)
-**Last updated:** 2026-04-30 (after Phase 8 cross-curve byte-identity fixes shipped at `v3.0.0`)
+**Last updated:** 2026-04-30 (after error-handling closure shipped at `v3.0.1`)
 **Audit scope:** Complete source audit + mathematical verification + hardening verification
 
 ---
 
-## Hardening Status (current as of `v3.0.0`) — **PHASE 0 + PHASE 8 COMPLETE**
+## Hardening Status (current as of `v3.0.1`) — **PHASE 0 + PHASE 8 COMPLETE**
 
 > **Every finding from the v1.0.0 audit is now resolved, partial-with-rationale, or explicitly not-fixed-by-design. No items remain in "deferred" state.**
 >
@@ -16,9 +16,9 @@
 > - **PO-2** (on-curve validation) — ✅ partial in v1.3.0 (Schnorr boundary via SC-5); per-Addition check NOT-FIXED-BY-DESIGN (v2.1.0 decision: 10×+ runtime cost for marginal benefit — internal `Addition` is never called with attacker-controlled points, since external input always passes Schnorr's SC-5 check first)
 > - **PO-3** (silent error discards in point ops) — ✅ RESOLVED in **v2.1.0** (`noErrAddition` / `noErrDoubling` panic on unexpected failures)
 > - **KG-1** (`ImportPrivateKey`) — already had proper error returns pre-v2.1.0; re-reviewed and confirmed in v2.1.0
-> - **KG-2** (`ProcessPrivateKeyConversion`, `ProcessKeyGeneration`, `ExportPrivateKey`) — ✅ RESOLVED in **v2.1.0** (all error paths now print diagnostic + return early instead of continuing with garbage)
+> - **KG-2** (`ProcessPrivateKeyConversion`, `ProcessKeyGeneration`, `ExportPrivateKey`, `ProcessIntegerFlag`) — ✅ COMPLETED in **v3.0.1** (partial in v2.1.0; stragglers F-ERR-002 / F-ERR-003 closed v3.0.1: `ExportPrivateKey` `log.Fatal` and `ProcessIntegerFlag` `os.Exit` replaced with sentinel returns / sibling-mirror)
 > - **KG-3** (memory hygiene) — ✅ RESOLVED in **v2.1.0** (best-effort — `ZeroBytes` helper; `defer ZeroBytes(Key)` in AES; intermediate plaintext scrubbed. Limited by Go string immutability — documented)
-> - **AES-3** (error propagation) — ✅ RESOLVED in **v2.1.0** (`EncryptBitString` returns "" on failure; `DecryptBitString` returns typed errors)
+> - **AES-3** (error propagation) — ✅ COMPLETED in **v3.0.1** (partial in v2.1.0; straggler F-ERR-001 closed v3.0.1: TS port `encryptAndPad` no longer silently masks underlying encryption failure)
 > - **SC-4** (s range check) — ✅ RESOLVED in **v2.0.0** (full `(0, Q)` canonical range)
 > - **SC-5** (on-curve check of R) — ✅ RESOLVED in **v1.3.0**
 > - **SC-6** (explicit error returns in Schnorr) — ✅ RESOLVED in **v1.3.0**
@@ -40,7 +40,7 @@
 > - **Go `math/big` timing** — CPU-instruction-level residual; closing it requires replacing math/big with a custom limb-oriented implementation (out-of-scope for Go reference). The TypeScript port will use constant-time bigints where available.
 > - **CLI bugs (CLI-1..4)** — Dalos.go CLI driver; not ported to TS (library-only).
 >
-> **Genesis key-generation output has remained byte-for-byte identical through every hardening release (v1.0.0 → v1.2.0 → v1.3.0 → v2.0.0 → v2.1.0 → v3.0.0).** All 105 test vectors produce exactly the same output. Schnorr signatures are byte-identical from v2.0.0 onward (deterministic).
+> **Genesis key-generation output has remained byte-for-byte identical through every hardening release (v1.0.0 → v1.2.0 → v1.3.0 → v2.0.0 → v2.1.0 → v3.0.0 → v3.0.1).** All 105 test vectors produce exactly the same output. Schnorr signatures are byte-identical from v2.0.0 onward (deterministic).
 >
 > **LETO + ARTEMIS Schnorr signatures and seedword-derived keys** — wire-format changed at v3.0.0 (XCURVE-1..4). Pre-v3.0.0 outputs do NOT verify under v3.0.0+ for these two curves. APOLLO (S=1024 byte-aligned) and DALOS Genesis (S=1600 byte-aligned) are unaffected — XCURVE-1..4 produce identical output for byte-aligned curves. Cross-implementation byte-identity now formalized via `testvectors/v1_historical.json` (60 vectors, schema_version: 2).
 
@@ -199,7 +199,7 @@ The key-generation API: bitstring → scalar → pubkey → addresses. Also the 
 | # | Finding | Severity | Status |
 |---|---------|----------|--------|
 | KG-1 | `ImportPrivateKey` silently ignores `ReadFile` errors beyond a boolean | ⚠️ Low | ✅ already had error returns; re-reviewed **v2.1.0** — no changes needed |
-| KG-2 | `ProcessPrivateKeyConversion` / `ProcessKeyGeneration` / `ExportPrivateKey` have no error return — bad input causes silent garbage output | ⚠️ Low | **✅ RESOLVED v2.1.0** (diagnostic print + early return on error paths; CLI contract preserved) |
+| KG-2 | `ProcessPrivateKeyConversion` / `ProcessKeyGeneration` / `ExportPrivateKey` / `ProcessIntegerFlag` have no error return — bad input causes silent garbage output OR process termination from library code | ⚠️ Low | **✅ COMPLETED v3.0.1** (partial in v2.1.0: `Process*Conversion`+`Generation` print+return; v3.0.1 stragglers: F-ERR-002 `ExportPrivateKey` `log.Fatal` → sibling-mirror; F-ERR-003 `ProcessIntegerFlag` `os.Exit` → empty-string sentinel) |
 | KG-3 | Passwords flow as plaintext `string` through call frames, never zeroed in memory after use | ⚠️ Low–Medium (Go strings are immutable, hard to zero anyway — language-level concern) | **✅ RESOLVED v2.1.0** (`ZeroBytes` helper; AES key scrubbed via `defer ZeroBytes(Key)`; intermediate plaintext byte slices scrubbed. Best-effort within Go's memory model — documented residual: Go string immutability means the caller's password string cannot be scrubbed from outside) |
 | KG-4 | `dalosAddressMaker` relies on the prefix character `Ѻ` / `Σ` being encoded as multi-byte UTF-8 correctly. Works on all modern systems; noted for portability. | ℹ️ Informational | documented; no fix needed |
 
@@ -323,9 +323,9 @@ These fixes change *how* the code computes without changing *what* it outputs. A
 | SC-4 | Range check on Schnorr `s` | Rejects malformed; valid sigs verify unchanged. | ✅ partial v1.3.0 (`s > 0`); full `(0, Q)` **v2.0.0** |
 | SC-6 | Explicit error returns in SchnorrVerify | Control flow; for valid input, output unchanged. | ✅ **SHIPPED v1.3.0** |
 | KG-1 | `ImportPrivateKey` error handling | already had proper error returns | ✅ re-reviewed **v2.1.0**; no change needed |
-| KG-2 | `Process*` + `ExportPrivateKey` error returns | Control flow; CLI diagnostic instead of garbage | ✅ **SHIPPED v2.1.0** |
+| KG-2 | `Process*` + `ExportPrivateKey` + `ProcessIntegerFlag` error returns | Control flow; CLI diagnostic instead of garbage; library no longer kills host process | ✅ **COMPLETED v3.0.1** (partial v2.1.0 + stragglers F-ERR-002/F-ERR-003 v3.0.1) |
 | KG-3 | Memory hygiene for plaintext keys (best-effort) | Side-effect only (RAM state). | ✅ **SHIPPED v2.1.0** (`ZeroBytes` helper; `defer` scrubs in AES) |
-| AES-3 | Proper error returns instead of `fmt.Println` | Control flow; valid output unchanged. | ✅ **SHIPPED v2.1.0** |
+| AES-3 | Proper error returns instead of `fmt.Println` (Go); throw on underlying failure (TS port) | Control flow; valid output unchanged. | ✅ **COMPLETED v3.0.1** (partial v2.1.0 Go-side; TS straggler F-ERR-001 v3.0.1) |
 
 ### Category B — Output-Changing Fixes (SHIPPED in v2.0.0 where marked)
 
@@ -358,7 +358,8 @@ This is consistent with how every production blockchain cryptosystem handles the
 | 0a | v1.2.0 | Bitmap 40×40 input type added (6th key-gen path). Pure input reshape, no new crypto. |
 | **0c** | **v1.3.0** | **Category-A hardening (batch 1)**: PO-1 constant-time scalar mult; SC-4 (partial), SC-5, SC-6, SC-7 on Schnorr verify. Key-gen output preserved byte-for-byte. |
 | **0d** | **v2.0.0** | **Category-B Schnorr hardening**: SC-1 length-prefix, SC-2 deterministic nonces, SC-3 domain tags, SC-4 (full). Schnorr v2 format. Key-gen output still preserved byte-for-byte. `docs/SCHNORR_V2_SPEC.md` added. |
-| **0c-finish** | **v2.1.0** | **Category-A hardening (batch 2)**: PO-3 (noErr* helpers panic on unexpected internal failures); KG-2 (error returns in `Process*` + `ExportPrivateKey`); KG-3 (memory hygiene via `ZeroBytes`, `defer` scrubs in AES); AES-3 (short-circuit on AES errors, typed errors from Decrypt); AES-4 (cosmetic cleanup). **All 105 records byte-identical to v2.0.0 verified. Phase 0 fully complete.** |
+| **0c-finish** | **v2.1.0** | **Category-A hardening (batch 2)**: PO-3 (noErr* helpers panic on unexpected internal failures); KG-2 (error returns in `Process*` + `ExportPrivateKey`); KG-3 (memory hygiene via `ZeroBytes`, `defer` scrubs in AES); AES-3 (short-circuit on AES errors, typed errors from Decrypt); AES-4 (cosmetic cleanup). **All 105 records byte-identical to v2.0.0 verified. Phase 0 substantively complete; error-handling stragglers closed in v3.0.1.** |
+| **0e** | **v3.0.1** | **Error-handling closure** (KG-2 / AES-3 stragglers): F-ERR-001 (TS `encryptAndPad` throw on underlying-encryption failure), F-ERR-002 (Go `ExportPrivateKey` `log.Fatal` → sibling-mirror print+return), F-ERR-003 (Go `ProcessIntegerFlag` `os.Exit` → empty-string sentinel + 5 CLI caller updates). **No public API changes; Genesis 105-vector corpus byte-identical to v3.0.0; TS test count 347/347.** |
 
 ### Not being fixed (by design)
 

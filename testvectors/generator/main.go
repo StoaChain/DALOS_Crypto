@@ -418,7 +418,7 @@ func generateGenesis() {
 
 	corpus := VectorCorpus{
 		SchemaVersion:    1,
-		GeneratorVersion: "3.0.0",
+		GeneratorVersion: "3.0.1",
 		Curve:            ellipse.Name,
 		CurveFieldPBits:  1606,
 		CurveOrderQBits:  1604,
@@ -646,10 +646,10 @@ func generateHistorical() {
 
 	corpus := HistoricalVectorCorpus{
 		SchemaVersion:    2,
-		GeneratorVersion: "3.0.0",
+		GeneratorVersion: "3.0.1",
 		RngSeedBits:      fmt.Sprintf("0x%X", RNG_SEED_BITS_HISTORICAL),
 		GeneratedAtUTC:   time.Now().UTC().Format(time.RFC3339),
-		Host:             "StoaChain/DALOS_Crypto test-vector generator v3.0.0",
+		Host:             "StoaChain/DALOS_Crypto test-vector generator v3.0.1",
 	}
 
 	fmt.Fprintln(os.Stderr, "")

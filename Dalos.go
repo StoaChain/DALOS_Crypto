@@ -195,11 +195,19 @@ func main() {
         if *intaFlag != "" {
             fmt.Println("Generating key pair from string representing an integer in base 10...")
             BitString := DalosEllipse.ProcessIntegerFlag(*intaFlag, true)
+            if BitString == "" {
+                fmt.Println("Aborting -i10 base-10 key generation.")
+                os.Exit(1)
+            }
             DalosEllipse.ProcessKeyGeneration(BitString, smartFlag, *passwordFlag)
         }
         if *intbFlag != "" {
             fmt.Println("Generating key pair from string representing an integer in base 49...")
             BitString := DalosEllipse.ProcessIntegerFlag(*intbFlag, false)
+            if BitString == "" {
+                fmt.Println("Aborting -i49 base-49 key generation.")
+                os.Exit(1)
+            }
             DalosEllipse.ProcessKeyGeneration(BitString, smartFlag, *passwordFlag)
         }
         
@@ -212,10 +220,18 @@ func main() {
         } else if *intConvFlag != "" {
             fmt.Println("Converting The String Representing an Integer in base 10 to Public key and Dalos Accounts...")
             BitString := DalosEllipse.ProcessIntegerFlag(*intConvFlag, true)
+            if BitString == "" {
+                fmt.Println("Aborting -int10 base-10 conversion.")
+                os.Exit(1)
+            }
             DalosEllipse.ProcessPrivateKeyConversion(BitString)
         } else if *strConvFlag != "" {
             fmt.Println("Converting The String Representing an Integer in base 49 to Public key and Dalos Accounts...")
             BitString := DalosEllipse.ProcessIntegerFlag(*strConvFlag, false)
+            if BitString == "" {
+                fmt.Println("Aborting -int49 base-49 conversion.")
+                os.Exit(1)
+            }
             DalosEllipse.ProcessPrivateKeyConversion(BitString)
         } else {
             fmt.Println("Error: No valid conversion method selected.")
@@ -237,6 +253,10 @@ func main() {
         
         //Print the Private Key on Screen
         BitString := DalosEllipse.ProcessIntegerFlag(ReadKeyPair.PRIV, false)
+        if BitString == "" {
+            fmt.Println("Aborting wallet open: private key invalid.")
+            os.Exit(1)
+        }
         DalosEllipse.ProcessPrivateKeyConversion(BitString)
     } else if *signFlag != "" {
         // Check if the password flag is also set

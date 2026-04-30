@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const corpusPath = resolve(here, '..', '..', 'testvectors', 'v1_genesis.json');
+const historicalCorpusPath = resolve(here, '..', '..', 'testvectors', 'v1_historical.json');
 
 export interface BitStringVector {
   readonly id: string;
@@ -77,17 +78,79 @@ export interface VectorCorpus {
   readonly schnorr_vectors: readonly SchnorrVector[];
 }
 
+export interface HistoricalSeedWordsVector {
+  readonly id: string;
+  readonly input_words: readonly string[];
+  readonly derived_bitstring: string;
+  readonly scalar_int10: string;
+  readonly priv_int10: string;
+  readonly priv_int49: string;
+  readonly public_key: string;
+  readonly standard_address: string;
+  readonly smart_address: string;
+}
+
+export interface HistoricalCurveBlock {
+  readonly curve: string;
+  readonly curve_field_p_bits: number;
+  readonly curve_order_q_bits: number;
+  readonly curve_cofactor: string;
+  readonly bitstring_vectors: readonly BitStringVector[];
+  readonly seed_words_vectors: readonly HistoricalSeedWordsVector[];
+  readonly schnorr_vectors: readonly SchnorrVector[];
+}
+
+export interface HistoricalVectorCorpus {
+  readonly schema_version: number;
+  readonly generator_version: string;
+  readonly rng_seed_bits: string;
+  readonly generated_at_utc: string;
+  readonly host: string;
+  readonly leto: HistoricalCurveBlock;
+  readonly artemis: HistoricalCurveBlock;
+  readonly apollo: HistoricalCurveBlock;
+}
+
 let cachedCorpus: VectorCorpus | undefined;
+let cachedHistoricalCorpus: HistoricalVectorCorpus | undefined;
 
 /**
- * Load the Go-reference test vector corpus. Cached after first call.
+ * Load the Go-reference Genesis test vector corpus. Cached after first call.
+ *
+ * Validates schema_version BEFORE caching so a malformed file cannot poison
+ * subsequent calls — repeated loads will re-attempt the read and re-throw.
  */
 export function loadCorpus(): VectorCorpus {
   if (cachedCorpus === undefined) {
     const raw = readFileSync(corpusPath, 'utf-8');
-    cachedCorpus = JSON.parse(raw) as VectorCorpus;
+    const parsed = JSON.parse(raw) as VectorCorpus;
+    if (parsed.schema_version !== 1) {
+      throw new Error(`Genesis corpus schema mismatch: expected 1, got ${parsed.schema_version}`);
+    }
+    cachedCorpus = parsed;
   }
   return cachedCorpus;
+}
+
+/**
+ * Load the Go-reference historical-curves (LETO/ARTEMIS/APOLLO) test vector
+ * corpus. Cached after first call.
+ *
+ * Validates schema_version BEFORE caching so a malformed file cannot poison
+ * subsequent calls — repeated loads will re-attempt the read and re-throw.
+ */
+export function loadHistoricalCorpus(): HistoricalVectorCorpus {
+  if (cachedHistoricalCorpus === undefined) {
+    const raw = readFileSync(historicalCorpusPath, 'utf-8');
+    const parsed = JSON.parse(raw) as HistoricalVectorCorpus;
+    if (parsed.schema_version !== 2) {
+      throw new Error(
+        `Historical corpus schema mismatch: expected 2, got ${parsed.schema_version}`,
+      );
+    }
+    cachedHistoricalCorpus = parsed;
+  }
+  return cachedHistoricalCorpus;
 }
 
 /**
@@ -107,4 +170,40 @@ export function bitmapVectors(): readonly BitmapVector[] {
 
 export function schnorrVectors(): readonly SchnorrVector[] {
   return loadCorpus().schnorr_vectors;
+}
+
+export function letoBitstringVectors(): readonly BitStringVector[] {
+  return loadHistoricalCorpus().leto.bitstring_vectors;
+}
+
+export function letoSeedwordsVectors(): readonly HistoricalSeedWordsVector[] {
+  return loadHistoricalCorpus().leto.seed_words_vectors;
+}
+
+export function letoSchnorrVectors(): readonly SchnorrVector[] {
+  return loadHistoricalCorpus().leto.schnorr_vectors;
+}
+
+export function artemisBitstringVectors(): readonly BitStringVector[] {
+  return loadHistoricalCorpus().artemis.bitstring_vectors;
+}
+
+export function artemisSeedwordsVectors(): readonly HistoricalSeedWordsVector[] {
+  return loadHistoricalCorpus().artemis.seed_words_vectors;
+}
+
+export function artemisSchnorrVectors(): readonly SchnorrVector[] {
+  return loadHistoricalCorpus().artemis.schnorr_vectors;
+}
+
+export function apolloBitstringVectors(): readonly BitStringVector[] {
+  return loadHistoricalCorpus().apollo.bitstring_vectors;
+}
+
+export function apolloSeedwordsVectors(): readonly HistoricalSeedWordsVector[] {
+  return loadHistoricalCorpus().apollo.seed_words_vectors;
+}
+
+export function apolloSchnorrVectors(): readonly SchnorrVector[] {
+  return loadHistoricalCorpus().apollo.schnorr_vectors;
 }

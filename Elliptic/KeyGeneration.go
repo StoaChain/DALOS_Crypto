@@ -6,7 +6,6 @@ import (
     "DALOS_Crypto/Blake3"
     aux "DALOS_Crypto/Auxilliary"
     "crypto/rand"
-    "encoding/hex"
     "errors"
     "fmt"
     "log"
@@ -155,10 +154,11 @@ func (e *Ellipse) GenerateRandomBitsOnCurve() string {
 func (e *Ellipse) SeedWordsToBitString(SeedWords []string) string {
     JoinedSeeds := strings.Join(SeedWords, " ")
     JoinedSeedsToByteSlice := []byte(JoinedSeeds)
-    //When using a SumCustom of Blake3 Representation the custom size must be Divisible by 8
-    //Since Dalos Ellipse has a Safe Scalar Size of 1600, the Sum Custom can be done with
-    //Ellipse SafeScalar divided by 8 (since it divides exactly by 8)
-    OutputSize := int(e.S) / 8
+    //Compute the Blake3 SumCustom output size. The safe-scalar size is NOT
+    //required to be a multiple of eight — `aux.CeilDiv8` enforces ceiling
+    //semantics so byte-aligned curves (DALOS S=1600, APOLLO S=1024) and
+    //non-byte-aligned curves (LETO S=545, ARTEMIS S=1023) all produce a valid byte-count.
+    OutputSize := aux.CeilDiv8(int(e.S))
     //SevenFoldHash
     Hash1 := Blake3.SumCustom(JoinedSeedsToByteSlice, OutputSize)
     Hash2 := Blake3.SumCustom(Hash1, OutputSize)
@@ -170,26 +170,22 @@ func (e *Ellipse) SeedWordsToBitString(SeedWords []string) string {
     return e.ConvertHashToBitString(Hash7)
 }
 
+// ConvertHashToBitString renders Hash as a big-endian bitstring of e.S bits, mirroring
+// the TypeScript canonical at ts/src/gen1/hashing.ts:108-129 (convertHashToBitString).
+// XCURVE-4: replaces the prior hex->big.Int->Text(2) pipeline that elided leading zeros.
 func (e *Ellipse) ConvertHashToBitString(Hash []byte) string {
-    // Convert bytes to hex string
-    hexString := hex.EncodeToString(Hash)
-    
-    // Convert hex string to big.Int and then to binary string
-    number := new(big.Int)
-    number.SetString(hexString, 16) // Convert hex to big.Int
-    BitString := number.Text(2)     // Convert big.Int to binary string
-    
-    // Calculate the required length
-    RequiredLength := int(e.S)
-    
-    // If the bit string is shorter than required, pad with leading zeros
-    if len(BitString) < RequiredLength {
-        // Calculate how many zeros to add
-        zerosToAdd := RequiredLength - len(BitString)
-        // Pad the bit string
-        BitString = strings.Repeat("0", zerosToAdd) + BitString
+    var full string
+    for _, b := range Hash {
+        full += fmt.Sprintf("%08b", b)
     }
-    return BitString
+    bitLength := int(e.S)
+    if len(full) == bitLength {
+        return full
+    }
+    if len(full) > bitLength {
+        return full[:bitLength]
+    }
+    return strings.Repeat("0", bitLength-len(full)) + full
 }
 
 func (e *Ellipse) ValidateBitString(BitString string) (bool, bool, bool) {

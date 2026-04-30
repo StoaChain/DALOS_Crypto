@@ -14,9 +14,12 @@
  * Go-reference identifier: `TEC_S1023_Pr1029p639_m200`.
  *
  * Same structural family as DALOS_ELLIPSE (Twisted Edwards, cofactor 4,
- * `y² + x² = 1 + d·x²·y²` over GF(P), with `d` negative). Ported here
- * for historical purposes — **not** intended for production use and
- * **not** registered as a DALOS primitive.
+ * `y² + x² = 1 + d·x²·y²` over GF(P), with `d` negative). **Production-
+ * ready as of v3.0.0+** — wrapped by `Artemis` at
+ * `ts/src/registry/artemis.ts` with byte-identity against the Go
+ * reference (XCURVE-1..4 fixes; requires Go reference v3.0.0+). Address
+ * prefixes: standard `R.`, smart `Ř.`. Registered opt-in via
+ * `registry.register(Artemis)`.
  *
  * Parameters:
  *

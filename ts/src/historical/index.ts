@@ -13,20 +13,30 @@
  * are twin curves: they share the same prime P (2^1029 + 639), diverging
  * only in the curve coefficient `d` and consequently in Q.
  *
- * **These are historical artifacts, not production primitives.** They
- * are NOT registered in the `CryptographicRegistry`, they do NOT derive
- * Ouronet addresses, and they do NOT participate in Schnorr signing.
- * The gen-1 arithmetic engine happens to accept any Ellipse-shaped curve
- * in the cofactor-4 TEC family, so these constants can be plugged into
- * `scalarMultiplierWithGenerator(k, curve, new Modular(curve.p))` for
- * point-of-interest research, debugging, or benchmarking.
+ * **Production primitives as of v3.0.0+.** Each historical curve is
+ * wrapped by a full `CryptographicPrimitive` adapter at
+ * `ts/src/registry/{leto,artemis,apollo}.ts` exposing key-gen across 5
+ * input paths (random / bitString / integerBase10 / integerBase49 /
+ * seedWords) plus Schnorr v2 sign / verify. They are NOT auto-registered
+ * in `createDefaultRegistry()` — register explicitly via
+ * `registry.register(Leto)` etc. when you want them. Each curve emits
+ * its own address prefix pair (LETO `Ł`/`Λ`, ARTEMIS `R`/`Ř`,
+ * APOLLO `₱`/`Π`), distinct from DALOS Genesis (`Ѻ`/`Σ`).
  *
- * See `docs/HISTORICAL_CURVES.md` for the birthstory of each curve and
+ * Cross-implementation byte-identity is formalized as of v3.0.0+ —
+ * `testvectors/v1_historical.json` (schema_version: 2) pins every
+ * deterministic vector across LETO + ARTEMIS + APOLLO byte-for-byte
+ * against the Go reference. Wire-format compatibility for LETO and
+ * ARTEMIS Schnorr signatures + seedword-derived keys requires Go
+ * reference v3.0.0 or later (XCURVE-1..4 fixes).
+ *
+ * See `docs/HISTORICAL_CURVES.md` for the birthstory of each curve,
+ * `docs/SCHNORR_V2_SPEC.md` for the Schnorr construction, and
  * `verification/VERIFICATION_LOG.md` for the full 7-test audit.
  *
  * Ouronet reality-check: every real Ouronet account is derived from
- * DALOS_ELLIPSE. Genesis is frozen; the curves below are never used
- * to mint addresses.
+ * DALOS_ELLIPSE. Genesis is frozen; the historical curves are
+ * production primitives but registered opt-in.
  */
 
 export { LETO } from './leto.js';

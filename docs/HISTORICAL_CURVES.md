@@ -125,6 +125,49 @@ design. The other five paths cover every programmable use case.
 Every prefix character is a rune already present in the DALOS character
 matrix, so addresses render natively in every downstream tool.
 
+## Byte-Identity Formalization (v3.0.0+)
+
+As of **v3.0.0**, cross-implementation byte-identity for the historical
+curves is formally pinned by `testvectors/v1_historical.json` —
+`schema_version: 2`, 60 deterministic vectors total (10 bitstring + 5
+seedwords + 5 Schnorr per curve). Every committed vector reproduces
+byte-for-byte under both the Go reference and the TypeScript port at
+`@stoachain/dalos-crypto@3.0.0+`. The TS test suite asserts this on
+every `npm test` run via the `BYTE-IDENTITY` blocks in
+`ts/tests/registry/historical-primitives.test.ts`.
+
+The contract was made formal because v2.x of the Go reference and the
+TypeScript port had silently diverged on non-byte-aligned curves. The
+Go side used integer-division (floor) byte-counting at three sites in
+`Schnorr.go` and `KeyGeneration.go`, while the TypeScript port used
+`Math.ceil` byte-counting throughout. For DALOS Genesis (S=1600,
+byte-aligned) and APOLLO (S=1024, byte-aligned) both rules produce
+identical output — but for **LETO (S=545)** and **ARTEMIS (S=1023)**
+they produce different Schnorr signatures, deterministic nonces, and
+seedword-derived keys.
+
+The four cross-curve fixes resolved at v3.0.0 — tracked in `AUDIT.md`
+under Category C — are:
+
+- **XCURVE-1** (`Schnorr.go:216` — Schnorr Fiat-Shamir digest size)
+- **XCURVE-2** (`Schnorr.go:247` — deterministic-nonce expansion size)
+- **XCURVE-3** (`KeyGeneration.go:161` — seedwords→bitstring output size)
+- **XCURVE-4** (`KeyGeneration.go:173-193` — `ConvertHashToBitString` rewrite to mirror `ts/src/gen1/hashing.ts:108-129` byte-for-byte)
+
+XCURVE-1 through XCURVE-3 are mechanical replacements: `int(e.S) / 8` →
+`aux.CeilDiv8(int(e.S))`. XCURVE-4 replaces the prior leading-zero-eliding
+`bytes → hex → big.Int.Text(2) → left-pad` pipeline with the canonical
+TS-style per-byte `%08b` concatenation followed by truncate-or-pad.
+
+**Wire-format compatibility for LETO and ARTEMIS Schnorr signatures and
+seedword-derived keys begins at v3.0.0.** Pre-v3.0.0 outputs do NOT
+verify or reproduce under v3.0.0+ for these two curves. APOLLO and
+DALOS Genesis output is unchanged across the v3.0.0 boundary (both
+byte-aligned, both produce identical output under either rule).
+
+See `testvectors/VALIDATION_LOG.md` for the v3.0.0 verification entry,
+including SHA-256 values for both corpora and the full check battery.
+
 ## Usage
 
 ### As first-class registry primitives (v1.2.0+)

@@ -11,9 +11,12 @@
  * Go-reference identifier: `TEC_S1024_Pr1029p639_m729`.
  *
  * Same structural family as DALOS_ELLIPSE (Twisted Edwards, cofactor 4,
- * `y² + x² = 1 + d·x²·y²` over GF(P), with `d` negative). Ported here
- * for historical purposes — **not** intended for production use and
- * **not** registered as a DALOS primitive.
+ * `y² + x² = 1 + d·x²·y²` over GF(P), with `d` negative). **Production-
+ * ready as of v3.0.0+** — wrapped by `Apollo` at
+ * `ts/src/registry/apollo.ts` with byte-identity against the Go
+ * reference (S=1024 byte-aligned; XCURVE-1..4 fixes produce identical
+ * APOLLO output before/after v3.0.0). Address prefixes: standard `₱.`,
+ * smart `Π.`. Registered opt-in via `registry.register(Apollo)`.
  *
  * Note: the original Go source contains a copy-paste bug (line 907)
  * setting `p.Name = "TEC_S1023_Pr1029p639_m200"` on this factory. The

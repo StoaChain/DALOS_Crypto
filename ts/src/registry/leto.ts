@@ -12,9 +12,12 @@
  * matrix and render natively in every downstream tool.
  *
  * NOT registered in `createDefaultRegistry()` by default — import and
- * register explicitly when you want it.
+ * register explicitly when you want it. Byte-identity with the Go
+ * reference is formalized as of v3.0.0+ (requires Go reference v3.0.0
+ * or later; XCURVE-1..4 fixes resolved the Math.ceil-vs-floor
+ * divergence on non-byte-aligned curves).
  *
- * v1.2.0+. Copyright (C) 2026 AncientHoldings GmbH. All rights reserved.
+ * v1.2.0+, byte-identity formalized v3.0.0+. Copyright (C) 2026 AncientHoldings GmbH. All rights reserved.
  */
 
 import { LETO } from '../historical/leto.js';

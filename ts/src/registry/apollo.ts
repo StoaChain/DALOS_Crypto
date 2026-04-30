@@ -12,9 +12,11 @@
  * distinctiveness within the P-family letterforms available.
  *
  * NOT registered in `createDefaultRegistry()` by default — import and
- * register explicitly when you want it.
+ * register explicitly when you want it. Byte-identity with the Go
+ * reference (S=1024 byte-aligned; APOLLO output unchanged across the
+ * v3.0.0 XCURVE-1..4 fixes) is formalized as of v3.0.0+.
  *
- * v1.2.0+. Copyright (C) 2026 AncientHoldings GmbH. All rights reserved.
+ * v1.2.0+, byte-identity formalized v3.0.0+. Copyright (C) 2026 AncientHoldings GmbH. All rights reserved.
  */
 
 import { APOLLO } from '../historical/apollo.js';

@@ -6,6 +6,58 @@ This file captures the verbatim output of the Go validation suite against the DA
 
 ---
 
+## Run — 2026-04-30 (v3.0.0, Phase 8 cross-curve byte-identity + historical corpus)
+
+### Environment
+
+| Item | Value |
+|------|-------|
+| Host OS | Windows 10 (AMD64), Git Bash |
+| Go version | go1.19.4 windows/amd64 |
+| Generator version | 3.0.0 |
+| `core.autocrlf` | true (CRLF working tree, LF in git blob) |
+
+### Checks
+
+| Check | Result |
+|-------|--------|
+| `go build ./...` | ✅ PASS (exit 0) |
+| `go vet ./...` | ✅ PASS (exit 0) |
+| `go test ./Auxilliary/...` | ✅ 13/13 unit tests pass (CeilDiv8 helper) |
+| `go test ./Elliptic/...` | ✅ 7/7 unit tests pass (ConvertHashToBitString XCURVE-4 + XCURVE-1..3 ceil-div) |
+| Generator output | ✅ 105 Genesis vectors + 60 historical vectors (10 bitstring + 5 seedwords + 5 Schnorr per LETO/ARTEMIS/APOLLO) |
+| **DALOS Genesis byte-identity** (timestamp-elided) | ✅ Pre-XCURVE vs Post-XCURVE: SHA-256 stable. Per-vector deterministic outputs unchanged. |
+| **APOLLO byte-identity** (S=1024 byte-aligned) | ✅ Pre-fix vs post-fix: zero diff across keys/addresses/Schnorr signatures + handcrafted leading-zero hash probe |
+| Schnorr determinism (Genesis) | ✅ 20/20 signatures self-verify; byte-identical across regeneration runs |
+| Schnorr determinism (Historical) | ✅ 15/15 signatures self-verify (5 per curve); byte-identical across regeneration runs |
+| Per-curve historical address prefixes | ✅ 15× LETO `Ł.`/`Λ.`, 15× ARTEMIS `R.`/`Ř.`, 15× APOLLO `₱.`/`Π.` — 0 DALOS-prefix (`Ѻ.`/`Σ.`) leakage in historical corpus |
+| Historical corpus determinism | ✅ Twice-run regeneration produces byte-identical `v1_historical.json` SHA-256 (timestamp-elided) |
+| TS test suite (`npm test` from `ts/`) | ✅ 346/346 tests pass (16 test files) |
+
+### Canonical SHA-256 values at tag `v3.0.0` (timestamp-elided)
+
+```
+testvectors/v1_genesis.json     SHA-256: 742ef1e271c35d5abe27347688ce1304b14798e7021efe8f7ff6fb54a5392c7a
+testvectors/v1_historical.json  SHA-256: 0f60a8fe631dc5d95244d27c247ec0f6e031f629eee7fbe3e9fd48b888a48b35
+```
+
+**Verification protocol (Windows Git Bash):**
+```bash
+sed 's/"generated_at_utc": "[^"]*"/"generated_at_utc": "ELIDED"/' testvectors/v1_genesis.json | sha256sum
+sed 's/"generated_at_utc": "[^"]*"/"generated_at_utc": "ELIDED"/' testvectors/v1_historical.json | sha256sum
+```
+
+The `generator_version` field bumped from `1.2.0` → `3.0.0` and `host` field updated to `"StoaChain/DALOS_Crypto test-vector generator v3.0.0"` are deliberate metadata changes for v3.0.0; per-vector cryptographic outputs are byte-identical to the pre-Phase-8 frozen state for byte-aligned curves (DALOS, APOLLO).
+
+### What this run proves
+
+1. **Genesis preservation across the XCURVE-1..4 hardening pass.** All 50 bitstring + 15 seedwords + 20 bitmap + 20 Schnorr DALOS vectors reproduce byte-for-byte. The `aux.CeilDiv8` helper produces identical output to floor division for byte-aligned safe-scalars (DALOS S=1600).
+2. **APOLLO byte-identity preservation.** S=1024 is byte-aligned; XCURVE-1..4 produce identical APOLLO output. Pre-fix and post-fix scratch tools produce zero-diff JSON across all probed outputs.
+3. **LETO + ARTEMIS wire-format break (intentional, per spec).** Pre-v3.0.0 LETO/ARTEMIS Schnorr signatures and seedword-derived keys do NOT match post-v3.0.0 outputs. The byte-identity contract is now formalized at v3.0.0 via `v1_historical.json` and verified by the TS test suite (`tests/registry/historical-primitives.test.ts` BYTE-IDENTITY blocks).
+4. **Cross-implementation byte-identity formalized.** The TypeScript port at `@stoachain/dalos-crypto@3.0.0` now reproduces every committed Go-side historical vector byte-for-byte, validated on every npm test run.
+
+---
+
 ## Run — 2026-04-23 (v2.0.0, Schnorr v2 hardening)
 
 ### Environment

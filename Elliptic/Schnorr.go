@@ -2,6 +2,7 @@ package Elliptic
 
 import (
     "DALOS_Crypto/Blake3"
+    aux "DALOS_Crypto/Auxilliary"
     "bytes"
     "encoding/binary"
     "fmt"
@@ -213,7 +214,7 @@ func (e *Ellipse) SchnorrHash(R *big.Int, PublicKey string, Message string) *big
     writeLenPrefixed(&buf, bigIntBytesCanon(PublicKeyAffine.AY))
     writeLenPrefixed(&buf, []byte(Message))
 
-    outputSize := int(e.S) / 8
+    outputSize := aux.CeilDiv8(int(e.S))
     digest := Blake3.SumCustom(buf.Bytes(), outputSize)
 
     hashInt := new(big.Int).SetBytes(digest)
@@ -244,7 +245,7 @@ func (e *Ellipse) deterministicNonce(k *big.Int, messageHash []byte) *big.Int {
     seed.Write(messageHash)
 
     // 2x safe-scalar bytes of expansion, for bias-free modular reduction.
-    expansionSize := 2 * int(e.S) / 8
+    expansionSize := aux.CeilDiv8(2 * int(e.S))
     expansion := Blake3.SumCustom(seed.Bytes(), expansionSize)
 
     z := new(big.Int).SetBytes(expansion)

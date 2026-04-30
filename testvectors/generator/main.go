@@ -39,8 +39,9 @@ import (
 // --- Deterministic seeds (fixed forever; changing them invalidates vectors) ---
 
 const (
-	RNG_SEED_BITS    int64 = 0xD4105C09702 // "DALOSCRYPTO" in 0x base
-	RNG_SEED_BITMAPS int64 = 0xB17A77      // "BITAPP" in 0x base
+	RNG_SEED_BITS            int64 = 0xD4105C09702 // "DALOSCRYPTO" in 0x base
+	RNG_SEED_BITMAPS         int64 = 0xB17A77      // "BITAPP" in 0x base
+	RNG_SEED_BITS_HISTORICAL int64 = 0x415CCEEDED  // "ALICE-CEEDED" — historical bitstring vectors
 )
 
 // --- Vector schema -------------------------------------------------------
@@ -107,6 +108,47 @@ type VectorCorpus struct {
 	SeedWordsVectors []SeedWordsVector `json:"seed_words_vectors"`
 	BitmapVectors    []BitmapVector    `json:"bitmap_vectors"`
 	SchnorrVectors   []SchnorrVector   `json:"schnorr_vectors"`
+}
+
+// HistoricalSeedWordsVector — like SeedWordsVector but exposes priv_int10 as
+// well as priv_int49 so the historical contract tests can cross-check both
+// representations of the private key.
+type HistoricalSeedWordsVector struct {
+	ID               string   `json:"id"`
+	InputWords       []string `json:"input_words"`
+	DerivedBitString string   `json:"derived_bitstring"`
+	ScalarInt10      string   `json:"scalar_int10"`
+	PrivInt10        string   `json:"priv_int10"`
+	PrivInt49        string   `json:"priv_int49"`
+	PublicKey        string   `json:"public_key"`
+	StandardAddress  string   `json:"standard_address"`
+	SmartAddress     string   `json:"smart_address"`
+}
+
+// HistoricalCurveBlock — per-curve container aggregating bitstring,
+// seedword, and Schnorr vectors for one historical curve.
+type HistoricalCurveBlock struct {
+	Curve            string                      `json:"curve"`
+	CurveFieldPBits  int                         `json:"curve_field_p_bits"`
+	CurveOrderQBits  int                         `json:"curve_order_q_bits"`
+	CurveCofactor    string                      `json:"curve_cofactor"`
+	BitStringVectors []BitStringVector           `json:"bitstring_vectors"`
+	SeedWordsVectors []HistoricalSeedWordsVector `json:"seed_words_vectors"`
+	SchnorrVectors   []SchnorrVector             `json:"schnorr_vectors"`
+}
+
+// HistoricalVectorCorpus — top-level corpus written to v1_historical.json.
+// schema_version 2 distinguishes the historical-curve corpus from the
+// schema_version-1 DALOS Genesis corpus.
+type HistoricalVectorCorpus struct {
+	SchemaVersion    int                  `json:"schema_version"`
+	GeneratorVersion string               `json:"generator_version"`
+	RngSeedBits      string               `json:"rng_seed_bits"`
+	GeneratedAtUTC   string               `json:"generated_at_utc"`
+	Host             string               `json:"host"`
+	Leto             HistoricalCurveBlock `json:"leto"`
+	Artemis          HistoricalCurveBlock `json:"artemis"`
+	Apollo           HistoricalCurveBlock `json:"apollo"`
 }
 
 // --- Bitstring generation using math/rand (deterministic) ----------------
@@ -323,6 +365,36 @@ var seedWordFixtures = [][]string{
 	{"a", "very", "long", "seed", "phrase", "with", "many", "words", "to", "exercise", "the", "hashing"},
 }
 
+// --- Historical-corpus fixtures -----------------------------------------
+//
+// Address prefixes for the historical curves. These are NOT the DALOS
+// Genesis prefixes (Ѻ / Σ); each historical curve has its own pair as
+// pinned in ts/src/registry/{leto,artemis,apollo}.ts.
+var historicalCurvePrefixes = map[string]struct{ Standard, Smart string }{
+	"LETO":    {"Ł", "Λ"},
+	"ARTEMIS": {"R", "Ř"},
+	"APOLLO":  {"₱", "Π"},
+}
+
+// historicalSeedWordFixtures — pinned input lists. Five fixtures locks the
+// byte-identity contract for the seedword vectors of every historical curve.
+var historicalSeedWordFixtures = [][]string{
+	{"leto", "artemis", "apollo"},
+	{"alpha", "beta", "gamma", "delta"},
+	{"genesis", "chronos"},
+	{"phi", "chi", "psi", "omega", "sigma"},
+	{"crypto", "byte", "identity", "baseline"},
+}
+
+// historicalSchnorrMessages — pinned messages for the Schnorr vectors.
+var historicalSchnorrMessages = []string{
+	"historical-leto-vector-0",
+	"historical-artemis-vector-0",
+	"historical-apollo-vector-0",
+	"shared-message-for-all-curves",
+	"test transaction with spaces and 0123456789 digits",
+}
+
 // --- Helpers -------------------------------------------------------------
 
 func must(err error, context string) {
@@ -335,13 +407,18 @@ func must(err error, context string) {
 // --- Main generator ------------------------------------------------------
 
 func main() {
+	generateGenesis()
+	generateHistorical()
+}
+
+func generateGenesis() {
 	ellipse := el.DalosEllipse()
 	rngBits := mrand.New(mrand.NewSource(RNG_SEED_BITS))
 	rngBitmap := mrand.New(mrand.NewSource(RNG_SEED_BITMAPS))
 
 	corpus := VectorCorpus{
 		SchemaVersion:    1,
-		GeneratorVersion: "1.2.0",
+		GeneratorVersion: "3.0.0",
 		Curve:            ellipse.Name,
 		CurveFieldPBits:  1606,
 		CurveOrderQBits:  1604,
@@ -511,15 +588,19 @@ func main() {
 	}
 	fmt.Fprintf(os.Stderr, "      20 / 20\n")
 
-	// Write corpus
-	out, err := os.Create("testvectors/v1_genesis.json")
+	// Write corpus atomically: write to .tmp first, then rename so a
+	// reader never observes a half-written file.
+	tmpPath := "testvectors/v1_genesis.json.tmp"
+	finalPath := "testvectors/v1_genesis.json"
+	out, err := os.Create(tmpPath)
 	must(err, "create output file")
-	defer out.Close()
 
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
 	err = enc.Encode(corpus)
 	must(err, "json encode")
+	must(out.Close(), "close output file")
+	must(os.Rename(tmpPath, finalPath), "rename v1_genesis.json.tmp")
 
 	// Summary
 	totalVectors := len(corpus.BitStringVectors) +
@@ -541,5 +622,162 @@ func main() {
 	fmt.Fprintf(os.Stderr, "    %d bitmap vectors\n", len(corpus.BitmapVectors))
 	fmt.Fprintf(os.Stderr, "    %d schnorr vectors\n", len(corpus.SchnorrVectors))
 	fmt.Fprintf(os.Stderr, "    %d / %d schnorr signatures self-verified\n", schnorrPass, len(corpus.SchnorrVectors))
+	fmt.Fprintln(os.Stderr, "=============================================================")
+}
+
+// generateHistorical builds the v1_historical.json corpus covering the
+// LETO, ARTEMIS, and APOLLO twisted-Edwards curves. Each curve gets:
+//   - 10 bitstring vectors driven by RNG_SEED_BITS_HISTORICAL
+//   - 5 seed-word vectors from historicalSeedWordFixtures
+//   - 5 Schnorr sign+verify vectors over historicalSchnorrMessages
+//
+// Address prefixes are per-curve (NOT the DALOS Genesis Ѻ/Σ prefixes).
+func generateHistorical() {
+	rngHistorical := mrand.New(mrand.NewSource(RNG_SEED_BITS_HISTORICAL))
+
+	curves := []struct {
+		name    string
+		factory func() el.Ellipse
+	}{
+		{"LETO", el.LetoEllipse},
+		{"ARTEMIS", el.ArtemisEllipse},
+		{"APOLLO", el.ApolloEllipse},
+	}
+
+	corpus := HistoricalVectorCorpus{
+		SchemaVersion:    2,
+		GeneratorVersion: "3.0.0",
+		RngSeedBits:      fmt.Sprintf("0x%X", RNG_SEED_BITS_HISTORICAL),
+		GeneratedAtUTC:   time.Now().UTC().Format(time.RFC3339),
+		Host:             "StoaChain/DALOS_Crypto test-vector generator v3.0.0",
+	}
+
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "=============================================================")
+	fmt.Fprintln(os.Stderr, "  Generating historical corpus (LETO + ARTEMIS + APOLLO)...")
+
+	for _, c := range curves {
+		ellipse := c.factory()
+		prefixes := historicalCurvePrefixes[c.name]
+		block := HistoricalCurveBlock{
+			Curve:           c.name,
+			CurveFieldPBits: ellipse.P.BitLen(),
+			CurveOrderQBits: ellipse.Q.BitLen(),
+			CurveCofactor:   "4",
+		}
+
+		// 10 bitstring vectors.
+		for i := 0; i < 10; i++ {
+			bits := randomBitString(rngHistorical, int(ellipse.S))
+			scalar, err := ellipse.GenerateScalarFromBitString(bits)
+			must(err, fmt.Sprintf("%s bitstring %d: GenerateScalarFromBitString", c.name, i))
+
+			priv, err := ellipse.ScalarToPrivateKey(scalar)
+			must(err, fmt.Sprintf("%s bitstring %d: ScalarToPrivateKey", c.name, i))
+
+			kp, err := ellipse.ScalarToKeys(scalar)
+			must(err, fmt.Sprintf("%s bitstring %d: ScalarToKeys", c.name, i))
+
+			body := el.PublicKeyToAddress(kp.PUBL)
+			block.BitStringVectors = append(block.BitStringVectors, BitStringVector{
+				ID:              fmt.Sprintf("%s-bs-%02d", c.name, i),
+				Source:          "deterministic-rng",
+				InputBitString:  bits,
+				ScalarInt10:     scalar.Text(10),
+				PrivInt10:       priv.Int10,
+				PrivInt49:       priv.Int49,
+				PublicKey:       kp.PUBL,
+				StandardAddress: prefixes.Standard + "." + body,
+				SmartAddress:    prefixes.Smart + "." + body,
+			})
+		}
+
+		// 5 seedword vectors.
+		for i, words := range historicalSeedWordFixtures {
+			bits := ellipse.SeedWordsToBitString(words)
+			scalar, err := ellipse.GenerateScalarFromBitString(bits)
+			must(err, fmt.Sprintf("%s seedwords %d: GenerateScalarFromBitString", c.name, i))
+
+			priv, err := ellipse.ScalarToPrivateKey(scalar)
+			must(err, fmt.Sprintf("%s seedwords %d: ScalarToPrivateKey", c.name, i))
+
+			kp, err := ellipse.ScalarToKeys(scalar)
+			must(err, fmt.Sprintf("%s seedwords %d: ScalarToKeys", c.name, i))
+
+			body := el.PublicKeyToAddress(kp.PUBL)
+			block.SeedWordsVectors = append(block.SeedWordsVectors, HistoricalSeedWordsVector{
+				ID:               fmt.Sprintf("%s-sw-%02d", c.name, i),
+				InputWords:       words,
+				DerivedBitString: bits,
+				ScalarInt10:      scalar.Text(10),
+				PrivInt10:        priv.Int10,
+				PrivInt49:        priv.Int49,
+				PublicKey:        kp.PUBL,
+				StandardAddress:  prefixes.Standard + "." + body,
+				SmartAddress:     prefixes.Smart + "." + body,
+			})
+		}
+
+		// 5 Schnorr vectors.
+		for i, msg := range historicalSchnorrMessages {
+			bits := randomBitString(rngHistorical, int(ellipse.S))
+			scalar, err := ellipse.GenerateScalarFromBitString(bits)
+			must(err, fmt.Sprintf("%s schnorr %d: GenerateScalarFromBitString", c.name, i))
+
+			priv, err := ellipse.ScalarToPrivateKey(scalar)
+			must(err, fmt.Sprintf("%s schnorr %d: ScalarToPrivateKey", c.name, i))
+
+			kp, err := ellipse.ScalarToKeys(scalar)
+			must(err, fmt.Sprintf("%s schnorr %d: ScalarToKeys", c.name, i))
+
+			sig := ellipse.SchnorrSign(kp, msg)
+			verifyResult := ellipse.SchnorrVerify(sig, msg, kp.PUBL)
+
+			block.SchnorrVectors = append(block.SchnorrVectors, SchnorrVector{
+				ID:             fmt.Sprintf("%s-sch-%02d", c.name, i),
+				InputBitString: bits,
+				PrivInt49:      priv.Int49,
+				PublicKey:      kp.PUBL,
+				Message:        msg,
+				Signature:      sig,
+				VerifyExpected: true,
+				VerifyActual:   verifyResult,
+			})
+		}
+
+		switch c.name {
+		case "LETO":
+			corpus.Leto = block
+		case "ARTEMIS":
+			corpus.Artemis = block
+		case "APOLLO":
+			corpus.Apollo = block
+		}
+
+		fmt.Fprintf(os.Stderr, "    %s: %d bitstring + %d seedwords + %d schnorr\n",
+			c.name,
+			len(block.BitStringVectors),
+			len(block.SeedWordsVectors),
+			len(block.SchnorrVectors))
+	}
+
+	tmpPath := "testvectors/v1_historical.json.tmp"
+	finalPath := "testvectors/v1_historical.json"
+	out, err := os.Create(tmpPath)
+	must(err, "create v1_historical.json.tmp")
+
+	enc := json.NewEncoder(out)
+	enc.SetIndent("", "  ")
+	must(enc.Encode(corpus), "encode historical corpus")
+	must(out.Close(), "close v1_historical.json.tmp")
+	must(os.Rename(tmpPath, finalPath), "rename v1_historical.json.tmp")
+
+	totalVectors :=
+		len(corpus.Leto.BitStringVectors) + len(corpus.Leto.SeedWordsVectors) + len(corpus.Leto.SchnorrVectors) +
+			len(corpus.Artemis.BitStringVectors) + len(corpus.Artemis.SeedWordsVectors) + len(corpus.Artemis.SchnorrVectors) +
+			len(corpus.Apollo.BitStringVectors) + len(corpus.Apollo.SeedWordsVectors) + len(corpus.Apollo.SchnorrVectors)
+
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintf(os.Stderr, "  DONE. %d historical vectors written to %s\n", totalVectors, finalPath)
 	fmt.Fprintln(os.Stderr, "=============================================================")
 }

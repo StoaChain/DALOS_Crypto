@@ -6,7 +6,7 @@
 > `CryptographicRegistry` for multi-generation forward compatibility.
 
 [![npm](https://img.shields.io/npm/v/@stoachain/dalos-crypto.svg)](https://www.npmjs.com/package/@stoachain/dalos-crypto)
-[![tests](https://img.shields.io/badge/tests-301%20passing-brightgreen.svg)](#verification)
+[![tests](https://img.shields.io/badge/tests-346%20passing-brightgreen.svg)](#verification)
 [![license](https://img.shields.io/badge/license-UNLICENSED-blue.svg)](https://github.com/StoaChain/DALOS_Crypto)
 
 ---

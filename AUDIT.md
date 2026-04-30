@@ -2,12 +2,12 @@
 
 **Audit target:** `StoaChain/DALOS_Crypto` (Go reference implementation)
 **Initial audit date:** 2026-04-23 (against commit `d136e8d` / tag `v1.0.0`)
-**Last updated:** 2026-04-23 (after Phase 0c + 0d hardening shipped at `v2.0.0`)
+**Last updated:** 2026-04-30 (after Phase 8 cross-curve byte-identity fixes shipped at `v3.0.0`)
 **Audit scope:** Complete source audit + mathematical verification + hardening verification
 
 ---
 
-## Hardening Status (current as of `v2.1.0`) — **PHASE 0 COMPLETE**
+## Hardening Status (current as of `v3.0.0`) — **PHASE 0 + PHASE 8 COMPLETE**
 
 > **Every finding from the v1.0.0 audit is now resolved, partial-with-rationale, or explicitly not-fixed-by-design. No items remain in "deferred" state.**
 >
@@ -29,12 +29,20 @@
 > - **SC-2** (deterministic nonces) — ✅ RESOLVED in **v2.0.0**
 > - **SC-3** (domain-separation tags) — ✅ RESOLVED in **v2.0.0**
 >
+> **Output-changing fixes (Category C — cross-curve byte-identity, LETO/ARTEMIS only):**
+> - **XCURVE-1** (`Schnorr.go:216` `outputSize := int(e.S) / 8` → `aux.CeilDiv8(int(e.S))`) — ✅ RESOLVED in **v3.0.0**. Aligns Schnorr Fiat-Shamir digest size with TS port's `Math.ceil` semantics for non-byte-aligned curves.
+> - **XCURVE-2** (`Schnorr.go:247` `expansionSize := 2 * int(e.S) / 8` → `aux.CeilDiv8(2 * int(e.S))`) — ✅ RESOLVED in **v3.0.0**. Aligns deterministic-nonce expansion size.
+> - **XCURVE-3** (`KeyGeneration.go:161` `OutputSize := int(e.S) / 8` → `aux.CeilDiv8(int(e.S))`) — ✅ RESOLVED in **v3.0.0**. Aligns seedwords→bitstring output size; comment block at lines 158-160 rewritten.
+> - **XCURVE-4** (`KeyGeneration.go:173-193` `ConvertHashToBitString` rewritten to mirror `ts/src/gen1/hashing.ts:108-129`) — ✅ RESOLVED in **v3.0.0**. Replaces leading-zero-eliding `bytes → hex → big.Int.Text(2) → left-pad` pipeline with TS-canonical per-byte `%08b` concatenation + truncate-or-pad. Affects LETO/ARTEMIS only; APOLLO and DALOS Genesis byte-aligned and unchanged.
+>
 > **Documented, not fixed (by design):**
 > - **AES-1, AES-2** (single-pass Blake3 KDF without salt) — preserved forever to avoid breaking Genesis encrypted-file format. AES is CLI-only; OuronetUI uses ouronet-core's codex encryption. User-responsibility: choose a strong password for CLI use.
 > - **Go `math/big` timing** — CPU-instruction-level residual; closing it requires replacing math/big with a custom limb-oriented implementation (out-of-scope for Go reference). The TypeScript port will use constant-time bigints where available.
 > - **CLI bugs (CLI-1..4)** — Dalos.go CLI driver; not ported to TS (library-only).
 >
-> **Genesis key-generation output has remained byte-for-byte identical through every hardening release (v1.0.0 → v1.2.0 → v1.3.0 → v2.0.0 → v2.1.0).** All 105 test vectors produce exactly the same output. Schnorr signatures are byte-identical from v2.0.0 onward (deterministic).
+> **Genesis key-generation output has remained byte-for-byte identical through every hardening release (v1.0.0 → v1.2.0 → v1.3.0 → v2.0.0 → v2.1.0 → v3.0.0).** All 105 test vectors produce exactly the same output. Schnorr signatures are byte-identical from v2.0.0 onward (deterministic).
+>
+> **LETO + ARTEMIS Schnorr signatures and seedword-derived keys** — wire-format changed at v3.0.0 (XCURVE-1..4). Pre-v3.0.0 outputs do NOT verify under v3.0.0+ for these two curves. APOLLO (S=1024 byte-aligned) and DALOS Genesis (S=1600 byte-aligned) are unaffected — XCURVE-1..4 produce identical output for byte-aligned curves. Cross-implementation byte-identity now formalized via `testvectors/v1_historical.json` (60 vectors, schema_version: 2).
 
 See [`CHANGELOG.md`](CHANGELOG.md) for per-release detail, [`docs/SCHNORR_V2_SPEC.md`](docs/SCHNORR_V2_SPEC.md) for the hardened Schnorr specification.
 

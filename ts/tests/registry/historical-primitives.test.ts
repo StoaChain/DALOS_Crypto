@@ -29,6 +29,17 @@ import {
   DalosGenesis,
   Leto,
 } from '../../src/registry/index.js';
+import {
+  apolloBitstringVectors,
+  apolloSchnorrVectors,
+  apolloSeedwordsVectors,
+  artemisBitstringVectors,
+  artemisSchnorrVectors,
+  artemisSeedwordsVectors,
+  letoBitstringVectors,
+  letoSchnorrVectors,
+  letoSeedwordsVectors,
+} from '../fixtures.ts';
 
 interface Case {
   readonly name: string;
@@ -191,4 +202,112 @@ describe('Registry integration — all 4 primitives coexist', () => {
     expect(r.has('dalos-artemis')).toBe(false);
     expect(r.has('dalos-apollo')).toBe(false);
   });
+});
+
+describe('BYTE-IDENTITY: LETO historical corpus', () => {
+  it('all 10 LETO bitstring vectors reproduce priv/pub/addresses byte-for-byte', () => {
+    for (const v of letoBitstringVectors()) {
+      const k = Leto.generateFromBitString(v.input_bitstring);
+      expect(k.privateKey.int10).toBe(v.priv_int10);
+      expect(k.privateKey.int49).toBe(v.priv_int49);
+      expect(k.keyPair.publ).toBe(v.public_key);
+      expect(k.standardAddress).toBe(v.standard_address);
+      expect(k.smartAddress).toBe(v.smart_address);
+    }
+  }, 60_000);
+
+  it('all 5 LETO seedwords vectors reproduce priv/pub/addresses byte-for-byte', () => {
+    for (const v of letoSeedwordsVectors()) {
+      const k = Leto.generateFromSeedWords([...v.input_words]);
+      expect(k.privateKey.bitString).toBe(v.derived_bitstring);
+      expect(k.privateKey.int10).toBe(v.priv_int10);
+      expect(k.privateKey.int49).toBe(v.priv_int49);
+      expect(k.keyPair.publ).toBe(v.public_key);
+      expect(k.standardAddress).toBe(v.standard_address);
+      expect(k.smartAddress).toBe(v.smart_address);
+    }
+  }, 60_000);
+
+  it('all 5 LETO Schnorr vectors reproduce signature byte-for-byte and verify true', () => {
+    for (const v of letoSchnorrVectors()) {
+      const k = Leto.generateFromInteger(v.priv_int49, 49);
+      // Pre-flight: isolate "key reconstruction" from "signature derivation".
+      expect(k.keyPair.publ).toBe(v.public_key);
+      const sig = Leto.sign!(k.keyPair, v.message);
+      expect(sig).toBe(v.signature);
+      expect(Leto.verify!(v.signature, v.message, v.public_key)).toBe(true);
+    }
+  }, 60_000);
+});
+
+describe('BYTE-IDENTITY: ARTEMIS historical corpus', () => {
+  it('all 10 ARTEMIS bitstring vectors reproduce priv/pub/addresses byte-for-byte', () => {
+    for (const v of artemisBitstringVectors()) {
+      const k = Artemis.generateFromBitString(v.input_bitstring);
+      expect(k.privateKey.int10).toBe(v.priv_int10);
+      expect(k.privateKey.int49).toBe(v.priv_int49);
+      expect(k.keyPair.publ).toBe(v.public_key);
+      expect(k.standardAddress).toBe(v.standard_address);
+      expect(k.smartAddress).toBe(v.smart_address);
+    }
+  }, 60_000);
+
+  it('all 5 ARTEMIS seedwords vectors reproduce priv/pub/addresses byte-for-byte', () => {
+    for (const v of artemisSeedwordsVectors()) {
+      const k = Artemis.generateFromSeedWords([...v.input_words]);
+      expect(k.privateKey.bitString).toBe(v.derived_bitstring);
+      expect(k.privateKey.int10).toBe(v.priv_int10);
+      expect(k.privateKey.int49).toBe(v.priv_int49);
+      expect(k.keyPair.publ).toBe(v.public_key);
+      expect(k.standardAddress).toBe(v.standard_address);
+      expect(k.smartAddress).toBe(v.smart_address);
+    }
+  }, 60_000);
+
+  it('all 5 ARTEMIS Schnorr vectors reproduce signature byte-for-byte and verify true', () => {
+    for (const v of artemisSchnorrVectors()) {
+      const k = Artemis.generateFromInteger(v.priv_int49, 49);
+      // Pre-flight: isolate "key reconstruction" from "signature derivation".
+      expect(k.keyPair.publ).toBe(v.public_key);
+      const sig = Artemis.sign!(k.keyPair, v.message);
+      expect(sig).toBe(v.signature);
+      expect(Artemis.verify!(v.signature, v.message, v.public_key)).toBe(true);
+    }
+  }, 60_000);
+});
+
+describe('BYTE-IDENTITY: APOLLO historical corpus', () => {
+  it('all 10 APOLLO bitstring vectors reproduce priv/pub/addresses byte-for-byte', () => {
+    for (const v of apolloBitstringVectors()) {
+      const k = Apollo.generateFromBitString(v.input_bitstring);
+      expect(k.privateKey.int10).toBe(v.priv_int10);
+      expect(k.privateKey.int49).toBe(v.priv_int49);
+      expect(k.keyPair.publ).toBe(v.public_key);
+      expect(k.standardAddress).toBe(v.standard_address);
+      expect(k.smartAddress).toBe(v.smart_address);
+    }
+  }, 60_000);
+
+  it('all 5 APOLLO seedwords vectors reproduce priv/pub/addresses byte-for-byte', () => {
+    for (const v of apolloSeedwordsVectors()) {
+      const k = Apollo.generateFromSeedWords([...v.input_words]);
+      expect(k.privateKey.bitString).toBe(v.derived_bitstring);
+      expect(k.privateKey.int10).toBe(v.priv_int10);
+      expect(k.privateKey.int49).toBe(v.priv_int49);
+      expect(k.keyPair.publ).toBe(v.public_key);
+      expect(k.standardAddress).toBe(v.standard_address);
+      expect(k.smartAddress).toBe(v.smart_address);
+    }
+  }, 60_000);
+
+  it('all 5 APOLLO Schnorr vectors reproduce signature byte-for-byte and verify true', () => {
+    for (const v of apolloSchnorrVectors()) {
+      const k = Apollo.generateFromInteger(v.priv_int49, 49);
+      // Pre-flight: isolate "key reconstruction" from "signature derivation".
+      expect(k.keyPair.publ).toBe(v.public_key);
+      const sig = Apollo.sign!(k.keyPair, v.message);
+      expect(sig).toBe(v.signature);
+      expect(Apollo.verify!(v.signature, v.message, v.public_key)).toBe(true);
+    }
+  }, 60_000);
 });

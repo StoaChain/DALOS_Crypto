@@ -12,9 +12,12 @@
  *
  * Same structural family as DALOS_ELLIPSE (Twisted Edwards, cofactor 4,
  * `y² + x² = 1 + d·x²·y²` over GF(P), with `d` negative) but with a
- * smaller prime. Ported here for historical purposes — **not** intended
- * for production use and **not** registered as a DALOS primitive.
- * Ouronet addresses are derived exclusively from DALOS_ELLIPSE.
+ * smaller prime. **Production-ready as of v3.0.0+** — wrapped by
+ * `Leto` at `ts/src/registry/leto.ts` with byte-identity against the Go
+ * reference (XCURVE-1..4 fixes; requires Go reference v3.0.0+). Address
+ * prefixes: standard `Ł.`, smart `Λ.` (distinct from DALOS Genesis).
+ * Ouronet's first-class Genesis primitive remains DALOS_ELLIPSE; LETO
+ * is registered opt-in via `registry.register(Leto)`.
  *
  * Parameters:
  *

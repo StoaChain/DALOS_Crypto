@@ -17,6 +17,14 @@ jobs:
   publish:
     name: Build + publish ts/ package to npmjs
     runs-on: ubuntu-latest
+    # Job-level permissions override the workflow-level read-only default.
+    # `contents: write` is required for `gh release create` to succeed.
+    # The default GITHUB_TOKEN ships with read-only `contents` scope; without
+    # this override the Release-creation steps return HTTP 403.
+    # Capped by the org/repo "Workflow permissions" setting (Settings →
+    # Actions → General → Workflow permissions = "Read and write").
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: ts
@@ -91,3 +99,48 @@ jobs:
       - name: Verify tarball contents (sanity)
         if: always()
         run: npm pack --dry-run
+
+      - name: Create GitHub Release for the pushed tag
+        # Runs from repo root because gh CLI does not depend on CWD when --repo is provided.
+        # The default working-directory: ts setting on the job affects `run:` commands but
+        # gh's --repo flag makes this CWD-independent.
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release for $TAG already exists — skipping."
+          else
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "$TAG" \
+              --notes-from-tag \
+              --latest
+            echo "Created GitHub Release for $TAG."
+          fi
+
+      - name: Backfill GitHub Releases for prior tags (idempotent)
+        # Idempotent backfill — for each prior tag listed below, create a GitHub Release
+        # if one does not already exist. Safe to re-run on every publish; subsequent runs
+        # silently skip already-Released tags. Annotated tags use their tag message as
+        # release notes; lightweight tags produce empty-bodied Release objects.
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for PRIOR_TAG in ts-v1.0.0 ts-v1.1.0 ts-v1.2.0 ts-v3.0.0 ts-v3.0.1; do
+            if gh release view "$PRIOR_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+              echo "Backfill: $PRIOR_TAG Release already exists — skipping."
+            else
+              if git rev-parse "$PRIOR_TAG" >/dev/null 2>&1; then
+                gh release create "$PRIOR_TAG" \
+                  --repo "${{ github.repository }}" \
+                  --title "$PRIOR_TAG" \
+                  --notes-from-tag
+                echo "Backfilled GitHub Release for $PRIOR_TAG."
+              else
+                echo "Backfill: tag $PRIOR_TAG does not exist in repo — skipping."
+              fi
+            fi
+          done

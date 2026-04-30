@@ -17,6 +17,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [3.0.2] — 2026-05-01
+
+**Release-engineering hygiene (patch).** Closes a documentation-discoverability gap by (1) bundling `CHANGELOG.md` into the npm tarball so consumers see the version history without leaving npmjs.com, (2) auto-creating a GitHub Release object on every `ts-vX.Y.Z` tag push so the repo's Releases page surfaces every shipped version with formatted notes, and (3) backfilling GitHub Release objects for the 5 prior tags (`ts-v1.0.0`, `ts-v1.1.0`, `ts-v1.2.0`, `ts-v3.0.0`, `ts-v3.0.1`) that pushed but did not produce Release entries. No code changes; same fix pattern recently applied in sibling project `StoaChain/OuronetCore`.
+
+### Changed
+
+- **`ts/package.json`** — `files` array extended from `["dist", "README.md", "LICENSE"]` to `["dist", "README.md", "LICENSE", "CHANGELOG.md"]`. New `prepack` and `postpack` scripts copy/clean the root `CHANGELOG.md` into `ts/` around `npm pack` / `npm publish`. Cross-platform via Node `fs.copyFileSync` / `fs.unlinkSync` (works on Linux CI + Windows local).
+
+### Added
+
+- **`.github/workflows/ts-publish.yml`** — new step `Create GitHub Release for the pushed tag` runs after `npm publish --access public`. Uses `gh release create` with `--notes-from-tag --latest`. Idempotent: skips if a Release already exists for the tag.
+- **`.github/workflows/ts-publish.yml`** — new step `Backfill GitHub Releases for prior tags (idempotent)` iterates over the 5 prior `ts-v*` tags. For each, checks whether a Release exists; if not and the tag exists in git history, creates one via `gh release create --notes-from-tag`. Skips silently for already-existing Releases or missing tags.
+- **`.github/workflows/ts-publish.yml`** — job-level `permissions: contents: write` block. Required to allow the default `GITHUB_TOKEN` to create Releases (HTTP 403 without it). Workflow-level permission stays at `contents: read` for safety.
+
+### Verified
+
+- **Genesis 105-vector corpus byte-identity:** unchanged (no crypto code touched). Extended-elided SHA-256 of `testvectors/v1_genesis.json` remains `082f7a40405d4c075f1975af0a6075bb0228bbccae60a53b05b350a09ce223ae`.
+- **TS test suite:** 347/347 tests pass (no test changes from v3.0.1).
+- **`npm pack --dry-run`:** confirms `CHANGELOG.md` is now in the tarball alongside `dist/`, `README.md`, `LICENSE`.
+
+### Doc/Audit
+
+- **`README.md`** (top-level) — Status section bumped to `@stoachain/dalos-crypto@3.0.2`.
+
+### Migration Guide
+
+- **No action required for any user.** No public API changes. Pure release-engineering hygiene.
+
+### Operational note
+
+The corresponding GitHub repo setting **"Workflow permissions"** must be set to "Read and write permissions" (Settings → Actions → General → Workflow permissions) for the new Release-creation steps to succeed. The YAML `permissions: contents: write` is capped by this org/repo-level toggle. If left at the restrictive default, the npm publish step succeeds but the Release-creation step returns HTTP 403. This was set as a one-time toggle for the StoaChain organisation alongside this release.
+
+Implementation mode: **quality**. Spec lifecycle: ad-hoc release-engineering fix (no `/bee:new-spec` — small enough to ship inline; pattern replicated from sibling project `StoaChain/OuronetCore`'s recent `v2.0.3` release).
+
+---
+
 ## [3.0.1] — 2026-04-30
 
 **Error-handling closure (patch).** Closes three HIGH-severity error-handling stragglers from the 2026-04-29 audit (F-ERR-001, F-ERR-002, F-ERR-003) that completes the KG-2 hardening missed in v2.1.0. **347/347 TS tests pass (was 346/346 in v3.0.0; +1 new failure-injection test from T1.2); Go test suite green.** (348/348 acceptable upper bound if T1.2 split into two test cases.)

@@ -1,6 +1,6 @@
 {
   "name": "@stoachain/dalos-crypto",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "description": "DALOS Cryptography — Ouronet's custom 1606-bit Twisted Edwards curve, Schnorr signatures, bitmap key generation. TypeScript port of the Genesis Go reference.",
   "type": "module",
   "main": "./dist/index.js",
@@ -31,7 +31,8 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc",
@@ -41,7 +42,9 @@
     "lint": "biome check src tests",
     "lint:fix": "biome check --write src tests",
     "format": "biome format --write src tests",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist",
+    "prepack": "node -e \"require('fs').copyFileSync(require('path').resolve('..','CHANGELOG.md'),'CHANGELOG.md')\"",
+    "postpack": "node -e \"try { require('fs').unlinkSync('CHANGELOG.md'); } catch (e) {}\""
   },
   "keywords": [
     "cryptography",

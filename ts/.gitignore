@@ -5,3 +5,7 @@ coverage/
 .DS_Store
 *.tsbuildinfo
 .vite/
+# CHANGELOG.md is auto-copied from repo root by the `prepack` script (and
+# removed by `postpack`). Any copy left behind locally is transient — never
+# commit it.
+CHANGELOG.md

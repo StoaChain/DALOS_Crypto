@@ -131,3 +131,8 @@ Stacks: dalos-go (root, Go reference), dalos-ts (`ts/`, TypeScript port).
 Use /bee:new-spec to start a new feature.
 Use /bee:progress to see current state.
 Always use Context7 MCP for framework documentation lookups.
+
+**Audit-spec lifecycle (this project uses Bee's audit pipeline):**
+- Pending audit findings live in `.bee/audit-specs/` (created by `/bee:audit-to-spec`).
+- Completed audit findings move to `.bee/audit-specs-done/` (created lazily) with a `YYYY-MM-DD-` completion-date prefix.
+- After `/bee:archive-spec` finishes, invoke the user-global `audit-specs-lifecycle` skill at `C:\Users\bicam\.claude\skills\audit-specs-lifecycle\SKILL.md` to file the source audit-spec under `audit-specs-done/`. The skill reads `requirements.md` from the just-archived spec to find the source filename, computes today's date, and moves the file idempotently.

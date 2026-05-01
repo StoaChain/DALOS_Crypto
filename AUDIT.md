@@ -2,12 +2,12 @@
 
 **Audit target:** `StoaChain/DALOS_Crypto` (Go reference implementation)
 **Initial audit date:** 2026-04-23 (against commit `d136e8d` / tag `v1.0.0`)
-**Last updated:** 2026-04-30 (after error-handling closure shipped at `v3.0.1`)
+**Last updated:** 2026-05-01 (after frontend-fixes closure shipped at `v3.0.3`)
 **Audit scope:** Complete source audit + mathematical verification + hardening verification
 
 ---
 
-## Hardening Status (current as of `v3.0.1`) — **PHASE 0 + PHASE 8 COMPLETE**
+## Hardening Status (current as of `v3.0.3`) — **PHASE 0 + PHASE 8 COMPLETE**
 
 > **Every finding from the v1.0.0 audit is now resolved, partial-with-rationale, or explicitly not-fixed-by-design. No items remain in "deferred" state.**
 >
@@ -19,6 +19,8 @@
 > - **KG-2** (`ProcessPrivateKeyConversion`, `ProcessKeyGeneration`, `ExportPrivateKey`, `ProcessIntegerFlag`) — ✅ COMPLETED in **v3.0.1** (partial in v2.1.0; stragglers F-ERR-002 / F-ERR-003 closed v3.0.1: `ExportPrivateKey` `log.Fatal` and `ProcessIntegerFlag` `os.Exit` replaced with sentinel returns / sibling-mirror)
 > - **KG-3** (memory hygiene) — ✅ RESOLVED in **v2.1.0** (best-effort — `ZeroBytes` helper; `defer ZeroBytes(Key)` in AES; intermediate plaintext scrubbed. Limited by Go string immutability — documented)
 > - **AES-3** (error propagation) — ✅ COMPLETED in **v3.0.1** (partial in v2.1.0; straggler F-ERR-001 closed v3.0.1: TS port `encryptAndPad` no longer silently masks underlying encryption failure)
+> - **F-FE-001** (TypeScript port — README quick-start broken examples + missing aliases) — ✅ COMPLETED in **v3.0.3**: ergonomic aliases sign/verify/encrypt/decrypt/textToBitString/bitStringToText added, all 5 README ts-tagged blocks rewritten, docs:check CI gate prevents future drift.
+> - **F-INT-002** (cross-listed with F-FE-001 — Detect example used wrong field path and wrong literal id) — ✅ COMPLETED in **v3.0.3** (same PR as F-FE-001).
 > - **SC-4** (s range check) — ✅ RESOLVED in **v2.0.0** (full `(0, Q)` canonical range)
 > - **SC-5** (on-curve check of R) — ✅ RESOLVED in **v1.3.0**
 > - **SC-6** (explicit error returns in Schnorr) — ✅ RESOLVED in **v1.3.0**
@@ -305,6 +307,13 @@ Now inlined into the repo (was previously in the sibling `Cryptographic-Hash-Fun
 
 **Decision (locked 2026-04-23):** AES stays as-is in the Go reference AND in the TypeScript port. Changing the KDF would break the encrypted-file format without any Genesis-key benefit. The AES wrapper is used only by the CLI's `ExportPrivateKey` / `ImportPrivateKey` (saving encrypted key-files to disk); the OuronetUI does **not** use this path — it uses ouronet-core's V1/V2 codex encryption instead. Weak-KDF risk is explicitly documented as "user responsibility to choose a strong password" for CLI consumers. See `docs/FUTURE.md` §4 for the design rationale and `CHANGELOG.md` [1.1.2] for the decision log.
 
+### TypeScript port (`ts/`) ✅ (F-FE-001 + F-INT-002 resolved v3.0.3)
+
+| #          | Finding                                                                                                                  | Severity | Status                                                                                                                                   |
+|------------|--------------------------------------------------------------------------------------------------------------------------|----------|------------------------------------------------------------------------------------------------------------------------------------------|
+| **F-FE-001** | `ts/README.md` quick-start examples imported non-existent `sign`/`verify`/`encrypt`/`decrypt`, used wrong arg order, called async functions synchronously. Mint + Subpaths blocks contained placeholder syntax that wouldn't compile. | HIGH     | ✅ **RESOLVED v3.0.3** (option (a) ergonomic aliases added to `ts/src/gen1/aliases.ts`; all 5 broken README blocks rewritten; `npm run docs:check` CI gate prevents future drift). |
+| **F-INT-002** | `ts/README.md` Detect example used `detected.metadata.id` (wrong path; `id` is top-level on the primitive) and literal `"dalos-genesis"` (wrong; actual id is `"dalos-gen-1"`). Cross-listed with F-FE-001.            | MEDIUM   | ✅ **RESOLVED v3.0.3** (rewritten in same PR as F-FE-001).                                                                                |
+
 ---
 
 ## 3. Fix Classification
@@ -360,6 +369,7 @@ This is consistent with how every production blockchain cryptosystem handles the
 | **0d** | **v2.0.0** | **Category-B Schnorr hardening**: SC-1 length-prefix, SC-2 deterministic nonces, SC-3 domain tags, SC-4 (full). Schnorr v2 format. Key-gen output still preserved byte-for-byte. `docs/SCHNORR_V2_SPEC.md` added. |
 | **0c-finish** | **v2.1.0** | **Category-A hardening (batch 2)**: PO-3 (noErr* helpers panic on unexpected internal failures); KG-2 (error returns in `Process*` + `ExportPrivateKey`); KG-3 (memory hygiene via `ZeroBytes`, `defer` scrubs in AES); AES-3 (short-circuit on AES errors, typed errors from Decrypt); AES-4 (cosmetic cleanup). **All 105 records byte-identical to v2.0.0 verified. Phase 0 substantively complete; error-handling stragglers closed in v3.0.1.** |
 | **0e** | **v3.0.1** | **Error-handling closure** (KG-2 / AES-3 stragglers): F-ERR-001 (TS `encryptAndPad` throw on underlying-encryption failure), F-ERR-002 (Go `ExportPrivateKey` `log.Fatal` → sibling-mirror print+return), F-ERR-003 (Go `ProcessIntegerFlag` `os.Exit` → empty-string sentinel + 5 CLI caller updates). **No public API changes; Genesis 105-vector corpus byte-identical to v3.0.0; TS test count 347/347.** |
+| **0g** | **v3.0.3** | Frontend-fixes: ergonomic aliases (sign/verify/encrypt/decrypt/textToBitString/bitStringToText) + README repair (5 broken blocks fixed) + docs:check CI gate. Closes F-FE-001 + F-INT-002. |
 
 ### Not being fixed (by design)
 

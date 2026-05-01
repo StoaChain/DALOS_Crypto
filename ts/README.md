@@ -96,37 +96,30 @@ for the full provenance, audit log, and usage.
 ### Mint an Ouronet account (every mode)
 
 ```ts
-import {
-  createDefaultRegistry,
-  CryptographicRegistry,
-  type FullKey,
-} from "@stoachain/dalos-crypto/registry";
-
-const registry: CryptographicRegistry = createDefaultRegistry();
-const primitive = registry.default(); // DalosGenesisPrimitive
+import { type Bitmap } from "@stoachain/dalos-crypto/gen1";
+import { DalosGenesis } from "@stoachain/dalos-crypto/registry";
 
 // 1 — OS randomness (simplest)
-const a: FullKey = primitive.generateRandom();
+const a = DalosGenesis.generateRandom();
 
 // 2 — from a custom seed phrase (any language, 4–256 words)
-const b = primitive.generateFromSeedWords([
+const b = DalosGenesis.generateFromSeedWords([
   "mountain", "whisper", "aurora", "eternal", "signal", "zen",
 ]);
 
 // 3 — from a 1600-bit binary string (any sequence qualifies)
 const bits1600 = "1".repeat(800) + "0".repeat(800);
-const c = primitive.generateFromBitString(bits1600);
+const c = DalosGenesis.generateFromBitString(bits1600);
 
 // 4 — from a base-10 integer (must be in curve range; core throws if not)
-const d = primitive.generateFromInteger("123456789...", 10);
+const d = DalosGenesis.generateFromInteger("123456789012345", 10);
 
 // 5 — from a base-49 integer (DALOS alphabet, 0-9 a-z A-M)
-const e = primitive.generateFromInteger("hello42", 49);
+const e = DalosGenesis.generateFromInteger("hello42", 49);
 
-// 6 — from a 40×40 bitmap (row-major, 1 = black, 0 = white)
-import type { Bitmap } from "@stoachain/dalos-crypto/gen1";
-const bitmap: Bitmap = /* ... 40 rows × 40 cols of 0|1 ... */;
-const f = primitive.generateFromBitmap(bitmap);
+// 6 — from a 40×40 bitmap (row-major, true = black, false = white)
+const bitmap: Bitmap = Array.from({ length: 40 }, () => Array<boolean>(40).fill(false));
+const f = DalosGenesis.generateFromBitmap(bitmap);
 
 // Every `FullKey` has:
 console.log(f.keyPair.priv);          // base-49 private key
@@ -136,32 +129,43 @@ console.log(f.privateKey.int10);      // base-10 representation
 console.log(f.privateKey.int49);      // base-49 representation
 console.log(f.standardAddress);       // Ѻ.xxxxx…   (160 chars)
 console.log(f.smartAddress);          // Σ.xxxxx…   (160 chars)
+
+// All six paths feed the same Genesis pipeline; here are their addresses.
+const accounts = [a, b, c, d, e, f];
+console.log(`Generated ${accounts.length} accounts via 6 different input paths.`);
+console.log(accounts.map((acc) => acc.standardAddress));
 ```
 
 ### Sign + verify (Schnorr v2)
 
 ```ts
 import { sign, verify } from "@stoachain/dalos-crypto/gen1";
+import { DalosGenesis } from "@stoachain/dalos-crypto/registry";
 
-const account = primitive.generateRandom();
-const sig = sign("hello world", account.keyPair);
-console.log(verify("hello world", sig, account.keyPair.publ)); // true
+const account = DalosGenesis.generateRandom();
+const sig = sign(account.keyPair, "hello world");
+console.log(verify(sig, "hello world", account.keyPair.publ)); // true
 ```
 
 ### AES encryption (Genesis-compatible key-file format)
 
 ```ts
-import { encrypt, decrypt } from "@stoachain/dalos-crypto/gen1";
+import { decrypt, encrypt } from "@stoachain/dalos-crypto/gen1";
 
-const cipher  = encrypt("secret message", "strong-password");
-const roundtripped = decrypt(cipher, "strong-password");
+const cipher = await encrypt("secret message", "strong-password");
+const recovered = await decrypt(cipher, "strong-password");
+console.log(recovered === "secret message"); // true
 ```
 
 ### Detect which primitive minted an address
 
 ```ts
-const detected = registry.detect(someStandardAddress);
-if (detected) console.log(detected.metadata.id); // e.g. "dalos-genesis"
+import { createDefaultRegistry, DalosGenesis } from "@stoachain/dalos-crypto/registry";
+
+const registry = createDefaultRegistry();
+const account = DalosGenesis.generateRandom();
+const detected = registry.detect(account.standardAddress);
+if (detected) console.log(detected.id); // "dalos-gen-1"
 ```
 
 ---
@@ -169,11 +173,14 @@ if (detected) console.log(detected.metadata.id); // e.g. "dalos-genesis"
 ## Subpaths
 
 ```ts
-import { ... } from "@stoachain/dalos-crypto";             // umbrella (re-exports)
-import { ... } from "@stoachain/dalos-crypto/gen1";        // curve, point-ops, Schnorr, AES, bitmap, key-gen
-import { ... } from "@stoachain/dalos-crypto/registry";    // CryptographicRegistry + DalosGenesisPrimitive
-import { ... } from "@stoachain/dalos-crypto/historical";  // LETO / ARTEMIS / APOLLO (since v1.1.0)
-import { ... } from "@stoachain/dalos-crypto/dalos-blake3";// seven-fold Blake3 XOF primitive
+// Per-subpath narrow imports (recommended for tree-shaking).
+import { fromRandom } from "@stoachain/dalos-crypto/gen1";
+import { createDefaultRegistry, DalosGenesis } from "@stoachain/dalos-crypto/registry";
+import { LETO } from "@stoachain/dalos-crypto/historical";
+import { blake3SumCustom } from "@stoachain/dalos-crypto/dalos-blake3";
+
+// All four subpaths exist; pick whichever surface area you need.
+console.log(typeof fromRandom, typeof DalosGenesis, typeof createDefaultRegistry, typeof LETO, typeof blake3SumCustom);
 ```
 
 Every subpath has first-class TypeScript types.

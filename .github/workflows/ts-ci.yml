@@ -54,6 +54,9 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Check README code blocks
+        run: npm run docs:check
+
       - name: Upload dist (Node 24 only)
         if: matrix.node-version == '24'
         uses: actions/upload-artifact@v4

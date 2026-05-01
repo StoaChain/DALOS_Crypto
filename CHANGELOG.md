@@ -17,6 +17,54 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [3.0.3] — 2026-05-01
+
+**Frontend ergonomics + README CI gate (patch).** Closes audit findings F-FE-001 (TypeScript port — README quick-start broken examples + missing aliases) and F-INT-002 (TypeScript port — registry detect example uses wrong field path) by (1) adding six plain-text-friendly ergonomic alias exports to `@stoachain/dalos-crypto/gen1` (`sign`, `verify`, `encrypt`, `decrypt`, `textToBitString`, `bitStringToText`) so the README quick-start snippets become real, callable code; (2) rewriting all five broken `ts`-tagged code blocks in `ts/README.md` (Mint, Quick-Start Sign, Quick-Start AES, Detect, Subpaths) so every example compiles cleanly under tsc; (3) adding a new `npm run docs:check` script + matching CI step that extracts every fenced `ts`/`typescript` block from `ts/README.md` and typechecks it on every push, preventing future README drift. **366/366 TS tests pass** (347 baseline + 11 new alias round-trip tests + 8 new CI-workflow structural tests in `ts/tests/ci-workflow/`). Pure additive — every existing export remains in place; no breaking changes.
+
+### Changed
+
+- **`ts/README.md`** — five broken `ts`-tagged code blocks rewritten:
+  - **Mint block** (lines 98-139): all imports hoisted to the top of the block (TypeScript ESM rule), bitmap is now created programmatically (`Array.from({ length: 40 }, () => Array<0 | 1>(40).fill(0))` — exactly 1600 pixels, no `/* ... */` placeholder), base-10 scalar is a finite digit string, base-49 scalar uses only `BASE49_ALPHABET` characters, undeclared `someStandardAddress` replaced with `account.standardAddress`, no declared-but-unused variables (compatible with inherited `noUnusedLocals: true`).
+  - **Quick-Start Sign block** (lines 143-149): imports `{ sign, verify }` from `@stoachain/dalos-crypto/gen1`, calls `sign(account.keyPair, "hello world")` (keyPair-first order), passes signature + message + `account.keyPair.publ` to `verify`.
+  - **Quick-Start AES block** (lines 153-158): imports `{ encrypt, decrypt }` from `@stoachain/dalos-crypto/gen1`, uses `await encrypt(...)` / `await decrypt(...)` (async), asserts the recovered plaintext.
+  - **Detect block** (lines 162-165): self-contained — declares `const registry = createDefaultRegistry();` inline, uses an inline address literal, accesses `detected.id` (top-level field, not `detected.metadata.id`), compares against `"dalos-gen-1"` (the actual primitive id, not `"dalos-genesis"`).
+  - **Subpaths block** (lines 171-177): every import line references a real named export from its stated subpath. No bare `...` placeholders.
+
+### Added
+
+- **`ts/src/gen1/aliases.ts`** — new file. Six ergonomic wrapper exports re-exported from `@stoachain/dalos-crypto/gen1`:
+  - `sign(keyPair, message)` — thin pass-through over `schnorrSign` with the conventional keyPair-first argument order.
+  - `verify(signature, message, publicKey)` — thin pass-through over `schnorrVerify`.
+  - `async encrypt(plaintext, password)` — UTF-8 plaintext → bitstring → `encryptBitString`. Throws on empty input (the bigint round-trip cannot recover empty plaintext through the alias surface; power users can still call `encryptBitString` directly).
+  - `async decrypt(ciphertext, password)` — `decryptBitString` → left-pad to multiple of 8 → UTF-8 decode. Round-trip-safe for plaintexts whose first UTF-8 byte is non-zero (0x01–0xFF).
+  - `textToBitString(text)` — UTF-8 encode then per-byte 8-bit MSB-first padding (preserves leading zeros, unlike the bigint-based `bytesToBitString` used internally by AES).
+  - `bitStringToText(bitString)` — strict 0/1 + length-divisible-by-8 validation, throws verbatim error message on malformed input, decodes via `TextDecoder`.
+- **`ts/scripts/check-readme.mjs`** — new Node-stdlib-only README extractor. Reads `ts/README.md`, writes each `ts`/`typescript` fenced block to `ts/.docs-check/block-N.ts`, generates a `.docs-check/tsconfig.json` that extends the project tsconfig, runs `tsc --noEmit` against the temp tree, prints a per-block PASS/FAIL summary, and either cleans up on success or preserves `.docs-check/` for inspection on failure.
+- **`ts/tests/ci-workflow/docs-check-step.test.ts`** — new structural assertion tests for the CI workflow. 8 vitest assertions pin the `Check README code blocks` step name, position (after Test, before Upload), absence of an `if:` restriction, no per-step `working-directory:` override, and the workflow's `paths:` filter coverage. Catches future drift to the YAML config that would silently disable the docs:check gate.
+- **`ts/package.json`** — new `docs:check` script wired between `clean` and `prepack` in the scripts block (`prepack`/`postpack` lifecycle hooks remain terminal).
+- **`.github/workflows/ts-ci.yml`** — new CI step `Check README code blocks` running `npm run docs:check` after `Test` and before `Upload dist`. Runs on every matrix Node version (20, 22, 24). Order is now: Lint → Typecheck → Build → Test → docs:check → Upload.
+- **`ts/.gitignore`** — `.docs-check/` excluded from version control (temp directory only persists on docs:check failure).
+
+### Verified
+
+- **Genesis 105-vector corpus byte-identity:** unchanged. Extended-elided SHA-256 of `testvectors/v1_genesis.json` remains `082f7a40405d4c075f1975af0a6075bb0228bbccae60a53b05b350a09ce223ae` — byte-identical to v3.0.0, v3.0.1, and v3.0.2. The six new alias exports are pure wrappers over existing primitives; no Genesis crypto code was touched.
+- **TS test suite:** 366/366 tests pass across 18 test files (347 baseline + 11 new alias round-trip tests in `ts/tests/gen1/aliases.test.ts` covering all six aliases incl. the empty-plaintext encrypt guard and the multi-byte UTF-8 round-trip path + 8 new CI-workflow structural tests in `ts/tests/ci-workflow/docs-check-step.test.ts` pinning the `Check README code blocks` step's name, position, and config in `ts-ci.yml`).
+- **typecheck + Biome lint:** `npm run typecheck` and `npm run lint` both clean (zero errors, zero issues).
+- **`npm run docs:check`:** passes with zero block failures — every `ts`-tagged fenced block in `ts/README.md` typechecks cleanly under the project's strict tsconfig (`strict: true`, `noUnusedLocals: true`, `noUnusedParameters: true`, `verbatimModuleSyntax: true`).
+
+### Doc/Audit
+
+- **`AUDIT.md`** — F-FE-001 and F-INT-002 added as already-resolved at v3.0.3 (Hardening Status summary block + per-file finding rows + new v3.0.3 remediation table row).
+- **`CHANGELOG.md`** — this entry.
+
+### Migration Guide
+
+- **No action required for any user.** Pure additive change: six new exports under `@stoachain/dalos-crypto/gen1`, plus a new `docs:check` developer script and CI gate. Every existing export remains at the same import path with the same signature. README republishes alongside this release with the corrected examples.
+
+Implementation mode: **quality**. Spec lifecycle: /bee:audit (2026-04-29) → /bee:new-spec (high-frontend-fixes audit-spec) → /bee:plan-all (2 phases, 10 tasks, plan-review iter1+1, cross-plan iter1) → /bee:ship (autonomous execution + review).
+
+---
+
 ## [3.0.2] — 2026-05-01
 
 **Release-engineering hygiene (patch).** Closes a documentation-discoverability gap by (1) bundling `CHANGELOG.md` into the npm tarball so consumers see the version history without leaving npmjs.com, (2) auto-creating a GitHub Release object on every `ts-vX.Y.Z` tag push so the repo's Releases page surfaces every shipped version with formatted notes, and (3) backfilling GitHub Release objects for the 5 prior tags (`ts-v1.0.0`, `ts-v1.1.0`, `ts-v1.2.0`, `ts-v3.0.0`, `ts-v3.0.1`) that pushed but did not produce Release entries. No code changes; same fix pattern recently applied in sibling project `StoaChain/OuronetCore`.

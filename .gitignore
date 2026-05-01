@@ -1,2 +1,7 @@
 .bee/
 .claude/
+.secrets/
+
+# Stray Go build artifacts (transient — regenerated on each `go run`).
+# Most common: generator.exe from `go run testvectors/generator/main.go` on Windows.
+*.exe

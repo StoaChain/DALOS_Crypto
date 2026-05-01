@@ -149,3 +149,13 @@ export {
   schnorrSign,
   schnorrVerify,
 } from './schnorr.js';
+
+// Ergonomic plain-string aliases (Phase 12 / v3.0.3+)
+export {
+  textToBitString,
+  bitStringToText,
+  sign,
+  verify,
+  encrypt,
+  decrypt,
+} from './aliases.js';

@@ -11,12 +11,15 @@
  *      the registry-level contract.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseAsciiBitmap } from '../../src/gen1/bitmap.js';
+import { SchnorrSignError } from '../../src/gen1/errors.js';
+import * as schnorrModule from '../../src/gen1/schnorr.js';
 import {
   type CryptographicPrimitive,
   CryptographicRegistry,
   DalosGenesis,
+  Leto,
   createDefaultRegistry,
   isDalosGenesisPrimitive,
 } from '../../src/registry/index.js';
@@ -308,6 +311,45 @@ describe('registry — end-to-end account operations', () => {
     // 4. Verify.
     expect(primitive!.verify!(sig, msg, account.keyPair.publ)).toBe(true);
     expect(primitive!.verify!(sig, 'approve tx 99999', account.keyPair.publ)).toBe(false);
+  });
+});
+
+// ============================================================================
+// sign throw contract — registry adapters propagate SchnorrSignError
+// ============================================================================
+//
+// Forces `schnorrHash` to return null via vi.spyOn on the ESM module
+// namespace import (the same spy form used in the gen1-layer test at
+// tests/gen1/schnorr.test.ts and the PM-cache test at
+// tests/gen1/scalar-mult.test.ts). Both registry adapters call into
+// `schnorrSign`, which under T3.2 throws SchnorrSignError when the
+// Fiat-Shamir challenge derivation produces null. These tests are
+// written FIRST against the still-silent signer — they are EXPECTED to
+// be RED at task close (T3.5) and green-flip in Wave 3 when T3.2 lands
+// the throw.
+//
+// Two adapter shapes are exercised:
+//   1. Inline adapter (genesis.ts:134) — `sign(keyPair, message) {...}`
+//   2. Shared factory adapter (gen1-factory.ts:127) — `sign: (kp, m) => ...`
+//      via the LETO primitive (representative of LETO/ARTEMIS/APOLLO).
+// ============================================================================
+
+describe('sign throw contract', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('DalosGenesis.sign throws SchnorrSignError when schnorrHash returns null', () => {
+    const v = schnorrVectors()[0]!;
+    const keyPair = { priv: v.priv_int49, publ: v.public_key };
+    vi.spyOn(schnorrModule, 'schnorrHash').mockReturnValueOnce(null);
+    expect(() => DalosGenesis.sign!(keyPair, 'test message')).toThrow(SchnorrSignError);
+  });
+
+  it('Leto.sign throws SchnorrSignError when schnorrHash returns null', () => {
+    const letoKey = Leto.generateFromSeedWords(['historical', 'curve', 'leto']);
+    vi.spyOn(schnorrModule, 'schnorrHash').mockReturnValueOnce(null);
+    expect(() => Leto.sign!(letoKey.keyPair, 'test message')).toThrow(SchnorrSignError);
   });
 });
 

@@ -17,6 +17,83 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [3.1.0] — 2026-05-02
+
+**High-additive bundle (minor).** Closes three additive HIGH-severity audit findings (F-TEST-001 SC-5 regression coverage, F-PERF-001 generator-precompute cache, F-PERF-004 async signing surface) plus one consumer-observable behavior change (F-API-001 typed `SchnorrSignError` throw on internal failure) bundled into a single coordinated minor release. The throw contract is the SOLE consumer-observable behavior change and the reason for the minor bump rather than a patch. **~388/388 TS tests pass** (366 baseline + new SC-5 rejection-cases + PM-cache instrumentation + async-surface watchdog + REQ-14 yield-count constant-time + T3.5 forced-failure tests).
+
+### Added
+
+- **`scalarMultiplierAsync`** — exported from `@stoachain/dalos-crypto/gen1`. Async wrapper over `scalarMultiplier` that yields to the event loop every 8 outer-loop iterations on a fixed data-independent cadence.
+- **`schnorrSignAsync`** — exported from `@stoachain/dalos-crypto/gen1`. Async wrapper over `schnorrSign` for browser-friendly signing without blocking the event loop. Throws `SchnorrSignError` on internal failure (same condition as sync surface).
+- **`schnorrVerifyAsync`** — exported from `@stoachain/dalos-crypto/gen1`. Async wrapper over `schnorrVerify`. Yields on the same fixed cadence as the sign path.
+- **`SchnorrSignError`** — typed exception class exported from `@stoachain/dalos-crypto/gen1`. Importable for `instanceof` catch blocks. Thrown on internal sign failure (Fiat-Shamir challenge derivation null-result).
+- **`ts/tests/gen1/schnorr.test.ts`** — 2 new TS rejection-cases tests for off-curve R (line 255) + off-curve P (line 268) (Phase 1 SC-5 regression coverage).
+- **`Elliptic/Schnorr_adversarial_test.go`** — new Go-side adversarial test file with mutation-test verification (off-curve R, off-curve P, scalar-out-of-range, identity-point edge cases).
+- **PM-cache instrumentation tests** — Go-side pointer-equality assertion (same `*Ellipse` returns same precompute matrix pointer across calls) and TS-side spy counter (verifies `precomputeMatrix` factory is called exactly once per `Ellipse` instance across N sign+verify cycles).
+- **Async-surface watchdog test** — event-loop responsiveness verified via per-yield `performance.now()` instrumentation (NOT `Promise.race` against an arbitrary timeout — condition-based to avoid CI flakes). Asserts no single sync slice exceeds the INP budget.
+- **REQ-14 mechanical guard** — yield-count constant-time test: 3 scalars of identical base-49 length but different numerical values produce equal yield counts in `scalarMultiplierAsync`. Catches accidental data-dependent yield cadences in future refactors.
+- **T3.5 forced-failure tests** — 6 cases at gen1 + registry layers proving `SchnorrSignError` propagation through the public registry API, the Genesis inline adapter, the gen1-factory shared adapter, and both sync + async sign surfaces.
+
+### Changed
+
+- **TypeScript `sign` throw contract (consumer-observable).** Previously, `schnorrSign` (and registry-level `primitive.sign`) returned `""` on internal failure (specifically when Fiat-Shamir challenge derivation produced null due to unparseable public key); v3.1.0 throws `SchnorrSignError` instead. Underlying detection condition unchanged — only the failure body changed. This is the SOLE consumer-observable behavior change in this release and the reason for the minor bump.
+- **Affects:** `ts/src/gen1/schnorr.ts` sync `schnorrSign` + new async `schnorrSignAsync`; propagates through `ts/src/gen1/aliases.ts` `sign` alias, `ts/src/registry/gen1-factory.ts:127` shared adapter, `ts/src/registry/genesis.ts:134` Genesis inline adapter.
+- **`ts/src/registry/primitive.ts`** — JSDoc on `CryptographicPrimitive.sign` interface updated to document the new throw contract (replaces prior "returns empty string on failure" wording with "throws `SchnorrSignError` on internal failure").
+- See **Migration Guide** below for consumer migration steps.
+
+### Performance
+
+- **Generator-precompute matrix cache.** Go side: `*Ellipse` pointer field with `sync.Once` guard. TS port: `WeakMap<Ellipse, PrecomputeMatrix>`. Eliminates per-call PM rebuilds on the Schnorr hot path. Estimated **~17% sign/verify speed-up** under typical workloads.
+- **Per-curve `Modular` cache (TS port).** `WeakMap<Ellipse, Modular>` in `schnorr.ts` — eliminates per-call `new Modular(e.p)` allocations.
+- **Async wrappers (TS port)** yield to the event loop every 8 outer-loop iterations on a fixed data-independent cadence (browser INP < 200 ms target met for the `scalarMultiplierAsync` / `schnorrSignAsync` / `schnorrVerifyAsync` path).
+- **Test timeouts tightened.** Vitest timeouts on the slowest tests pulled from 60s/120s down to 30s (closes F-PERF-010 LOW conditionally — tightened ceiling now reflects the post-cache reality).
+
+### Verified
+
+- **Genesis 105-vector corpus byte-identity preserved** at extended-elided SHA-256 = `082f7a40405d4c075f1975af0a6075bb0228bbccae60a53b05b350a09ce223ae` (post-v2.0.0 baseline; same hash held since v3.0.0 through v3.0.3 and now v3.1.0).
+- **All 50 bitstring + 15 seed-words + 20 bitmap + 20 Schnorr deterministic records** byte-identical to the committed v3.0.3 corpus.
+- **User-provided seed-word verification fixture** byte-for-byte identical pre-v3.1.0 vs post-v3.1.0 across the full keygen pipeline (bitstring → int10 → int49 → public key → Standard + Smart Ouronet accounts). The PM cache and async wrappers are pure performance/ergonomic additions; they do not perturb any deterministic output.
+
+### Doc/Audit
+
+- **AUDIT.md** updated with four `RESOLVED v3.1.0` closure rows (F-TEST-001, F-PERF-001, F-PERF-004, F-API-001) appended to the TypeScript-port findings table at lines 316-319; section heading at line 310 extended to enumerate the four new closures alongside the existing v3.0.3 closures.
+- **AUDIT.md** "Last updated:" preamble at line 5 bumped from `2026-05-01 (after frontend-fixes closure shipped at v3.0.3)` to `2026-05-02 (after high-additive-bundle closure shipped at v3.1.0)` (deferred from Phase 1 T1.4 to the cross-phase release boundary per the Phase 1 plan-review fix).
+- **AUDIT.md** "Hardening Status (current as of `vX.Y.Z`)" header at line 10 bumped from `v3.0.3` to `v3.1.0` in lock-step with the preamble.
+- **AUDIT.md** SC-5 historical entry at line 230 annotated with `regression-pinned in tests at v3.1.0 — see ts/tests/gen1/schnorr.test.ts (off-curve R + off-curve P cases) and Elliptic/Schnorr_adversarial_test.go` (delivered by Phase 1 T1.4; carried forward unchanged).
+
+### Migration Guide
+
+The throw-contract change is the only consumer-observable behavior change. Update any consumer code that catches the prior empty-string sentinel:
+
+**Before v3.1.0:**
+
+```ts
+const sig = primitive.sign(kp, msg);
+if (sig === '') { /* handle failure */ }
+```
+
+**After v3.1.0:**
+
+```ts
+import { SchnorrSignError } from '@stoachain/dalos-crypto/gen1';
+try {
+  const sig = primitive.sign(kp, msg);
+  // ...
+} catch (e) {
+  if (e instanceof SchnorrSignError) {
+    /* handle failure */
+  } else {
+    throw e;
+  }
+}
+```
+
+The new async surfaces (`schnorrSignAsync`, `schnorrVerifyAsync`, `scalarMultiplierAsync`) are pure additions — every existing sync export remains in place at the same import path with the same signature.
+
+Implementation mode: **quality**. Spec lifecycle: high-additive-bundle (audit-spec composition; Phase 1 → Phase 2 → Phase 3).
+
+---
+
 ## [3.0.3] — 2026-05-01
 
 **Frontend ergonomics + README CI gate (patch).** Closes audit findings F-FE-001 (TypeScript port — README quick-start broken examples + missing aliases) and F-INT-002 (TypeScript port — registry detect example uses wrong field path) by (1) adding six plain-text-friendly ergonomic alias exports to `@stoachain/dalos-crypto/gen1` (`sign`, `verify`, `encrypt`, `decrypt`, `textToBitString`, `bitStringToText`) so the README quick-start snippets become real, callable code; (2) rewriting all five broken `ts`-tagged code blocks in `ts/README.md` (Mint, Quick-Start Sign, Quick-Start AES, Detect, Subpaths) so every example compiles cleanly under tsc; (3) adding a new `npm run docs:check` script + matching CI step that extracts every fenced `ts`/`typescript` block from `ts/README.md` and typechecks it on every push, preventing future README drift. **366/366 TS tests pass** (347 baseline + 11 new alias round-trip tests + 8 new CI-workflow structural tests in `ts/tests/ci-workflow/`). Pure additive — every existing export remains in place; no breaking changes.

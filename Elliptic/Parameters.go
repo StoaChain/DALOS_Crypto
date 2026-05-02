@@ -4,6 +4,7 @@ import (
     aux "DALOS_Crypto/Auxilliary"
     "math/big"
     "strconv"
+    "sync"
 )
 
 var (
@@ -21,16 +22,41 @@ type Ellipse struct {
     Q big.Int //Prime Number defining the Generator (Base-Point) Order
     T big.Int //Trace of the Curve
     R big.Int //Elliptic Curve Cofactor: R*Q = P + 1 - T
-    
+
     //Coefficients (Equation Parameters)
     A big.Int // x^2 Coefficient (Twisted Edwards Curve)
     D big.Int // x^2 * y^2 Coefficient (Twisted Edwards Curve)
-    
+
     //Curve safe scalar size in bits
     S uint32
-    
+
     //Point Coordinates
     G CoordAffine
+
+    // Generator-precompute cache. Single *generatorPMCache pointer so
+    // the underlying memory (sync.Once + cached matrix slot) is shared
+    // across all value-copies of an Ellipse — the curve factories return
+    // Ellipse by value and downstream callers may further copy the
+    // struct, but the *generatorPMCache is aliased on every copy. The
+    // populator runs at most once per holder; subsequent reads on any
+    // value-copy hit the same cached matrix. Populated lazily on first
+    // call to PrecomputeMatrixWithGenerator under the once guard. The
+    // matrix is identical to e.PrecomputeMatrix(e.Affine2Extended(e.G))
+    // — only the COMPUTATION PATH changes (cache-lookup vs rebuild),
+    // never the COMPUTED VALUE. Genesis byte-identity is preserved.
+    generatorCache *generatorPMCache
+}
+
+// generatorPMCache is the heap-resident holder for the per-curve
+// generator-precompute matrix. Lives on the heap so that value-copies
+// of Ellipse all reference the SAME cache slot — eliminates the latent
+// value-copy NPE where one copy populates and a second pre-populated
+// copy reads its own (still-nil) generatorPM. Sealed inside the package
+// because consumers should never construct one directly; the curve
+// factories own initialisation.
+type generatorPMCache struct {
+    once sync.Once
+    pm   *[7][7]CoordExtended
 }
 
 type PrimePowerTwo struct {
@@ -177,7 +203,9 @@ func E521Ellipse() Ellipse {
     //Generator Coordinates
     e.G.AX.SetString("1571054894184995387535939749894317568645297350402905821437625181152304994381188529632591196067604100772673927915114267193389905003276673749012051148356041324", 10)
     e.G.AY.SetInt64(12)
-    
+
+    e.generatorCache = &generatorPMCache{}
+
     return e
 }
 
@@ -219,6 +247,8 @@ func DalosEllipse() Ellipse {
     e.G.AY = new(big.Int) // Allocate memory for AY
     e.G.AX.SetInt64(2)
     e.G.AY.SetString("479577721234741891316129314062096440203224800598561362604776518993348406897758651324205216647014453759416735508511915279509434960064559686580741767201752370055871770203009254182472722342456597752506165983884867351649283353392919401537107130232654743719219329990067668637876645065665284755295099198801899803461121192253205447281506198423683290960014859350933836516450524873032454015597501532988405894858561193893921904896724509904622632232182531698393484411082218273681226753590907472", 10)
+
+    e.generatorCache = &generatorPMCache{}
 
     return e
 }
@@ -279,6 +309,8 @@ func LetoEllipse() Ellipse {
     e.G.AX.SetInt64(5)
     e.G.AY.SetString("4518488039903337342061416616304793185577751419009710712882273229786958102867981468569632796010757506367702155510163192445896310025029799220155797291359909742186717128", 10)
 
+    e.generatorCache = &generatorPMCache{}
+
     return e
 }
 
@@ -319,6 +351,8 @@ func ArtemisEllipse() Ellipse {
     e.G.AX.SetInt64(18)
     e.G.AY.SetString("5006392512810367543241026017186205828475671321699765938632799901604288413670061260105487647663536568022230479638139010351335665470173712718298837530633945899923869302110921390691280063917337749102198086546109683731403172016859789550276802795383170944526602213977392860793115308281053135496569817870067300616902", 10)
 
+    e.generatorCache = &generatorPMCache{}
+
     return e
 }
 
@@ -358,6 +392,8 @@ func ApolloEllipse() Ellipse {
     e.G.AY = new(big.Int)
     e.G.AX.SetInt64(18)
     e.G.AY.SetString("215278369951571488896917596155404324026002302190181825431681175816997859909367143653000579666656344456792257669605762582468610930751115704301503268336066379058325768607564533090162357247378501333085803173440477981455490888754538866823680129180124913908161391361773138634347515375569488540295649449731695734303", 10)
+
+    e.generatorCache = &generatorPMCache{}
 
     return e
 }

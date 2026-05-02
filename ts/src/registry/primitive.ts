@@ -153,8 +153,13 @@ export interface CryptographicPrimitive {
 
   /**
    * Produce a signature over `message` using `keyPair`'s private key.
-   * Returns `""` on internal failure. Output determinism is
+   * Throws `SchnorrSignError` on internal failure (e.g. unparseable
+   * public key in `keyPair.publ`). Output determinism is
    * primitive-specific: Gen-1 Schnorr v2 is fully deterministic.
+   *
+   * @throws {SchnorrSignError} If signing fails internally (e.g. the
+   *   Fiat-Shamir challenge derivation produces `null` because
+   *   `keyPair.publ` cannot be parsed back to a curve point).
    */
   sign?(keyPair: KeyPair, message: string | Uint8Array): string;
 

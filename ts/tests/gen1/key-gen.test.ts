@@ -262,7 +262,7 @@ describe('fromBitmap (BYTE-IDENTITY END-TO-END)', () => {
       expect(k.standardAddress).toBe(v.standard_address);
       expect(k.smartAddress).toBe(v.smart_address);
     }
-  }, 120_000); // 20 bitmap vectors × 1600-bit keygen
+  }, 30_000); // 30s ceiling per REQ-15; PM cache landed in v3.1.0
 
   it('specific pattern check: all-white bitmap', () => {
     const v = bitmapVectors().find((x) => x.pattern === 'all-white (zeros)');

@@ -139,13 +139,50 @@ console.log(accounts.map((acc) => acc.standardAddress));
 ### Sign + verify (Schnorr v2)
 
 ```ts
-import { sign, verify } from "@stoachain/dalos-crypto/gen1";
+import { SchnorrSignError, sign, verify } from "@stoachain/dalos-crypto/gen1";
 import { DalosGenesis } from "@stoachain/dalos-crypto/registry";
 
 const account = DalosGenesis.generateRandom();
-const sig = sign(account.keyPair, "hello world");
+let sig = "";
+try {
+  sig = sign(account.keyPair, "hello world");
+} catch (e) {
+  if (e instanceof SchnorrSignError) {
+    console.error("sign failed:", e.message);
+  }
+  throw e;
+}
 console.log(verify(sig, "hello world", account.keyPair.publ)); // true
 ```
+
+### Browser-friendly async signing (since v3.1.0)
+
+For browser consumers running Schnorr at full curve scale, the
+synchronous variants block the UI thread for hundreds of milliseconds
+to seconds; the async variants yield to the event loop every 8
+outer-loop iterations on a fixed data-independent cadence and keep
+Interaction-to-Next-Paint (INP) under 200 ms.
+
+Three additive functions, all re-exported from `@stoachain/dalos-crypto/gen1`:
+`scalarMultiplierAsync`, `schnorrSignAsync`, `schnorrVerifyAsync`. The
+yield trigger depends only on the scalar-mult outer-loop iteration
+index — never on the scalar value or any secret-derived branch — so
+the constant-time property of the synchronous path is preserved.
+Output is byte-identical to the sync variants for the same inputs
+(deterministic v2 RFC-6979-style nonces).
+
+```ts
+import { schnorrSignAsync, schnorrVerifyAsync } from "@stoachain/dalos-crypto/gen1";
+import { DalosGenesis } from "@stoachain/dalos-crypto/registry";
+
+const account = DalosGenesis.generateRandom();
+const sig = await schnorrSignAsync(account.keyPair, "hello world");
+console.log(await schnorrVerifyAsync(sig, "hello world", account.keyPair.publ)); // true
+```
+
+This is the recommended path for any UI thread that issues `Q-1`-scale
+operations; the sync variants remain the default for Node/server
+contexts where blocking is acceptable.
 
 ### AES encryption (Genesis-compatible key-file format)
 

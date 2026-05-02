@@ -25,6 +25,13 @@ jobs:
     # Actions → General → Workflow permissions = "Read and write").
     permissions:
       contents: write
+      # `id-token: write` enables npm provenance: the `npm publish --provenance`
+      # step (below) signs the package with a SLSA attestation bound to this
+      # workflow run's OIDC token. npmjs displays a "Provenance" badge for
+      # consumers, and GitHub surfaces the linked package on the repo sidebar
+      # when the npmjs `repository` field points back at this repo. Available
+      # since npm 9.5; requires this permission at the job level.
+      id-token: write
     defaults:
       run:
         working-directory: ts
@@ -94,51 +101,69 @@ jobs:
           EOF
 
       - name: Publish to npmjs.org
-        run: npm publish --access public
+        # `--provenance` requires `id-token: write` (granted at job level above)
+        # plus npm 9.5+ (Node 24's bundled npm satisfies). The attestation is
+        # generated automatically and uploaded alongside the tarball.
+        run: npm publish --access public --provenance
 
       - name: Verify tarball contents (sanity)
         if: always()
         run: npm pack --dry-run
 
       - name: Create GitHub Release for the pushed tag
-        # Runs from repo root because gh CLI does not depend on CWD when --repo is provided.
-        # The default working-directory: ts setting on the job affects `run:` commands but
-        # gh's --repo flag makes this CWD-independent.
+        # The `--repo` flag is INTENTIONALLY OMITTED. The combination
+        # `gh release create --notes-from-tag --repo X` stopped being supported
+        # on GitHub-hosted runners around 2026-04-30 (gh CLI image update),
+        # silently breaking auto-Release creation on every publish. Without
+        # `--repo`, gh defaults to the current working directory's repo,
+        # which is fine here because we're inside the checkout.
+        # Title strips the `ts-` prefix so the Release displays as `v3.1.0`
+        # rather than `ts-v3.1.0`, matching the npm package version exactly
+        # (the underlying tag retains the prefix for git-side disambiguation
+        # against the Go-reference `v*` tags).
+        # Fallback: if this step still fails, /bee:pollinate's REST API
+        # fallback creates the Release manually after the workflow ends.
         working-directory: ${{ github.workspace }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+          TITLE="${TAG#ts-}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release for $TAG already exists — skipping."
           else
             gh release create "$TAG" \
-              --repo "${{ github.repository }}" \
-              --title "$TAG" \
+              --title "$TITLE" \
               --notes-from-tag \
               --latest
-            echo "Created GitHub Release for $TAG."
+            echo "Created GitHub Release: tag=$TAG title=$TITLE."
           fi
 
       - name: Backfill GitHub Releases for prior tags (idempotent)
-        # Idempotent backfill — for each prior tag listed below, create a GitHub Release
-        # if one does not already exist. Safe to re-run on every publish; subsequent runs
-        # silently skip already-Released tags. Annotated tags use their tag message as
-        # release notes; lightweight tags produce empty-bodied Release objects.
+        # Idempotent backfill — for each prior tag, create a GitHub Release if
+        # one does not already exist. Safe to re-run on every publish; subsequent
+        # runs silently skip already-Released tags. Annotated tags use their tag
+        # message as release notes; lightweight tags produce empty-bodied Release
+        # objects. Title strips the `ts-` prefix (same convention as the main
+        # release-creation step above).
+        # The list below covers every `ts-v*` tag that should have a Release.
+        # /bee:pollinate's backfill step (called from main user invocation) is
+        # the canonical front-door; this workflow step is a safety net for
+        # scenarios where pollinate hasn't run yet.
         working-directory: ${{ github.workspace }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          for PRIOR_TAG in ts-v1.0.0 ts-v1.1.0 ts-v1.2.0 ts-v3.0.0 ts-v3.0.1; do
-            if gh release view "$PRIOR_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+          for PRIOR_TAG in ts-v1.0.0 ts-v1.1.0 ts-v1.2.0 ts-v3.0.0 ts-v3.0.1 ts-v3.0.2 ts-v3.0.3 ts-v3.1.0; do
+            PRIOR_TITLE="${PRIOR_TAG#ts-}"
+            if gh release view "$PRIOR_TAG" >/dev/null 2>&1; then
               echo "Backfill: $PRIOR_TAG Release already exists — skipping."
             else
               if git rev-parse "$PRIOR_TAG" >/dev/null 2>&1; then
                 gh release create "$PRIOR_TAG" \
-                  --repo "${{ github.repository }}" \
-                  --title "$PRIOR_TAG" \
+                  --title "$PRIOR_TITLE" \
                   --notes-from-tag
-                echo "Backfilled GitHub Release for $PRIOR_TAG."
+                echo "Backfilled GitHub Release: tag=$PRIOR_TAG title=$PRIOR_TITLE."
               else
                 echo "Backfill: tag $PRIOR_TAG does not exist in repo — skipping."
               fi

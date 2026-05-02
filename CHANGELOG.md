@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Publish-pipeline hygiene (infra, no npm version bump)
+
+Landed alongside the v3.1.0 release work but does NOT bump the npm package version — these changes are repo-infrastructure cleanup that take effect on the NEXT publish (v3.2.0). Documented here so the v3.2.0 CHANGELOG entry can reference back.
+
+- **GitHub Releases backfilled.** All 7 prior `ts-v*` tags (`ts-v1.0.0`, `ts-v1.1.0`, `ts-v1.2.0`, `ts-v3.0.0`, `ts-v3.0.1`, `ts-v3.0.2`, `ts-v3.0.3`) now have GitHub Release pages, populated from each tag's annotation body plus the matching CHANGELOG section where one exists. Display titles drop the `ts-` prefix (e.g. `v3.0.3` rather than `ts-v3.0.3`) so the Releases page reads identically to the npm version listing — the underlying tag retains the prefix for git-side disambiguation against the Go-reference `v*` tags.
+- **`ts-v3.1.0` Release title renamed** from `ts-v3.1.0` to `v3.1.0` for the same display consistency.
+- **`.github/workflows/ts-publish.yml` patched.** Three fixes:
+  1. The `Create GitHub Release for the pushed tag` step previously called `gh release create --notes-from-tag --repo X`, a flag combination that became unsupported on GitHub-hosted runners around 2026-04-30 (gh CLI image update). Removed the `--repo` flag so the gh CLI defaults to the checked-out repo. Same fix applied to the backfill step. Title computation updated to strip the `ts-` prefix.
+  2. The backfill list now enumerates all 8 `ts-v*` tags (was missing `ts-v3.0.2`, `ts-v3.0.3`, `ts-v3.1.0`).
+  3. **npm provenance enabled.** Added `id-token: write` to the job permissions block and `--provenance` to the `npm publish` step. Future publishes (v3.2.0 onward) will carry an SLSA attestation linking the npm package back to the GitHub Action run that produced it. npmjs.com displays a "Provenance" badge on the package page; consumers can verify the package was built by this exact workflow on this exact commit.
+- **`/bee:pollinate` command** added to the user-global Bee plugin commands at `commands/pollinate.md`. Post-ship publishing pipeline for npm-backed GitHub repos: pushes to origin/main, creates the annotated tag from CHANGELOG content, monitors the CI publish workflow, falls back to REST-API Release creation if the workflow's gh-release step fails, verifies the npm registry and provenance attestation, and backfills any missing prior Releases. Driven by a per-project `lifecycle` block in `.bee/config.json` so it works for both dual-stack monorepos (DALOS_Crypto with `ts/` subpath) and single-stack packages.
+- **`.bee/config.json` lifecycle block added** wiring DALOS_Crypto into the pollinate flow: `npm_dir: "ts"`, `tag_pattern: "ts-v{version}"`, `release_title_pattern: "v{version}"`, `use_provenance: true`. The next release (v3.2.0 medium-bundle) will publish through `/bee:pollinate` end-to-end instead of the manual sequence used for v3.1.0.
+
 ### Planned
 
 - TypeScript port (`ts/` subdirectory) — begin Phase 1 of [`docs/TS_PORT_PLAN.md`](docs/TS_PORT_PLAN.md) (math foundation).

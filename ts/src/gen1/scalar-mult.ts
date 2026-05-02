@@ -34,7 +34,7 @@
 import type { CoordExtended } from './coords.js';
 import { INFINITY_POINT_EXTENDED } from './coords.js';
 import { DALOS_ELLIPSE, DALOS_FIELD, type Ellipse, affine2Extended } from './curve.js';
-import type { Modular } from './math.js';
+import { Modular } from './math.js';
 import { ZERO } from './math.js';
 import { type PrecomputeMatrix, addition, fortyNiner, precomputeMatrix } from './point-ops.js';
 

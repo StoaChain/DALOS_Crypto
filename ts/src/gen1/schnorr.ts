@@ -35,6 +35,7 @@ import {
   affine2Extended,
   arePointsEqual,
   extended2Affine,
+  isInfinityPoint,
   isOnCurve,
 } from './curve.js';
 import { affineToPublicKey, parseBigIntInBase, publicKeyToAffineCoords } from './hashing.js';
@@ -79,8 +80,12 @@ export interface SchnorrSignature {
  * 4-byte big-endian length prefix followed by the data bytes.
  * Matches Go's `writeLenPrefixed` that uses
  * `binary.BigEndian.PutUint32(lenBytes[:], uint32(len(data)))`.
+ *
+ * Exported for byte-pinning in unit tests (REQ-18). Wire-format helper
+ * — internal callers should still prefer building the transcript via
+ * the surrounding `schnorrHash` API.
  */
-function lenPrefixedConcat(parts: readonly Uint8Array[]): Uint8Array {
+export function lenPrefixedConcat(parts: readonly Uint8Array[]): Uint8Array {
   let total = 0;
   for (const p of parts) total += 4 + p.length;
   const out = new Uint8Array(total);
@@ -209,6 +214,33 @@ export function schnorrHash(
 // ============================================================================
 
 /**
+ * Build the deterministic-nonce seed buffer:
+ * `tag || 0x00 sentinel || canonical(k) || msgHash`.
+ *
+ * The 0x00 sentinel byte is the SC-2 length-extension defense: without
+ * it, an attacker controlling k could craft (k_alt, m_alt) such that
+ * `tag || canonical(k_alt) == tag || 0x00 || canonical(k)`, causing
+ * nonce reuse across distinct inputs.
+ *
+ * Exported separately so the sentinel placement can be byte-pinned in
+ * unit tests (REQ-18) — otherwise it's unobservable through the
+ * `deterministicNonce` API, which only returns a single bigint.
+ */
+export function buildNonceSeed(
+  tag: Uint8Array,
+  k: bigint,
+  msgHash: Uint8Array,
+): Uint8Array {
+  const kBytes = bigIntBytesCanon(k);
+  const out = new Uint8Array(tag.length + 1 + kBytes.length + msgHash.length);
+  out.set(tag, 0);
+  out[tag.length] = 0x00; // SC-2 sentinel
+  out.set(kBytes, tag.length + 1);
+  out.set(msgHash, tag.length + 1 + kBytes.length);
+  return out;
+}
+
+/**
  * Derive a deterministic nonce `z ∈ [1, Q-1]` from the private key and
  * a message digest. Matches Go's `(*Ellipse).deterministicNonce` exactly:
  *
@@ -226,17 +258,7 @@ export function deterministicNonce(
   e: Ellipse = DALOS_ELLIPSE,
 ): bigint {
   const tagBytes = utf8.encode(SCHNORR_NONCE_DOMAIN_TAG);
-  const kBytes = bigIntBytesCanon(k);
-
-  const seed = new Uint8Array(tagBytes.length + 1 + kBytes.length + messageHash.length);
-  let offset = 0;
-  seed.set(tagBytes, offset);
-  offset += tagBytes.length;
-  seed[offset] = 0x00;
-  offset += 1;
-  seed.set(kBytes, offset);
-  offset += kBytes.length;
-  seed.set(messageHash, offset);
+  const seed = buildNonceSeed(tagBytes, k, messageHash);
 
   // Byte-align. DALOS s=1600 → 400 bytes exactly (back-compat). For
   // non-byte-aligned safe-scalars (LETO s=545 → 137 bytes, ARTEMIS
@@ -354,6 +376,12 @@ export function schnorrVerify(
   const [onCurveR] = isOnCurve(rExtended, e);
   if (!onCurveR) return false;
 
+  // F-SEC-001: cofactor subgroup-membership check on R.
+  // Legitimate R = [k]·G has [4]·R = [4k]·G ≠ O (gcd(4, Q)=1, k ∈ [1, Q-1]).
+  // Rejects order-4 small-subgroup attack points.
+  const rCofactor = scalarMultiplier(e.r, rExtended, e);
+  if (isInfinityPoint(rCofactor)) return false;
+
   // Parse public key
   let pkAffine: CoordAffine;
   try {
@@ -367,6 +395,11 @@ export function schnorrVerify(
   const pExtended = affine2Extended(pkAffine, m);
   const [onCurveP] = isOnCurve(pExtended, e);
   if (!onCurveP) return false;
+
+  // F-SEC-001: cofactor subgroup-membership check on P (public key).
+  // Same rationale as R — rejects order-4 small-subgroup attack public keys.
+  const pCofactor = scalarMultiplier(e.r, pExtended, e);
+  if (isInfinityPoint(pCofactor)) return false;
 
   // Fiat–Shamir challenge
   const challenge = schnorrHash(sig.r.ax, publicKey, message, e);

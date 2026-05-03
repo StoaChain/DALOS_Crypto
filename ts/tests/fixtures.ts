@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const corpusPath = resolve(here, '..', '..', 'testvectors', 'v1_genesis.json');
 const historicalCorpusPath = resolve(here, '..', '..', 'testvectors', 'v1_historical.json');
+const adversarialCorpusPath = resolve(here, '..', '..', 'testvectors', 'v1_adversarial.json');
 
 export interface BitStringVector {
   readonly id: string;
@@ -166,6 +167,45 @@ export function seedWordsVectors(): readonly SeedWordsVector[] {
 
 export function bitmapVectors(): readonly BitmapVector[] {
   return loadCorpus().bitmap_vectors;
+}
+
+/**
+ * Phase 6 (REQ-19): Adversarial cofactor vectors loaded from
+ * testvectors/v1_adversarial.json. Each vector is a (signature, message,
+ * pubkey) triple with an expected_verify_result. Used by the TS adversarial
+ * test suite to assert schnorrVerify behaviour matches the Go reference
+ * generator's pre-computed expectations.
+ */
+export interface AdversarialCofactorVector {
+  readonly id: string;
+  readonly description: string;
+  readonly malformed_signature: string;
+  readonly legit_message: string;
+  readonly legit_public_key: string;
+  readonly expected_verify_result: boolean;
+  readonly construction_method: string;
+  readonly order_proof: string;
+}
+
+export interface AdversarialCorpus {
+  readonly adversarial_cofactor_vectors: readonly AdversarialCofactorVector[];
+}
+
+let cachedAdversarialCorpus: AdversarialCorpus | undefined;
+
+/**
+ * Load the Go-reference adversarial-vector corpus. Cached after first call.
+ */
+export function loadAdversarialCorpus(): AdversarialCorpus {
+  if (cachedAdversarialCorpus === undefined) {
+    const raw = readFileSync(adversarialCorpusPath, 'utf-8');
+    cachedAdversarialCorpus = JSON.parse(raw) as AdversarialCorpus;
+  }
+  return cachedAdversarialCorpus;
+}
+
+export function adversarialCofactorVectors(): readonly AdversarialCofactorVector[] {
+  return loadAdversarialCorpus().adversarial_cofactor_vectors;
 }
 
 export function schnorrVectors(): readonly SchnorrVector[] {

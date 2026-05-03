@@ -31,6 +31,7 @@ import (
 	el "DALOS_Crypto/Elliptic"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	mrand "math/rand"
 	"os"
 	"time"
@@ -90,6 +91,33 @@ type SchnorrVector struct {
 	Signature      string `json:"signature"`       // R-point + s, non-deterministic
 	VerifyExpected bool   `json:"verify_expected"` // always true for our own signatures
 	VerifyActual   bool   `json:"verify_actual"`
+}
+
+// AdversarialCofactorVector — REQ-19a (T6.7).
+//
+// Captures a malformed Schnorr signature/public-key whose R or P component
+// has been replaced with a point of order ≤ 4 (i.e. lying in the cofactor
+// subgroup of the DALOS twisted-Edwards curve, h = 4). A correctly hardened
+// SchnorrVerify rejects every such input — the cofactor membership check
+// added in T6.2 multiplies R and P by [4] and rejects on identity.
+//
+// The control vector (adv-control-0001) carries an unmodified, legitimately
+// produced signature; verifier MUST accept it. This guards against an
+// over-rejection regression where the cofactor check would also discard
+// honest signatures.
+//
+// The construction is permanent regression coverage: any future change that
+// silently disables the cofactor check (or, conversely, breaks the legit
+// path) will cause the generator's defensive panic to fire.
+type AdversarialCofactorVector struct {
+	ID                   string `json:"id"`
+	Description          string `json:"description"`
+	MalformedSignature   string `json:"malformed_signature"`
+	LegitMessage         string `json:"legit_message"`
+	LegitPublicKey       string `json:"legit_public_key"`
+	ExpectedVerifyResult bool   `json:"expected_verify_result"`
+	ConstructionMethod   string `json:"construction_method"`
+	OrderProof           string `json:"order_proof"`
 }
 
 type VectorCorpus struct {
@@ -408,6 +436,7 @@ func must(err error, context string) {
 
 func main() {
 	generateGenesis()
+	generateAdversarial()
 	generateHistorical()
 }
 
@@ -622,6 +651,187 @@ func generateGenesis() {
 	fmt.Fprintf(os.Stderr, "    %d bitmap vectors\n", len(corpus.BitmapVectors))
 	fmt.Fprintf(os.Stderr, "    %d schnorr vectors\n", len(corpus.SchnorrVectors))
 	fmt.Fprintf(os.Stderr, "    %d / %d schnorr signatures self-verified\n", schnorrPass, len(corpus.SchnorrVectors))
+	fmt.Fprintln(os.Stderr, "=============================================================")
+}
+
+// generateAdversarial builds the v1_adversarial.json corpus — REQ-19a (T6.7).
+//
+// Produces 4 attack vectors and 1 control:
+//
+//   adv-cof-0001 : legit signature with R replaced by the order-2 point
+//                  (0, P-1). [4]·(0, P-1) = O, so the cofactor check in
+//                  SchnorrVerify (T6.2) rejects it.
+//   adv-cof-0002 : legit signature, but the public key is replaced with
+//                  the canonical wire-format encoding of (0, P-1).
+//   adv-cof-0003 : both R and the public key replaced with (0, P-1).
+//   adv-edge-0001: legit signature with R replaced by the curve identity
+//                  (0, 1). [4]·O = O — the cofactor check catches it
+//                  (in addition to the on-curve identity guard).
+//   adv-control  : a legitimate signature, untouched. MUST verify true,
+//                  proving the cofactor check does not over-reject.
+//
+// The order-2 point (0, P-1) is on the twisted-Edwards curve a·x² + y² =
+// 1 + d·x²·y² for any (a, d): with x = 0 and y = -1 (mod P), the equation
+// becomes 0 + 1 = 1 + 0, which holds. Doubling it on the curve yields the
+// identity (0, 1), confirming order 2 — hence membership in the cofactor-4
+// subgroup.
+//
+// After generating all 5 vectors the function asserts 4 rejections and
+// 1 acceptance. Failure to meet that ratio panics — that is the explicit
+// signal that the cofactor membership check has silently regressed.
+func generateAdversarial() {
+	ellipse := el.DalosEllipse()
+
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "=============================================================")
+	fmt.Fprintln(os.Stderr, "  Generating adversarial cofactor vectors (REQ-19a / T6.7)...")
+
+	// Dedicated RNG seed so the existing 105-vector streams stay byte-identical.
+	rngAdv := mrand.New(mrand.NewSource(0xADCFAC704))
+
+	bits := randomBitString(rngAdv, int(ellipse.S))
+	scalar, err := ellipse.GenerateScalarFromBitString(bits)
+	must(err, "adversarial: GenerateScalarFromBitString")
+	keyPair, err := ellipse.ScalarToKeys(scalar)
+	must(err, "adversarial: ScalarToKeys")
+
+	legitMsg := "T6.7-cofactor-adversarial-vector"
+	legitSig := ellipse.SchnorrSign(keyPair, legitMsg)
+	if !ellipse.SchnorrVerify(legitSig, legitMsg, keyPair.PUBL) {
+		panic("adversarial generator: legit signature failed self-verify (cannot proceed)")
+	}
+
+	// The order-2 point T₂ = (0, P-1). Its affine wire-format encoding is
+	// the malicious public key for adv-cof-0002 / adv-cof-0003.
+	pMinusOne := new(big.Int).Sub(&ellipse.P, big.NewInt(1))
+	t2Affine := el.CoordAffine{AX: new(big.Int).SetInt64(0), AY: new(big.Int).Set(pMinusOne)}
+	maliciousPubKey := el.AffineToPublicKey(t2Affine)
+
+	// The curve identity (0, 1) for adv-edge-0001.
+	identityAffine := el.CoordAffine{AX: new(big.Int).SetInt64(0), AY: new(big.Int).SetInt64(1)}
+
+	// Helper: clone the legit signature and swap its R for the supplied affine.
+	mutateR := func(newR el.CoordAffine) string {
+		parsed, perr := el.ConvertSchnorrSignatureAsStringToStructure(legitSig)
+		if perr != nil {
+			panic(fmt.Sprintf("adversarial generator: parse legit sig: %v", perr))
+		}
+		parsed.R = newR
+		return el.ConvertSchnorrSignatureToString(parsed)
+	}
+
+	type adversarialCase struct {
+		id              string
+		description     string
+		signature       string
+		publicKey       string
+		expectAccept    bool
+		construction    string
+		orderProof      string
+	}
+
+	cases := []adversarialCase{
+		{
+			id:           "adv-cof-0001",
+			description:  "Legit signature with R replaced by the order-2 point (0, P-1).",
+			signature:    mutateR(t2Affine),
+			publicKey:    keyPair.PUBL,
+			expectAccept: false,
+			construction: "R := CoordAffine{AX: 0, AY: P-1}; re-serialize via ConvertSchnorrSignatureToString.",
+			orderProof:   "On twisted-Edwards a·x²+y² = 1+d·x²·y², (0,-1) gives 0+1 = 1+0 ✓; doubling yields identity (0,1) → order 2 → lies in the cofactor-4 subgroup → [4]·R = O.",
+		},
+		{
+			id:           "adv-cof-0002",
+			description:  "Legit signature, public key replaced with the order-2 point (0, P-1) in canonical wire format.",
+			signature:    legitSig,
+			publicKey:    maliciousPubKey,
+			expectAccept: false,
+			construction: "publicKey := AffineToPublicKey(CoordAffine{AX: 0, AY: P-1}).",
+			orderProof:   "Same as adv-cof-0001 — (0, P-1) has order 2 and lies in the 4-torsion subgroup; [4]·P = O.",
+		},
+		{
+			id:           "adv-cof-0003",
+			description:  "Legit signature with both R AND public key replaced by (0, P-1).",
+			signature:    mutateR(t2Affine),
+			publicKey:    maliciousPubKey,
+			expectAccept: false,
+			construction: "Combine adv-cof-0001 (R swap) with adv-cof-0002 (public-key swap).",
+			orderProof:   "Both R and P are the order-2 point (0, P-1); [4]·R = [4]·P = O.",
+		},
+		{
+			id:           "adv-edge-0001",
+			description:  "Legit signature with R replaced by the curve identity (0, 1).",
+			signature:    mutateR(identityAffine),
+			publicKey:    keyPair.PUBL,
+			expectAccept: false,
+			construction: "R := CoordAffine{AX: 0, AY: 1} — affine encoding of the extended-coords identity {0,1,1,0}.",
+			orderProof:   "Identity has order 1; trivially [4]·O = O. Cofactor check rejects.",
+		},
+		{
+			id:           "adv-control-0001",
+			description:  "Untouched legit signature. Verifier MUST accept; proves cofactor check does not over-reject honest inputs.",
+			signature:    legitSig,
+			publicKey:    keyPair.PUBL,
+			expectAccept: true,
+			construction: "Direct output of SchnorrSign(keyPair, legitMsg) — no mutation.",
+			orderProof:   "n/a (control). Honest R = [z]·G with z ∈ [1, Q-1] satisfies [4]·R ≠ O because gcd(4, Q) = 1.",
+		},
+	}
+
+	adversarialVectors := make([]AdversarialCofactorVector, 0, len(cases))
+	adversarialReject := 0
+	controlAccept := 0
+	for _, c := range cases {
+		actual := ellipse.SchnorrVerify(c.signature, legitMsg, c.publicKey)
+		if c.expectAccept {
+			if actual {
+				controlAccept++
+			}
+		} else {
+			if !actual {
+				adversarialReject++
+			}
+		}
+
+		adversarialVectors = append(adversarialVectors, AdversarialCofactorVector{
+			ID:                   c.id,
+			Description:          c.description,
+			MalformedSignature:   c.signature,
+			LegitMessage:         legitMsg,
+			LegitPublicKey:       c.publicKey,
+			ExpectedVerifyResult: c.expectAccept,
+			ConstructionMethod:   c.construction,
+			OrderProof:           c.orderProof,
+		})
+	}
+
+	// Defensive panic — fires if the cofactor check is silently inactive
+	// (no rejections) or if it has over-rejected the control (no acceptance).
+	// This is the load-bearing assertion for T6.7 / REQ-19a.
+	if adversarialReject != 4 || controlAccept != 1 {
+		panic(fmt.Sprintf(
+			"cofactor-check inactive or over-rejecting: %d/4 attacks rejected, %d/1 controls accepted",
+			adversarialReject, controlAccept))
+	}
+
+	// Write atomically: .tmp then rename, so concurrent readers never observe
+	// a half-written file. Same pattern as the genesis/historical writers.
+	adversarialOutput := struct {
+		AdversarialCofactorVectors []AdversarialCofactorVector `json:"adversarial_cofactor_vectors"`
+	}{
+		AdversarialCofactorVectors: adversarialVectors,
+	}
+	adversarialJSON, err := json.MarshalIndent(adversarialOutput, "", "  ")
+	must(err, "marshal adversarial corpus")
+
+	tmpPath := "testvectors/v1_adversarial.json.tmp"
+	finalPath := "testvectors/v1_adversarial.json"
+	must(os.WriteFile(tmpPath, adversarialJSON, 0644), "write v1_adversarial.json.tmp")
+	must(os.Rename(tmpPath, finalPath), "rename v1_adversarial.json.tmp")
+
+	fmt.Fprintf(os.Stderr, "  %d / 4 adversarial signatures correctly REJECTED by SchnorrVerify\n", adversarialReject)
+	fmt.Fprintf(os.Stderr, "  %d / 1 control signatures correctly ACCEPTED by SchnorrVerify\n", controlAccept)
+	fmt.Fprintf(os.Stderr, "  DONE. 5 adversarial vectors written to %s\n", finalPath)
 	fmt.Fprintln(os.Stderr, "=============================================================")
 }
 

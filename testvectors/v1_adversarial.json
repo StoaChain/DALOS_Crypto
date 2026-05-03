@@ -1,0 +1,54 @@
+{
+  "adversarial_cofactor_vectors": [
+    {
+      "id": "adv-cof-0001",
+      "description": "Legit signature with R replaced by the order-2 point (0, P-1).",
+      "malformed_signature": "1.s0fEevrIA7tMg3pc98p2snrztwjiH8AK36u6c2AvG7ut1CzGq2hHkAD8l3K16zjIFl5z4scsbD2zfGmth8FcnDJmss4mleo6MpzM5kqKKJBxq1Axgv1BC7iFmDIgDI02o2dHELEAImlspxHMdds2bxaGjgn4sqi2Jbi8xmEkJ44pdyMze6d6de15BsKoI7odBglBkqeh0hKJG0Kk74cI6oMzKzctKKIjed4iusnA8r5KvbI35CdyC2pwFgvGdxE4bmqJ7BIeo29yKy7oLxMnwKhxj2wIGx|2ay9AlGrL5htdullK6862Mj3r11Dob6BFte00l0rlurEohgGaD4ot4qkfzyviGdF7wzrbxwEhBHbyIEw8yb1qsdhetl1mutwh0CKqApDfiA5j40uEep1n5zvd97o19tfL7JrKhdf6sDxjjvu0F7hKt2I08mGz9byeMfftCigyE8ab4EtskkJFAz8hBzyjGK8C8dFla87eMHag02EApJofzM8BoJued5m2tzpk6E1Fu1KBh1y2rthEHJE2pFztlaiH2d1wqIcmbeCByFrjigIitAoliB8q3",
+      "legit_message": "T6.7-cofactor-adversarial-vector",
+      "legit_public_key": "9F.1duIjdwbM943MJz6ox9BfCnCo8vvGjvkIvorlhw2wwu5xBevo0u5qdJqlxkzk1byFnHq6xLC2nFsfnM78Joaomhymg8pd4yA0Hx92tJoJgmt87HzigAfm6FxmJ14G3EFny39aGhoI7p3oqsivwM7cnzvrmdhl9dwLugwEboAxtH8lmIFfG9d87bfegxHv7ghu2qnvrpfz01JI36zzcbCMoykm2e4yyyF675cywy74q6AGL3r6n8Fm29vbKsDqHEju6fJphm6olFr6sbpoGHJh7MjzvD1mFfAxmA5a26CvnwAass12bovMmcrcscxE1vBeAjaAajwrMdGJuubouF81ztGLvmAAFD12syIHz66m9gekrmDot4as4r4fJura0LFAnJEy4f9bEth2H83FmHvhK3y28issn52IiCi5lzK6wKA0Au4fl2JowF0JpogEvEKr2DFdLoDlJjlqMHdKd22cvnIoqgnBJ01tvDIx0BMc77wM9021bJ4zq4htJou27a3qms2iiq2g9LMfqHMr7w16mqdidzgEDFLgzzqGzv3eg2lA4jodED0fo0Lw8oc",
+      "expected_verify_result": false,
+      "construction_method": "R := CoordAffine{AX: 0, AY: P-1}; re-serialize via ConvertSchnorrSignatureToString.",
+      "order_proof": "On twisted-Edwards a·x²+y² = 1+d·x²·y², (0,-1) gives 0+1 = 1+0 ✓; doubling yields identity (0,1) → order 2 → lies in the cofactor-4 subgroup → [4]·R = O."
+    },
+    {
+      "id": "adv-cof-0002",
+      "description": "Legit signature, public key replaced with the order-2 point (0, P-1) in canonical wire format.",
+      "malformed_signature": "9G.2DubhMMywk61uxEgedkfbqJihewqjxnoyFs3rohrCBJDbgrFLgxGlepGHJdrxrdBImwyJG9ihlhKJvAwJIIHwpwHLir1atufsmDAHxoGf6D14G5wCED7yk7f9c0k745HHl4sxGfGLFHIwBwyoxzw1CaxEr9u3xql7ft7aB9zrlCbc7b6x7rC4vyl01qgw7w2opgF3C0aLajKzl2MhH0F9HcDkiuhiclo6M7jJcDdc9AiEHodMl3379rvtD5t4p0274AAwAjdAecnykbcuffEnhoergscrKs9aohIikb92zI7hJuww3vKzo2n4o0hEkDrAGztDtAbsGfkAdLiBBbck9tgunywE47FaC2CypzL6FdCAufof3upxdq3486iEhAs9Mi49MHgawzMClBChLBGDxza0Id8GIFxJbmuo9q8x9LEAoAhH32JFt1MBGiu0FtL1GGzhafEEwd3I05cxfpG1gB3EKwgE82sjLF4LCqJ2wpKMFd9x0olb4AD9of6BJjgCIJuGck8wCjuicd6yGu1JEq1dxMnCG1FMcvlFLqt4yJqkJfC1kDwEr9iuf1u|2ay9AlGrL5htdullK6862Mj3r11Dob6BFte00l0rlurEohgGaD4ot4qkfzyviGdF7wzrbxwEhBHbyIEw8yb1qsdhetl1mutwh0CKqApDfiA5j40uEep1n5zvd97o19tfL7JrKhdf6sDxjjvu0F7hKt2I08mGz9byeMfftCigyE8ab4EtskkJFAz8hBzyjGK8C8dFla87eMHag02EApJofzM8BoJued5m2tzpk6E1Fu1KBh1y2rthEHJE2pFztlaiH2d1wqIcmbeCByFrjigIitAoliB8q3",
+      "legit_message": "T6.7-cofactor-adversarial-vector",
+      "legit_public_key": "1.s0fEevrIA7tMg3pc98p2snrztwjiH8AK36u6c2AvG7ut1CzGq2hHkAD8l3K16zjIFl5z4scsbD2zfGmth8FcnDJmss4mleo6MpzM5kqKKJBxq1Axgv1BC7iFmDIgDI02o2dHELEAImlspxHMdds2bxaGjgn4sqi2Jbi8xmEkJ44pdyMze6d6de15BsKoI7odBglBkqeh0hKJG0Kk74cI6oMzKzctKKIjed4iusnA8r5KvbI35CdyC2pwFgvGdxE4bmqJ7BIeo29yKy7oLxMnwKhxj2wIGx",
+      "expected_verify_result": false,
+      "construction_method": "publicKey := AffineToPublicKey(CoordAffine{AX: 0, AY: P-1}).",
+      "order_proof": "Same as adv-cof-0001 — (0, P-1) has order 2 and lies in the 4-torsion subgroup; [4]·P = O."
+    },
+    {
+      "id": "adv-cof-0003",
+      "description": "Legit signature with both R AND public key replaced by (0, P-1).",
+      "malformed_signature": "1.s0fEevrIA7tMg3pc98p2snrztwjiH8AK36u6c2AvG7ut1CzGq2hHkAD8l3K16zjIFl5z4scsbD2zfGmth8FcnDJmss4mleo6MpzM5kqKKJBxq1Axgv1BC7iFmDIgDI02o2dHELEAImlspxHMdds2bxaGjgn4sqi2Jbi8xmEkJ44pdyMze6d6de15BsKoI7odBglBkqeh0hKJG0Kk74cI6oMzKzctKKIjed4iusnA8r5KvbI35CdyC2pwFgvGdxE4bmqJ7BIeo29yKy7oLxMnwKhxj2wIGx|2ay9AlGrL5htdullK6862Mj3r11Dob6BFte00l0rlurEohgGaD4ot4qkfzyviGdF7wzrbxwEhBHbyIEw8yb1qsdhetl1mutwh0CKqApDfiA5j40uEep1n5zvd97o19tfL7JrKhdf6sDxjjvu0F7hKt2I08mGz9byeMfftCigyE8ab4EtskkJFAz8hBzyjGK8C8dFla87eMHag02EApJofzM8BoJued5m2tzpk6E1Fu1KBh1y2rthEHJE2pFztlaiH2d1wqIcmbeCByFrjigIitAoliB8q3",
+      "legit_message": "T6.7-cofactor-adversarial-vector",
+      "legit_public_key": "1.s0fEevrIA7tMg3pc98p2snrztwjiH8AK36u6c2AvG7ut1CzGq2hHkAD8l3K16zjIFl5z4scsbD2zfGmth8FcnDJmss4mleo6MpzM5kqKKJBxq1Axgv1BC7iFmDIgDI02o2dHELEAImlspxHMdds2bxaGjgn4sqi2Jbi8xmEkJ44pdyMze6d6de15BsKoI7odBglBkqeh0hKJG0Kk74cI6oMzKzctKKIjed4iusnA8r5KvbI35CdyC2pwFgvGdxE4bmqJ7BIeo29yKy7oLxMnwKhxj2wIGx",
+      "expected_verify_result": false,
+      "construction_method": "Combine adv-cof-0001 (R swap) with adv-cof-0002 (public-key swap).",
+      "order_proof": "Both R and P are the order-2 point (0, P-1); [4]·R = [4]·P = O."
+    },
+    {
+      "id": "adv-edge-0001",
+      "description": "Legit signature with R replaced by the curve identity (0, 1).",
+      "malformed_signature": "1.1|2ay9AlGrL5htdullK6862Mj3r11Dob6BFte00l0rlurEohgGaD4ot4qkfzyviGdF7wzrbxwEhBHbyIEw8yb1qsdhetl1mutwh0CKqApDfiA5j40uEep1n5zvd97o19tfL7JrKhdf6sDxjjvu0F7hKt2I08mGz9byeMfftCigyE8ab4EtskkJFAz8hBzyjGK8C8dFla87eMHag02EApJofzM8BoJued5m2tzpk6E1Fu1KBh1y2rthEHJE2pFztlaiH2d1wqIcmbeCByFrjigIitAoliB8q3",
+      "legit_message": "T6.7-cofactor-adversarial-vector",
+      "legit_public_key": "9F.1duIjdwbM943MJz6ox9BfCnCo8vvGjvkIvorlhw2wwu5xBevo0u5qdJqlxkzk1byFnHq6xLC2nFsfnM78Joaomhymg8pd4yA0Hx92tJoJgmt87HzigAfm6FxmJ14G3EFny39aGhoI7p3oqsivwM7cnzvrmdhl9dwLugwEboAxtH8lmIFfG9d87bfegxHv7ghu2qnvrpfz01JI36zzcbCMoykm2e4yyyF675cywy74q6AGL3r6n8Fm29vbKsDqHEju6fJphm6olFr6sbpoGHJh7MjzvD1mFfAxmA5a26CvnwAass12bovMmcrcscxE1vBeAjaAajwrMdGJuubouF81ztGLvmAAFD12syIHz66m9gekrmDot4as4r4fJura0LFAnJEy4f9bEth2H83FmHvhK3y28issn52IiCi5lzK6wKA0Au4fl2JowF0JpogEvEKr2DFdLoDlJjlqMHdKd22cvnIoqgnBJ01tvDIx0BMc77wM9021bJ4zq4htJou27a3qms2iiq2g9LMfqHMr7w16mqdidzgEDFLgzzqGzv3eg2lA4jodED0fo0Lw8oc",
+      "expected_verify_result": false,
+      "construction_method": "R := CoordAffine{AX: 0, AY: 1} — affine encoding of the extended-coords identity {0,1,1,0}.",
+      "order_proof": "Identity has order 1; trivially [4]·O = O. Cofactor check rejects."
+    },
+    {
+      "id": "adv-control-0001",
+      "description": "Untouched legit signature. Verifier MUST accept; proves cofactor check does not over-reject honest inputs.",
+      "malformed_signature": "9G.2DubhMMywk61uxEgedkfbqJihewqjxnoyFs3rohrCBJDbgrFLgxGlepGHJdrxrdBImwyJG9ihlhKJvAwJIIHwpwHLir1atufsmDAHxoGf6D14G5wCED7yk7f9c0k745HHl4sxGfGLFHIwBwyoxzw1CaxEr9u3xql7ft7aB9zrlCbc7b6x7rC4vyl01qgw7w2opgF3C0aLajKzl2MhH0F9HcDkiuhiclo6M7jJcDdc9AiEHodMl3379rvtD5t4p0274AAwAjdAecnykbcuffEnhoergscrKs9aohIikb92zI7hJuww3vKzo2n4o0hEkDrAGztDtAbsGfkAdLiBBbck9tgunywE47FaC2CypzL6FdCAufof3upxdq3486iEhAs9Mi49MHgawzMClBChLBGDxza0Id8GIFxJbmuo9q8x9LEAoAhH32JFt1MBGiu0FtL1GGzhafEEwd3I05cxfpG1gB3EKwgE82sjLF4LCqJ2wpKMFd9x0olb4AD9of6BJjgCIJuGck8wCjuicd6yGu1JEq1dxMnCG1FMcvlFLqt4yJqkJfC1kDwEr9iuf1u|2ay9AlGrL5htdullK6862Mj3r11Dob6BFte00l0rlurEohgGaD4ot4qkfzyviGdF7wzrbxwEhBHbyIEw8yb1qsdhetl1mutwh0CKqApDfiA5j40uEep1n5zvd97o19tfL7JrKhdf6sDxjjvu0F7hKt2I08mGz9byeMfftCigyE8ab4EtskkJFAz8hBzyjGK8C8dFla87eMHag02EApJofzM8BoJued5m2tzpk6E1Fu1KBh1y2rthEHJE2pFztlaiH2d1wqIcmbeCByFrjigIitAoliB8q3",
+      "legit_message": "T6.7-cofactor-adversarial-vector",
+      "legit_public_key": "9F.1duIjdwbM943MJz6ox9BfCnCo8vvGjvkIvorlhw2wwu5xBevo0u5qdJqlxkzk1byFnHq6xLC2nFsfnM78Joaomhymg8pd4yA0Hx92tJoJgmt87HzigAfm6FxmJ14G3EFny39aGhoI7p3oqsivwM7cnzvrmdhl9dwLugwEboAxtH8lmIFfG9d87bfegxHv7ghu2qnvrpfz01JI36zzcbCMoykm2e4yyyF675cywy74q6AGL3r6n8Fm29vbKsDqHEju6fJphm6olFr6sbpoGHJh7MjzvD1mFfAxmA5a26CvnwAass12bovMmcrcscxE1vBeAjaAajwrMdGJuubouF81ztGLvmAAFD12syIHz66m9gekrmDot4as4r4fJura0LFAnJEy4f9bEth2H83FmHvhK3y28issn52IiCi5lzK6wKA0Au4fl2JowF0JpogEvEKr2DFdLoDlJjlqMHdKd22cvnIoqgnBJ01tvDIx0BMc77wM9021bJ4zq4htJou27a3qms2iiq2g9LMfqHMr7w16mqdidzgEDFLgzzqGzv3eg2lA4jodED0fo0Lw8oc",
+      "expected_verify_result": true,
+      "construction_method": "Direct output of SchnorrSign(keyPair, legitMsg) — no mutation.",
+      "order_proof": "n/a (control). Honest R = [z]·G with z ∈ [1, Q-1] satisfies [4]·R ≠ O because gcd(4, Q) = 1."
+    }
+  ]
+}

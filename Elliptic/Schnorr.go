@@ -36,6 +36,21 @@ const (
 	schnorrNonceDomainTag = "DALOS-gen1/SchnorrNonce/v1"
 )
 
+// cofactor4 is the DALOS curve cofactor h = 4 (see Parameters.go,
+// Twisted Edwards family). Used by SchnorrVerify's small-subgroup
+// rejection (F-SEC-001, REQ-16): legitimate R = [k]·G and P = [k']·G
+// satisfy [4]·R ≠ O and [4]·P ≠ O because gcd(4, Q) = 1 and the
+// scalars lie in [1, Q-1]. Order-4 small-subgroup attack points
+// (the 4-torsion subgroup of E(F_p)) collapse to the infinity point
+// under [4]·_ and are caught here.
+//
+// Declared as a package-level *big.Int (rather than passing &e.R
+// directly) so the cofactor scalar is decoupled from any future
+// optimisation inside ScalarMultiplier that might reduce the scalar
+// modulo Q — a reduction that would silently corrupt this check if
+// it ever applied to e.R.
+var cofactor4 = big.NewInt(4)
+
 // writeLenPrefixed appends a 4-byte big-endian length followed by data.
 // Fixed width length prefix eliminates the leading-zero ambiguity that
 // plain concatenation of variable-width binary strings has.
@@ -100,13 +115,21 @@ func ConvertBase49toBase10(NumberBase49 string) *big.Int {
 }
 
 // ConvertPublicKeyToAffineCoords converts a public key in the described format into CoordAffine.
+//
+// HARDENING (Phase 6, T6.5, F-SEC-002 / F-ERR-006):
+//   - xLength prefix < 1 is rejected explicitly. Pre-fix, an empty or zero
+//     prefix produced a silent zero-valued X coordinate that flowed
+//     unchecked into Schnorr verification.
+//   - Both (*big.Int).SetString calls now check the ok return. Pre-fix,
+//     non-decimal content in either coordinate silently left the big.Int
+//     in whatever state SetString happened to produce on failure.
+//   - All error paths return CoordAffine{} (nil AX, nil AY) so downstream
+//     callers cannot read a partially-constructed coords value (STK-003).
 func ConvertPublicKeyToAffineCoords(publicKey string) (CoordAffine, error) {
-	var coords CoordAffine
-
 	// Step 1: Split the prefix and the body of the key
 	parts := strings.SplitN(publicKey, ".", 2)
 	if len(parts) != 2 {
-		return coords, fmt.Errorf("invalid public key format")
+		return CoordAffine{}, fmt.Errorf("invalid public key format")
 	}
 
 	// Step 2: Convert the entire key body after the dot from base 49 to a big.Int
@@ -120,21 +143,32 @@ func ConvertPublicKeyToAffineCoords(publicKey string) (CoordAffine, error) {
 	// Convert the length to an int
 	xLength := int(xLengthInt.Int64())
 
+	// F-SEC-002 / F-ERR-006: reject xLength < 1 (catches empty / zero / negative
+	// prefix that would produce a silent zero-valued X coordinate downstream).
+	if xLength < 1 {
+		return CoordAffine{}, fmt.Errorf("invalid xLength prefix: %d", xLength)
+	}
+
 	// Step 4: Split the total value into X and Y coordinates
 	// Convert the total value to string to manipulate its digits
 	totalValueStr := totalValue.String()
 	if len(totalValueStr) < xLength {
-		return coords, fmt.Errorf("invalid key body length")
+		return CoordAffine{}, fmt.Errorf("invalid key body length")
 	}
 
 	xString := totalValueStr[:xLength]
 	yString := totalValueStr[xLength:]
 
 	// Step 5: Convert X and Y from base 10 string to big.Int
+	var coords CoordAffine
 	coords.AX = new(big.Int)
 	coords.AY = new(big.Int)
-	coords.AX.SetString(xString, 10)
-	coords.AY.SetString(yString, 10)
+	if _, ok := coords.AX.SetString(xString, 10); !ok {
+		return CoordAffine{}, fmt.Errorf("failed to parse X coordinate: %q", xString)
+	}
+	if _, ok := coords.AY.SetString(yString, 10); !ok {
+		return CoordAffine{}, fmt.Errorf("failed to parse Y coordinate: %q", yString)
+	}
 
 	// Return the filled CoordAffine struct and nil error
 	return coords, nil
@@ -338,6 +372,14 @@ func (e *Ellipse) SchnorrVerify(Signature, Message, PublicKey string) bool {
 		return false
 	}
 
+	// F-SEC-001: cofactor subgroup-membership check on R.
+	// Legitimate R = [k]·G has [4]·R = [4k]·G ≠ O since gcd(4, Q)=1
+	// and k ∈ [1, Q-1]. Order-4 small-subgroup attack points yield [4]·R = O.
+	RCofactor := e.ScalarMultiplier(cofactor4, RExtend)
+	if e.IsInfinityPoint(RCofactor) {
+		return false
+	}
+
 	// Step 2 — Parse the public key. SC-6: error from parsing is
 	// also a hard rejection.
 	PAffine, err := ConvertPublicKeyToAffineCoords(PublicKey)
@@ -355,6 +397,13 @@ func (e *Ellipse) SchnorrVerify(Signature, Message, PublicKey string) bool {
 	// undefined behaviour.
 	onCurveP, _ := e.IsOnCurve(PExtend)
 	if !onCurveP {
+		return false
+	}
+
+	// F-SEC-001: cofactor subgroup-membership check on P (public key).
+	// Same rationale as R — rejects order-4 small-subgroup attack public keys.
+	PCofactor := e.ScalarMultiplier(cofactor4, PExtend)
+	if e.IsInfinityPoint(PCofactor) {
 		return false
 	}
 

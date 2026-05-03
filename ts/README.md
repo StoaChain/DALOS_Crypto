@@ -6,7 +6,7 @@
 > `CryptographicRegistry` for multi-generation forward compatibility.
 
 [![npm](https://img.shields.io/npm/v/@stoachain/dalos-crypto.svg)](https://www.npmjs.com/package/@stoachain/dalos-crypto)
-[![tests](https://img.shields.io/badge/tests-346%20passing-brightgreen.svg)](#verification)
+[![tests](https://img.shields.io/badge/tests-390%20passing-brightgreen.svg)](#verification)
 [![license](https://img.shields.io/badge/license-UNLICENSED-blue.svg)](https://github.com/StoaChain/DALOS_Crypto)
 
 ---
@@ -21,6 +21,11 @@ yarn add @stoachain/dalos-crypto
 
 Requires **Node ≥ 20** (uses native `BigInt` + `globalThis.crypto.getRandomValues`).
 Runs in the browser without polyfills on any modern evergreen target.
+
+> **ESM-only.** This package ships as a pure ES module (`"type": "module"` +
+> ESM-only `exports` conditions). CommonJS consumers using `require()` will
+> hit `ERR_REQUIRE_ESM`. Use `import` syntax with Node ≥ 20, a bundler
+> (Vite, esbuild, Webpack 5+, Rollup), or dynamic `import()` from CommonJS.
 
 ---
 
@@ -62,8 +67,9 @@ reference's [105-vector test corpus](https://github.com/StoaChain/DALOS_Crypto/b
 
 ### Schnorr v2 signatures
 
-Full hardened Schnorr implementation with RFC-6979 deterministic nonces,
-length-prefixed Fiat-Shamir challenge, and domain-tag separation.
+Full hardened Schnorr implementation with RFC-6979-style deterministic
+nonces (Blake3-tagged KDF), length-prefixed Fiat-Shamir challenge, and
+domain-tag separation.
 See [`docs/SCHNORR_V2_SPEC.md`](https://github.com/StoaChain/DALOS_Crypto/blob/main/docs/SCHNORR_V2_SPEC.md).
 
 ### AES-256-GCM with Blake3 KDF
@@ -118,6 +124,12 @@ const d = DalosGenesis.generateFromInteger("123456789012345", 10);
 const e = DalosGenesis.generateFromInteger("hello42", 49);
 
 // 6 — from a 40×40 bitmap (row-major, true = black, false = white)
+//      Note: the TS port intentionally omits the Go reference's
+//      ParsePngFileToBitmap helper (Bitmap/Bitmap.go:178). PNG decoding
+//      adds bundle weight and assumes filesystem access not available
+//      in browser environments. Construct the boolean[][] directly from
+//      whatever input source you have (PNG via @napi-rs/canvas in Node,
+//      <canvas> ImageData in browser, hand-painted via UI, etc.).
 const bitmap: Bitmap = Array.from({ length: 40 }, () => Array<boolean>(40).fill(false));
 const f = DalosGenesis.generateFromBitmap(bitmap);
 
@@ -201,7 +213,7 @@ against 105 canonical test vectors:
 Plus `[Q]·G = O` end-to-end verification per curve. Run locally:
 
 ```bash
-npm test   # 301 tests, ~27s
+npm test   # 390 tests, ~30s
 ```
 
 See the Go-reference corpus: [`testvectors/v1_genesis.json`](https://github.com/StoaChain/DALOS_Crypto/blob/main/testvectors/v1_genesis.json).

@@ -4,9 +4,9 @@
 //   - Key generation from fixed-seeded bitstrings
 //   - Key generation from seed-word lists (ASCII + Unicode)
 //   - Key generation from 40×40 bitmaps (hand-designed + deterministic random)
-//   - Schnorr signatures (sign + self-verify; the R-component is random
-//     per Go crypto/rand so the signature bytes are NOT deterministic,
-//     but the verify-to-true property is)
+//   - Schnorr signatures (sign + self-verify; v2.0.0+ uses RFC-6979-style
+//     deterministic nonces, so signature bytes are FULLY DETERMINISTIC
+//     across runs and across implementations for the same input)
 //
 // These vectors are the oracle for the forthcoming TypeScript port:
 // bit-for-bit equivalence is the correctness criterion.
@@ -17,9 +17,12 @@
 //
 // Writes: testvectors/v1_genesis.json
 //
-// Determinism: math/rand is seeded with fixed constants below. crypto/rand
-// is used by SchnorrSign internally (random nonce), so Schnorr signature
-// bytes vary per run but the verify() result is stable true.
+// Determinism: math/rand is seeded with fixed constants below. SchnorrSign
+// uses RFC-6979-style deterministic nonce derivation (Blake3-tagged KDF
+// over the private key + message hash) since v2.0.0, so Schnorr signature
+// bytes are FULLY REPRODUCIBLE across runs and across implementations
+// (Go ↔ TypeScript port). The 20 Schnorr vectors in v1_genesis.json
+// regenerate byte-identically every run.
 //
 // Copyright (C) 2026 AncientHoldings GmbH. All rights reserved.
 // See ../LICENSE for terms.
@@ -88,7 +91,7 @@ type SchnorrVector struct {
 	PrivInt49      string `json:"priv_int49"`
 	PublicKey      string `json:"public_key"`
 	Message        string `json:"message"`
-	Signature      string `json:"signature"`       // R-point + s, non-deterministic
+	Signature      string `json:"signature"`       // R-point + s, deterministic per RFC-6979-style nonce derivation (v2.0.0+)
 	VerifyExpected bool   `json:"verify_expected"` // always true for our own signatures
 	VerifyActual   bool   `json:"verify_actual"`
 }

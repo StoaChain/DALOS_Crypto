@@ -1,6 +1,9 @@
 package Elliptic
 
-import "math/big"
+import (
+    "fmt"
+    "math/big"
+)
 
 /*
 CoordAffine
@@ -79,10 +82,27 @@ func MulModulus(prime, a, b *big.Int) *big.Int {
 }
 
 // QuoModulus
-// Division Modulo prime
+// Division Modulo prime.
+//
+// PO-3 hardening (F-ERR-005 / REQ-05): when b is non-invertible mod
+// prime (gcd(b, prime) != 1, e.g. b == 0), (*big.Int).ModInverse
+// returns nil. Pre-fix the nil was silently fed to MulModulus,
+// producing a meaningless 0 result that masked the real defect at
+// the call site. Post-fix the nil triggers an explicit panic with
+// operand context, mirroring the noErrAddition / noErrDoubling
+// helpers at PointOperations.go:389-405. Internal programming
+// errors fail fast instead of silently corrupting downstream
+// arithmetic.
+//
+// Genesis byte-identity preserved: the 105-vector corpus generator
+// never feeds a non-invertible operand here (curve prime is prime;
+// generator never divides by zero), so the panic path is unreachable
+// from the corpus and the happy-path return is byte-identical.
 func QuoModulus(prime, a, b *big.Int) *big.Int {
     var mmi = new(big.Int)
-    mmi.ModInverse(b, prime)
+    if mmi.ModInverse(b, prime) == nil {
+        panic(fmt.Sprintf("QuoModulus: b=%v not invertible mod prime=%v", b, prime))
+    }
     return MulModulus(prime, a, mmi)
 }
 

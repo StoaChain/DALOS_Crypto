@@ -33,9 +33,32 @@ import (
 // byte slices if memory-lifetime hygiene matters to them.
 // ============================================================================
 
+// BitStringToHex converts a String of 0s and 1s to a Slice of bytes via the
+// path: bigint(base 2) -> Text(16) -> hex.DecodeString.
 //
-// Converts a String of 0s and 1s to a Slice of bytes.
+// AES-4 / F-ERR-004 note (documented, not fixed):
+// When the intermediate hex string `BitStringHex` has an odd character count,
+// `hex.DecodeString` returns `(<partial-bytes>, hex.ErrLength)` — it decodes
+// the even-length prefix and signals the length error. This function silently
+// discards that error via the blank identifier on the `hex.DecodeString` call
+// below, KEEPING the partial bytes. In effect the trailing LSB half-nibble of
+// the hex form is truncated (e.g. `"1"` -> hex `"1"` -> `[]byte{}`; `"100"` ->
+// hex `"4"` -> `[]byte{}`; bigint(`"100000000"`)=256 -> hex `"100"` ->
+// `[]byte{0x10}`).
 //
+// This is intentional: the Genesis key-gen pipeline (frozen at v1.0.0) was
+// generated against this exact behavior. Changing the truncation rule would
+// invalidate every existing Ѻ./Σ. account derived from a bitstring whose
+// even-padded hex form has an odd character count. See AUDIT.md "Documented,
+// not fixed" for the full rationale.
+//
+// Sibling caveat AES-2 (single-pass Blake3 KDF without salt) is also recorded
+// as NOT-FIXED-BY-DESIGN in AUDIT.md for the same Genesis-format reason.
+//
+// The TypeScript port mirrors this behavior verbatim — see the matching
+// commentary in `ts/src/gen1/aes.ts` lines 74-77 ("Go's hex.DecodeString on
+// odd-length input ... DALOS AES code discards the error ... We match that
+// behaviour: drop the last half-nibble character").
 func BitStringToHex(BitString string) []byte {
 	var TwoToTen = new(big.Int)
 	//Converting BitString to HEX

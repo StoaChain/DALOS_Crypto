@@ -11,12 +11,17 @@
  * matrix. The Peso sign + Greek Pi pair was chosen for maximum visual
  * distinctiveness within the P-family letterforms available.
  *
- * NOT registered in `createDefaultRegistry()` by default — import and
- * register explicitly when you want it. Byte-identity with the Go
- * reference (S=1024 byte-aligned; APOLLO output unchanged across the
- * v3.0.0 XCURVE-1..4 fixes) is formalized as of v3.0.0+.
+ * **Production primitive as of v3.0.0+** — wraps the APOLLO curve from
+ * `ts/src/historical/apollo.ts` with full key-gen across 5 input paths
+ * (random / bitString / integerBase10 / integerBase49 / seedWords) plus
+ * Schnorr v2 sign / verify. APOLLO has S=1024 (byte-aligned), so the
+ * XCURVE-1..4 ceiling-vs-floor fix is a no-op on APOLLO's output;
+ * cross-implementation byte-identity formalized in v3.0.0+ regardless
+ * via `testvectors/v1_historical.json` (schema_version 2); requires Go
+ * reference v3.0.0+. NOT auto-registered in `createDefaultRegistry()` —
+ * import and register explicitly via `registry.register(Apollo)`.
  *
- * v1.2.0+, byte-identity formalized v3.0.0+. Copyright (C) 2026 AncientHoldings GmbH. All rights reserved.
+ * Copyright (C) 2026 AncientHoldings GmbH. All rights reserved.
  */
 
 import { APOLLO } from '../historical/apollo.js';

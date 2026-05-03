@@ -33,8 +33,7 @@
 
 import type { CoordExtended } from './coords.js';
 import { INFINITY_POINT_EXTENDED } from './coords.js';
-import { DALOS_ELLIPSE, DALOS_FIELD, type Ellipse, affine2Extended } from './curve.js';
-import type { Modular } from './math.js';
+import { DALOS_ELLIPSE, type Ellipse, affine2Extended } from './curve.js';
 import { ZERO } from './math.js';
 import { type PrecomputeMatrix, addition, fortyNiner, precomputeMatrix } from './point-ops.js';
 
@@ -110,21 +109,19 @@ export function bigIntToBase49(n: bigint): string {
  * @param scalar — non-negative bigint scalar (typically in [0, Q-1])
  * @param P      — base point in Extended coordinates
  * @param e      — curve (default DALOS_ELLIPSE)
- * @param m      — field arithmetic (default DALOS_FIELD)
  * @param precomputed — optional pre-built PrecomputeMatrix for P
  */
 export function scalarMultiplier(
   scalar: bigint,
   P: CoordExtended,
   e: Ellipse = DALOS_ELLIPSE,
-  m: Modular = DALOS_FIELD,
   precomputed?: PrecomputeMatrix,
 ): CoordExtended {
   if (scalar < ZERO) {
     throw new Error('scalarMultiplier: negative scalar not supported');
   }
 
-  const PM = precomputed ?? precomputeMatrix(P, e, m);
+  const PM = precomputed ?? precomputeMatrix(P, e);
   const digits = bigIntToBase49(scalar);
   let result: CoordExtended = INFINITY_POINT_EXTENDED;
 
@@ -151,10 +148,10 @@ export function scalarMultiplier(
       }
     }
 
-    result = addition(result, toAdd, e, m);
+    result = addition(result, toAdd, e);
 
     if (i !== digits.length - 1) {
-      result = fortyNiner(result, e, m);
+      result = fortyNiner(result, e);
     }
   }
 
@@ -172,7 +169,6 @@ export function scalarMultiplier(
 export function scalarMultiplierWithGenerator(
   scalar: bigint,
   e: Ellipse = DALOS_ELLIPSE,
-  m: Modular = DALOS_FIELD,
 ): CoordExtended {
-  return scalarMultiplier(scalar, affine2Extended(e.g, m), e, m);
+  return scalarMultiplier(scalar, affine2Extended(e.g, e.field), e);
 }

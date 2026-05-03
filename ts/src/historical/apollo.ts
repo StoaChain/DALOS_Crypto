@@ -11,12 +11,17 @@
  * Go-reference identifier: `TEC_S1024_Pr1029p639_m729`.
  *
  * Same structural family as DALOS_ELLIPSE (Twisted Edwards, cofactor 4,
- * `y² + x² = 1 + d·x²·y²` over GF(P), with `d` negative). **Production-
- * ready as of v3.0.0+** — wrapped by `Apollo` at
- * `ts/src/registry/apollo.ts` with byte-identity against the Go
- * reference (S=1024 byte-aligned; XCURVE-1..4 fixes produce identical
- * APOLLO output before/after v3.0.0). Address prefixes: standard `₱.`,
- * smart `Π.`. Registered opt-in via `registry.register(Apollo)`.
+ * `y² + x² = 1 + d·x²·y²` over GF(P), with `d` negative). **Production
+ * primitive as of v3.0.0+** — wrapped by `Apollo` at
+ * `ts/src/registry/apollo.ts` exposing full key-gen across 5 input
+ * paths (random / bitString / integerBase10 / integerBase49 / seedWords)
+ * plus Schnorr v2 sign / verify. APOLLO has S=1024 (byte-aligned), so
+ * the XCURVE-1..4 ceiling-vs-floor fix is a no-op on APOLLO's output;
+ * cross-implementation byte-identity formalized in v3.0.0+ regardless
+ * (requires Go reference v3.0.0+). NOT auto-registered in
+ * `createDefaultRegistry()` — register explicitly via
+ * `registry.register(Apollo)`. Address prefixes: standard `₱.`,
+ * smart `Π.`.
  *
  * Note: the original Go source contains a copy-paste bug (line 907)
  * setting `p.Name = "TEC_S1023_Pr1029p639_m200"` on this factory. The
@@ -37,6 +42,7 @@
  */
 
 import type { Ellipse } from '../gen1/curve.js';
+import { Modular } from '../gen1/math.js';
 
 /**
  * APOLLO curve parameters. Permanently frozen.
@@ -67,6 +73,7 @@ export const APOLLO: Ellipse = (() => {
       '9814554908887545388668236801291801249139081613913617731386343475153755' +
       '69488540295649449731695734303',
   );
+  const field = new Modular(P);
   return {
     name: 'APOLLO',
     p: P,
@@ -77,5 +84,6 @@ export const APOLLO: Ellipse = (() => {
     a: 1n,
     d: -729n,
     g: { ax: gx, ay: gy },
+    field,
   };
 })();

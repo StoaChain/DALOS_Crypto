@@ -24,8 +24,7 @@
 
 import type { CoordExtended } from './coords.js';
 import { INFINITY_POINT_EXTENDED } from './coords.js';
-import { DALOS_ELLIPSE, DALOS_FIELD, type Ellipse } from './curve.js';
-import type { Modular } from './math.js';
+import { DALOS_ELLIPSE, type Ellipse } from './curve.js';
 import { ONE, TWO } from './math.js';
 
 // ============================================================================
@@ -43,15 +42,14 @@ export function addition(
   p1: CoordExtended,
   p2: CoordExtended,
   e: Ellipse = DALOS_ELLIPSE,
-  m: Modular = DALOS_FIELD,
 ): CoordExtended {
   if (p1.ez === ONE && p2.ez === ONE) {
-    return additionV1(p1, p2, e, m);
+    return additionV1(p1, p2, e);
   }
   if (p2.ez === ONE) {
-    return additionV2(p1, p2, e, m);
+    return additionV2(p1, p2, e);
   }
-  return additionV3(p1, p2, e, m);
+  return additionV3(p1, p2, e);
 }
 
 /**
@@ -61,8 +59,8 @@ export function additionV1(
   p1: CoordExtended,
   p2: CoordExtended,
   e: Ellipse = DALOS_ELLIPSE,
-  m: Modular = DALOS_FIELD,
 ): CoordExtended {
+  const m = e.field;
   if (p1.ez !== ONE || p2.ez !== ONE) {
     throw new Error('additionV1 requires both Z1 and Z2 to be 1');
   }
@@ -91,8 +89,8 @@ export function additionV2(
   p1: CoordExtended,
   p2: CoordExtended,
   e: Ellipse = DALOS_ELLIPSE,
-  m: Modular = DALOS_FIELD,
 ): CoordExtended {
+  const m = e.field;
   if (p2.ez !== ONE) {
     throw new Error('additionV2 requires P2.Z to be 1');
   }
@@ -124,8 +122,8 @@ export function additionV3(
   p1: CoordExtended,
   p2: CoordExtended,
   e: Ellipse = DALOS_ELLIPSE,
-  m: Modular = DALOS_FIELD,
 ): CoordExtended {
+  const m = e.field;
   if (p2.ez === ONE) {
     throw new Error('additionV3 requires P2.Z to differ from 1');
   }
@@ -159,25 +157,18 @@ export function additionV3(
  * Extended-coordinate doubling — dispatcher.
  * Mirrors Go's `(*Ellipse).Doubling`.
  */
-export function doubling(
-  p: CoordExtended,
-  e: Ellipse = DALOS_ELLIPSE,
-  m: Modular = DALOS_FIELD,
-): CoordExtended {
+export function doubling(p: CoordExtended, e: Ellipse = DALOS_ELLIPSE): CoordExtended {
   if (p.ez === ONE) {
-    return doublingV1(p, e, m);
+    return doublingV1(p, e);
   }
-  return doublingV2(p, e, m);
+  return doublingV2(p, e);
 }
 
 /**
  * DoublingV1 — mdbl-2008-hwcd. Z = 1.
  */
-export function doublingV1(
-  p: CoordExtended,
-  e: Ellipse = DALOS_ELLIPSE,
-  m: Modular = DALOS_FIELD,
-): CoordExtended {
+export function doublingV1(p: CoordExtended, e: Ellipse = DALOS_ELLIPSE): CoordExtended {
+  const m = e.field;
   if (p.ez !== ONE) {
     throw new Error('doublingV1 requires Z to be 1');
   }
@@ -203,11 +194,8 @@ export function doublingV1(
 /**
  * DoublingV2 — dbl-2008-hwcd. General Z.
  */
-export function doublingV2(
-  p: CoordExtended,
-  e: Ellipse = DALOS_ELLIPSE,
-  m: Modular = DALOS_FIELD,
-): CoordExtended {
+export function doublingV2(p: CoordExtended, e: Ellipse = DALOS_ELLIPSE): CoordExtended {
+  const m = e.field;
   const A = m.mul(p.ex, p.ex);
   const B = m.mul(p.ey, p.ey);
   const v1 = m.mul(p.ez, p.ez);
@@ -235,11 +223,8 @@ export function doublingV2(
 /**
  * Tripling — tpl-2015-c. Computes 3·P directly (cheaper than 2·P + P).
  */
-export function tripling(
-  p: CoordExtended,
-  e: Ellipse = DALOS_ELLIPSE,
-  m: Modular = DALOS_FIELD,
-): CoordExtended {
+export function tripling(p: CoordExtended, e: Ellipse = DALOS_ELLIPSE): CoordExtended {
+  const m = e.field;
   const YY = m.mul(p.ey, p.ey);
   const XX = m.mul(p.ex, p.ex);
   const aXX = m.mul(e.a, XX);
@@ -278,17 +263,13 @@ export function tripling(
  * Six Go-level operations: 1 Tripling + 4 Doublings + 1 Addition.
  * Mirrors Go's `(*Ellipse).FortyNiner` exactly.
  */
-export function fortyNiner(
-  p: CoordExtended,
-  e: Ellipse = DALOS_ELLIPSE,
-  m: Modular = DALOS_FIELD,
-): CoordExtended {
-  const P03 = tripling(p, e, m);
-  const P06 = doubling(P03, e, m);
-  const P12 = doubling(P06, e, m);
-  const P24 = doubling(P12, e, m);
-  const P48 = doubling(P24, e, m);
-  const P49 = addition(P48, p, e, m);
+export function fortyNiner(p: CoordExtended, e: Ellipse = DALOS_ELLIPSE): CoordExtended {
+  const P03 = tripling(p, e);
+  const P06 = doubling(P03, e);
+  const P12 = doubling(P06, e);
+  const P24 = doubling(P12, e);
+  const P48 = doubling(P24, e);
+  const P49 = addition(P48, p, e);
   return P49;
 }
 
@@ -368,59 +349,55 @@ export type PrecomputeMatrix = readonly [
  * scalar multiplication. Mirrors Go's `(*Ellipse).PrecomputeMatrix`
  * operation-for-operation (48 ops: 24 Doublings + 24 Additions).
  */
-export function precomputeMatrix(
-  p: CoordExtended,
-  e: Ellipse = DALOS_ELLIPSE,
-  m: Modular = DALOS_FIELD,
-): PrecomputeMatrix {
-  const P02 = doubling(p, e, m);
-  const P03 = addition(P02, p, e, m);
-  const P04 = doubling(P02, e, m);
-  const P05 = addition(P04, p, e, m);
-  const P06 = doubling(P03, e, m);
-  const P07 = addition(P06, p, e, m);
-  const P08 = doubling(P04, e, m);
-  const P09 = addition(P08, p, e, m);
-  const P10 = doubling(P05, e, m);
-  const P11 = addition(P10, p, e, m);
-  const P12 = doubling(P06, e, m);
-  const P13 = addition(P12, p, e, m);
-  const P14 = doubling(P07, e, m);
-  const P15 = addition(P14, p, e, m);
-  const P16 = doubling(P08, e, m);
-  const P17 = addition(P16, p, e, m);
-  const P18 = doubling(P09, e, m);
-  const P19 = addition(P18, p, e, m);
-  const P20 = doubling(P10, e, m);
-  const P21 = addition(P20, p, e, m);
-  const P22 = doubling(P11, e, m);
-  const P23 = addition(P22, p, e, m);
-  const P24 = doubling(P12, e, m);
-  const P25 = addition(P24, p, e, m);
-  const P26 = doubling(P13, e, m);
-  const P27 = addition(P26, p, e, m);
-  const P28 = doubling(P14, e, m);
-  const P29 = addition(P28, p, e, m);
-  const P30 = doubling(P15, e, m);
-  const P31 = addition(P30, p, e, m);
-  const P32 = doubling(P16, e, m);
-  const P33 = addition(P32, p, e, m);
-  const P34 = doubling(P17, e, m);
-  const P35 = addition(P34, p, e, m);
-  const P36 = doubling(P18, e, m);
-  const P37 = addition(P36, p, e, m);
-  const P38 = doubling(P19, e, m);
-  const P39 = addition(P38, p, e, m);
-  const P40 = doubling(P20, e, m);
-  const P41 = addition(P40, p, e, m);
-  const P42 = doubling(P21, e, m);
-  const P43 = addition(P42, p, e, m);
-  const P44 = doubling(P22, e, m);
-  const P45 = addition(P44, p, e, m);
-  const P46 = doubling(P23, e, m);
-  const P47 = addition(P46, p, e, m);
-  const P48 = doubling(P24, e, m);
-  const P49 = addition(P48, p, e, m);
+export function precomputeMatrix(p: CoordExtended, e: Ellipse = DALOS_ELLIPSE): PrecomputeMatrix {
+  const P02 = doubling(p, e);
+  const P03 = addition(P02, p, e);
+  const P04 = doubling(P02, e);
+  const P05 = addition(P04, p, e);
+  const P06 = doubling(P03, e);
+  const P07 = addition(P06, p, e);
+  const P08 = doubling(P04, e);
+  const P09 = addition(P08, p, e);
+  const P10 = doubling(P05, e);
+  const P11 = addition(P10, p, e);
+  const P12 = doubling(P06, e);
+  const P13 = addition(P12, p, e);
+  const P14 = doubling(P07, e);
+  const P15 = addition(P14, p, e);
+  const P16 = doubling(P08, e);
+  const P17 = addition(P16, p, e);
+  const P18 = doubling(P09, e);
+  const P19 = addition(P18, p, e);
+  const P20 = doubling(P10, e);
+  const P21 = addition(P20, p, e);
+  const P22 = doubling(P11, e);
+  const P23 = addition(P22, p, e);
+  const P24 = doubling(P12, e);
+  const P25 = addition(P24, p, e);
+  const P26 = doubling(P13, e);
+  const P27 = addition(P26, p, e);
+  const P28 = doubling(P14, e);
+  const P29 = addition(P28, p, e);
+  const P30 = doubling(P15, e);
+  const P31 = addition(P30, p, e);
+  const P32 = doubling(P16, e);
+  const P33 = addition(P32, p, e);
+  const P34 = doubling(P17, e);
+  const P35 = addition(P34, p, e);
+  const P36 = doubling(P18, e);
+  const P37 = addition(P36, p, e);
+  const P38 = doubling(P19, e);
+  const P39 = addition(P38, p, e);
+  const P40 = doubling(P20, e);
+  const P41 = addition(P40, p, e);
+  const P42 = doubling(P21, e);
+  const P43 = addition(P42, p, e);
+  const P44 = doubling(P22, e);
+  const P45 = addition(P44, p, e);
+  const P46 = doubling(P23, e);
+  const P47 = addition(P46, p, e);
+  const P48 = doubling(P24, e);
+  const P49 = addition(P48, p, e);
 
   return [
     [p, P02, P03, P04, P05, P06, P07],

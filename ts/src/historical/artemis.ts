@@ -14,12 +14,15 @@
  * Go-reference identifier: `TEC_S1023_Pr1029p639_m200`.
  *
  * Same structural family as DALOS_ELLIPSE (Twisted Edwards, cofactor 4,
- * `y² + x² = 1 + d·x²·y²` over GF(P), with `d` negative). **Production-
- * ready as of v3.0.0+** — wrapped by `Artemis` at
- * `ts/src/registry/artemis.ts` with byte-identity against the Go
- * reference (XCURVE-1..4 fixes; requires Go reference v3.0.0+). Address
- * prefixes: standard `R.`, smart `Ř.`. Registered opt-in via
- * `registry.register(Artemis)`.
+ * `y² + x² = 1 + d·x²·y²` over GF(P), with `d` negative). **Production
+ * primitive as of v3.0.0+** — wrapped by `Artemis` at
+ * `ts/src/registry/artemis.ts` exposing full key-gen across 5 input
+ * paths (random / bitString / integerBase10 / integerBase49 / seedWords)
+ * plus Schnorr v2 sign / verify. Cross-implementation byte-identity
+ * formalized in v3.0.0+ (requires Go reference v3.0.0+; XCURVE-1..4
+ * fixes). NOT auto-registered in `createDefaultRegistry()` — register
+ * explicitly via `registry.register(Artemis)`. Address prefixes:
+ * standard `R.`, smart `Ř.` (distinct from DALOS Genesis).
  *
  * Parameters:
  *
@@ -35,6 +38,7 @@
  */
 
 import type { Ellipse } from '../gen1/curve.js';
+import { Modular } from '../gen1/math.js';
 
 /**
  * ARTEMIS curve parameters. Permanently frozen.
@@ -65,6 +69,7 @@ export const ARTEMIS: Ellipse = (() => {
       '3731403172016859789550276802795383170944526602213977392860793115308281' +
       '053135496569817870067300616902',
   );
+  const field = new Modular(P);
   return {
     name: 'ARTEMIS',
     p: P,
@@ -75,5 +80,6 @@ export const ARTEMIS: Ellipse = (() => {
     a: 1n,
     d: -200n,
     g: { ax: gx, ay: gy },
+    field,
   };
 })();

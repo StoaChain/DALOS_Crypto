@@ -39,7 +39,7 @@ import {
 } from './curve.js';
 import { affineToPublicKey, parseBigIntInBase, publicKeyToAffineCoords } from './hashing.js';
 import type { DalosKeyPair } from './key-gen.js';
-import { Modular, bigIntToBytesBE, bytesToBigIntBE } from './math.js';
+import { bigIntToBytesBE, bytesToBigIntBE } from './math.js';
 import { addition } from './point-ops.js';
 import { bigIntToBase49, scalarMultiplier, scalarMultiplierWithGenerator } from './scalar-mult.js';
 
@@ -284,12 +284,12 @@ export function schnorrSign(
   message: string | Uint8Array,
   e: Ellipse = DALOS_ELLIPSE,
 ): string {
-  // Curve-specific Modular instance — DALOS_FIELD is tied to
-  // DALOS_ELLIPSE.p and is the default in every arithmetic helper, so
-  // a Schnorr call on any non-DALOS curve MUST construct + thread its
-  // own Modular or every operation below silently does math in the
-  // wrong prime field. v1.2.0 fix.
-  const m = new Modular(e.p);
+  // v4.0.0 Phase 5: use the curve's own Modular helper (populated at
+  // construction). The v1.2.0 fix threaded a curve-specific Modular through
+  // the arithmetic helpers; Phase 5 made that structural by adding `field`
+  // to the Ellipse interface so non-DALOS curves cannot silently fall back
+  // to DALOS's modulus.
+  const m = e.field;
 
   // Parse private key from base-49
   const k = parseBigIntInBase(keyPair.priv, 49);
@@ -301,7 +301,7 @@ export function schnorrSign(
   const z = deterministicNonce(k, msgDigest, e);
 
   // R = z · G
-  const rExtended = scalarMultiplierWithGenerator(z, e, m);
+  const rExtended = scalarMultiplierWithGenerator(z, e);
   const rAffine = extended2Affine(rExtended, m);
   const rX = rAffine.ax;
 
@@ -337,8 +337,8 @@ export function schnorrVerify(
   publicKey: string,
   e: Ellipse = DALOS_ELLIPSE,
 ): boolean {
-  // Curve-specific Modular — see schnorrSign for rationale. v1.2.0 fix.
-  const m = new Modular(e.p);
+  // v4.0.0 Phase 5: use the curve's own Modular helper. See schnorrSign.
+  const m = e.field;
 
   const sig = parseSignature(signature);
   if (sig === null) return false;
@@ -351,7 +351,7 @@ export function schnorrVerify(
 
   // SC-5: R on curve
   const rExtended = affine2Extended(sig.r, m);
-  const [onCurveR] = isOnCurve(rExtended, e, m);
+  const [onCurveR] = isOnCurve(rExtended, e);
   if (!onCurveR) return false;
 
   // Parse public key
@@ -365,7 +365,7 @@ export function schnorrVerify(
 
   // SC-5: P on curve
   const pExtended = affine2Extended(pkAffine, m);
-  const [onCurveP] = isOnCurve(pExtended, e, m);
+  const [onCurveP] = isOnCurve(pExtended, e);
   if (!onCurveP) return false;
 
   // Fiat–Shamir challenge
@@ -373,16 +373,16 @@ export function schnorrVerify(
   if (challenge === null) return false;
 
   // Compute right term: R + e·P
-  const ePExt = scalarMultiplier(challenge, pExtended, e, m);
+  const ePExt = scalarMultiplier(challenge, pExtended, e);
   let rightTerm: ReturnType<typeof addition>;
   try {
-    rightTerm = addition(rExtended, ePExt, e, m);
+    rightTerm = addition(rExtended, ePExt, e);
   } catch {
     return false;
   }
 
   // Compute left term: s·G
-  const leftTerm = scalarMultiplierWithGenerator(sig.s, e, m);
+  const leftTerm = scalarMultiplierWithGenerator(sig.s, e);
 
-  return arePointsEqual(leftTerm, rightTerm, m);
+  return arePointsEqual(leftTerm, rightTerm, e);
 }

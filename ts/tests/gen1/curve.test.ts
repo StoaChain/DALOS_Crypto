@@ -59,7 +59,7 @@ describe('DALOS_ELLIPSE parameters (Phase 0 verified values)', () => {
 describe('coordinate conversions', () => {
   it('affine2Extended sets Z=1, T=X·Y', () => {
     const aff = { ax: 2n, ay: 5n };
-    const ext = affine2Extended(aff);
+    const ext = affine2Extended(aff, DALOS_ELLIPSE.field);
     expect(ext.ex).toBe(2n);
     expect(ext.ey).toBe(5n);
     expect(ext.ez).toBe(1n);
@@ -68,8 +68,8 @@ describe('coordinate conversions', () => {
 
   it('extended2Affine ∘ affine2Extended is identity on affine points', () => {
     const aff = { ax: 2n, ay: DALOS_ELLIPSE.g.ay };
-    const ext = affine2Extended(aff);
-    const back = extended2Affine(ext);
+    const ext = affine2Extended(aff, DALOS_ELLIPSE.field);
+    const back = extended2Affine(ext, DALOS_ELLIPSE.field);
     expect(back.ax).toBe(aff.ax);
     expect(back.ay).toBe(aff.ay);
   });
@@ -82,20 +82,20 @@ describe('curve predicates', () => {
   });
 
   it('isOnCurve: the generator G is on the curve', () => {
-    const [onCurve] = isOnCurve(affine2Extended(DALOS_ELLIPSE.g));
+    const [onCurve] = isOnCurve(affine2Extended(DALOS_ELLIPSE.g, DALOS_ELLIPSE.field));
     expect(onCurve).toBe(true);
   });
 
   it('isOnCurve: a random off-curve point is rejected', () => {
     // (1, 1) is almost certainly not on the curve: 1 + 1 = 2, but 1 + d·1·1 = 1 + (-26) = -25
     // 2 !== -25 (mod P)
-    const off = affine2Extended({ ax: 1n, ay: 1n });
+    const off = affine2Extended({ ax: 1n, ay: 1n }, DALOS_ELLIPSE.field);
     const [onCurve] = isOnCurve(off);
     expect(onCurve).toBe(false);
   });
 
   it('arePointsEqual: G == G', () => {
-    const G = affine2Extended(DALOS_ELLIPSE.g);
+    const G = affine2Extended(DALOS_ELLIPSE.g, DALOS_ELLIPSE.field);
     expect(arePointsEqual(G, G)).toBe(true);
   });
 });

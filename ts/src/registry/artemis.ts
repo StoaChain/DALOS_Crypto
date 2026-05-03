@@ -12,13 +12,16 @@
  * ARTEMIS uses two distinctive Latin R-variants to clearly mark its
  * standard/smart pair.
  *
- * NOT registered in `createDefaultRegistry()` by default — import and
- * register explicitly when you want it. Byte-identity with the Go
- * reference is formalized as of v3.0.0+ (requires Go reference v3.0.0
- * or later; XCURVE-1..4 fixes resolved the Math.ceil-vs-floor
- * divergence on non-byte-aligned curves).
+ * **Production primitive as of v3.0.0+** — wraps the ARTEMIS curve from
+ * `ts/src/historical/artemis.ts` with full key-gen across 5 input paths
+ * (random / bitString / integerBase10 / integerBase49 / seedWords) plus
+ * Schnorr v2 sign / verify. Cross-implementation byte-identity formalized
+ * in v3.0.0+ via `testvectors/v1_historical.json` (schema_version 2);
+ * requires Go reference v3.0.0+ (XCURVE-1..4 fixes). NOT auto-registered
+ * in `createDefaultRegistry()` — import and register explicitly via
+ * `registry.register(Artemis)`.
  *
- * v1.2.0+, byte-identity formalized v3.0.0+. Copyright (C) 2026 AncientHoldings GmbH. All rights reserved.
+ * Copyright (C) 2026 AncientHoldings GmbH. All rights reserved.
  */
 
 import { ARTEMIS } from '../historical/artemis.js';

@@ -35,6 +35,14 @@ export interface Ellipse {
   readonly d: bigint;
   /** Generator base point G, in affine form. */
   readonly g: CoordAffine;
+  /**
+   * Modular arithmetic helper bound to this curve's prime field P.
+   * Eliminates the `DALOS_FIELD` default-parameter footgun where a
+   * non-DALOS curve passed without an explicit `Modular` instance
+   * would silently use DALOS's modulus. Populated at curve
+   * construction; immutable thereafter.
+   */
+  readonly field: Modular;
 }
 
 /**
@@ -78,6 +86,7 @@ export const DALOS_ELLIPSE: Ellipse = (() => {
       '38939219048967245099046226322321825316983934844110822182736812267535' +
       '90907472',
   );
+  const field = new Modular(P);
   return {
     name: 'TEC_S1600_Pr1605p2315_m26',
     p: P,
@@ -88,12 +97,17 @@ export const DALOS_ELLIPSE: Ellipse = (() => {
     a: 1n,
     d: -26n,
     g: { ax: gx, ay: gy },
+    field,
   };
 })();
 
 /**
- * Modular arithmetic helper bound to DALOS_ELLIPSE.p.
- * Reusable across all arithmetic operations.
+ * Public re-export retained for npm backward compatibility (external
+ * consumers imported `DALOS_FIELD` directly in v3.x). New code should
+ * derive `m = e.field` from the curve passed in — see Phase 5 of the
+ * audit-2026-04-29 spec for the rationale (the v4.0.0 footgun-elimination
+ * pass that made per-curve modulus binding structural rather than vigilance-
+ * dependent). Functionally equivalent to `DALOS_ELLIPSE.field`.
  */
 export const DALOS_FIELD = new Modular(DALOS_ELLIPSE.p);
 
@@ -103,7 +117,7 @@ export const DALOS_FIELD = new Modular(DALOS_ELLIPSE.p);
  * Sets EX = AX, EY = AY, EZ = 1, ET = AX·AY mod P.
  * Matches Go's `(*Ellipse).Affine2Extended`.
  */
-export function affine2Extended(p: CoordAffine, m: Modular = DALOS_FIELD): CoordExtended {
+export function affine2Extended(p: CoordAffine, m: Modular): CoordExtended {
   return {
     ex: p.ax,
     ey: p.ay,
@@ -118,7 +132,7 @@ export function affine2Extended(p: CoordAffine, m: Modular = DALOS_FIELD): Coord
  * AX = EX / EZ mod P, AY = EY / EZ mod P.
  * Matches Go's `(*Ellipse).Extended2Affine`.
  */
-export function extended2Affine(p: CoordExtended, m: Modular = DALOS_FIELD): CoordAffine {
+export function extended2Affine(p: CoordExtended, m: Modular): CoordAffine {
   return {
     ax: m.div(p.ex, p.ez),
     ay: m.div(p.ey, p.ez),
@@ -145,8 +159,8 @@ export function isInfinityPoint(p: CoordExtended): boolean {
 export function isOnCurve(
   p: CoordExtended,
   e: Ellipse = DALOS_ELLIPSE,
-  m: Modular = DALOS_FIELD,
 ): readonly [onCurve: boolean, isInfinity: boolean] {
+  const m = e.field;
   const infinity = isInfinityPoint(p);
   const aff = extended2Affine(p, m);
   // Left:  a·x² + y²
@@ -167,8 +181,9 @@ export function isOnCurve(
 export function arePointsEqual(
   p1: CoordExtended,
   p2: CoordExtended,
-  m: Modular = DALOS_FIELD,
+  e: Ellipse = DALOS_ELLIPSE,
 ): boolean {
+  const m = e.field;
   const a1 = extended2Affine(p1, m);
   const a2 = extended2Affine(p2, m);
   return a1.ax === a2.ax && a1.ay === a2.ay;
@@ -181,8 +196,9 @@ export function arePointsEqual(
 export function isInverseOnCurve(
   p1: CoordExtended,
   p2: CoordExtended,
-  m: Modular = DALOS_FIELD,
+  e: Ellipse = DALOS_ELLIPSE,
 ): boolean {
+  const m = e.field;
   const a1 = extended2Affine(p1, m);
   const a2 = extended2Affine(p2, m);
   return m.canon(-a1.ax) === a2.ax && a1.ay === a2.ay;

@@ -17,18 +17,14 @@
  * wrapped by a full `CryptographicPrimitive` adapter at
  * `ts/src/registry/{leto,artemis,apollo}.ts` exposing key-gen across 5
  * input paths (random / bitString / integerBase10 / integerBase49 /
- * seedWords) plus Schnorr v2 sign / verify. They are NOT auto-registered
- * in `createDefaultRegistry()` — register explicitly via
- * `registry.register(Leto)` etc. when you want them. Each curve emits
- * its own address prefix pair (LETO `Ł`/`Λ`, ARTEMIS `R`/`Ř`,
- * APOLLO `₱`/`Π`), distinct from DALOS Genesis (`Ѻ`/`Σ`).
- *
- * Cross-implementation byte-identity is formalized as of v3.0.0+ —
- * `testvectors/v1_historical.json` (schema_version: 2) pins every
- * deterministic vector across LETO + ARTEMIS + APOLLO byte-for-byte
- * against the Go reference. Wire-format compatibility for LETO and
- * ARTEMIS Schnorr signatures + seedword-derived keys requires Go
- * reference v3.0.0 or later (XCURVE-1..4 fixes).
+ * seedWords) plus Schnorr v2 sign / verify. Cross-implementation
+ * byte-identity formalized in v3.0.0+ via `testvectors/v1_historical.json`
+ * (schema_version 2); requires Go reference v3.0.0 or later (XCURVE-1..4
+ * fixes resolved the Math.ceil vs Math.floor divergence on non-byte-aligned
+ * curves). NOT auto-registered in `createDefaultRegistry()` — register
+ * explicitly via `registry.register(Leto)` etc. Address prefixes are
+ * disjoint: LETO `Ł`/`Λ`, ARTEMIS `R`/`Ř`, APOLLO `₱`/`Π`, distinct
+ * from DALOS Genesis `Ѻ`/`Σ`.
  *
  * See `docs/HISTORICAL_CURVES.md` for the birthstory of each curve,
  * `docs/SCHNORR_V2_SPEC.md` for the Schnorr construction, and

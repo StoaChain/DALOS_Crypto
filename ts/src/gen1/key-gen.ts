@@ -37,7 +37,6 @@ import type { Bitmap } from './bitmap.js';
 import { bitmapToBitString, validateBitmap } from './bitmap.js';
 import { DALOS_ELLIPSE, type Ellipse, extended2Affine } from './curve.js';
 import { affineToPublicKey, dalosAddressMaker, seedWordsToBitString } from './hashing.js';
-import { Modular } from './math.js';
 import { bigIntToBase49, scalarMultiplierWithGenerator } from './scalar-mult.js';
 
 // ============================================================================
@@ -286,12 +285,13 @@ export function scalarToPrivateKey(scalar: bigint, e: Ellipse = DALOS_ELLIPSE): 
  * Matches Go's `(*Ellipse).ScalarToPublicKey`.
  */
 export function scalarToPublicKey(scalar: bigint, e: Ellipse = DALOS_ELLIPSE): string {
-  // v1.2.0: thread a curve-specific Modular so historical curves (with
-  // different P) don't silently fall back to DALOS_FIELD. DALOS's own
-  // path is unchanged — e.p === DALOS_ELLIPSE.p produces an equivalent
-  // Modular instance.
-  const m = new Modular(e.p);
-  const ext = scalarMultiplierWithGenerator(scalar, e, m);
+  // v4.0.0 Phase 5: use the curve's own Modular helper (populated at
+  // construction). Eliminates the v1.2.0-era pattern of allocating a fresh
+  // `new Modular(e.p)` per call — `e.field` is the canonical bind that
+  // makes the per-curve modulus contract structural rather than vigilance-
+  // dependent.
+  const m = e.field;
+  const ext = scalarMultiplierWithGenerator(scalar, e);
   const aff = extended2Affine(ext, m);
   return affineToPublicKey(aff);
 }

@@ -21,7 +21,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Ellipse } from '../../src/gen1/curve.js';
 import { affine2Extended, isInfinityPoint, isOnCurve } from '../../src/gen1/curve.js';
-import { Modular } from '../../src/gen1/math.js';
 import { scalarMultiplierWithGenerator } from '../../src/gen1/scalar-mult.js';
 import { APOLLO, ARTEMIS, LETO } from '../../src/historical/index.js';
 
@@ -73,7 +72,8 @@ const CASES: readonly CurveCase[] = [
 
 for (const tc of CASES) {
   describe(`Historical curve: ${tc.name}`, () => {
-    const field = new Modular(tc.curve.p);
+    // Phase 5 (REQ-14): use the curve's own field, not a local re-allocation.
+    const field = tc.curve.field;
 
     it('name matches upstream Go identifier', () => {
       expect(tc.curve.name).toBe(tc.name);
@@ -114,7 +114,7 @@ for (const tc of CASES) {
     });
 
     it('generator G is on the curve', () => {
-      const [onCurve] = isOnCurve(affine2Extended(tc.curve.g, field), tc.curve, field);
+      const [onCurve] = isOnCurve(affine2Extended(tc.curve.g, field), tc.curve);
       expect(onCurve).toBe(true);
     });
 
@@ -123,7 +123,7 @@ for (const tc of CASES) {
     // scalar-mult is O(S/7) point additions. The 552-bit curve runs
     // in well under a second.
     it('[Q]·G = O (generator has order Q)', () => {
-      const result = scalarMultiplierWithGenerator(tc.curve.q, tc.curve, field);
+      const result = scalarMultiplierWithGenerator(tc.curve.q, tc.curve);
       expect(isInfinityPoint(result)).toBe(true);
     }, 60_000);
   });

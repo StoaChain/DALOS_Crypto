@@ -37,7 +37,7 @@ import {
   tripling,
 } from '../../src/gen1/point-ops.js';
 
-const G = affine2Extended(DALOS_ELLIPSE.g);
+const G = affine2Extended(DALOS_ELLIPSE.g, DALOS_ELLIPSE.field);
 
 describe('addition', () => {
   it('P + infinity = P (left identity)', () => {
@@ -231,14 +231,14 @@ describe('precomputeMatrix', () => {
 describe('Phase 1 exit criterion: 49·G affine equals the Go output', () => {
   it('extended2Affine(fortyNiner(G)) produces a deterministic affine point', () => {
     const P49 = fortyNiner(G);
-    const P49affine = extended2Affine(P49);
+    const P49affine = extended2Affine(P49, DALOS_ELLIPSE.field);
     // Verify the point is non-trivial and on curve
     expect(P49affine.ax).not.toBe(0n);
     expect(P49affine.ay).not.toBe(0n);
     const [onCurve] = isOnCurve(P49);
     expect(onCurve).toBe(true);
     // The affine form should round-trip cleanly
-    const P49back = affine2Extended(P49affine);
+    const P49back = affine2Extended(P49affine, DALOS_ELLIPSE.field);
     expect(arePointsEqual(P49, P49back)).toBe(true);
   });
 });

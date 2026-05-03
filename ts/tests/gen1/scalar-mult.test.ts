@@ -29,7 +29,7 @@ import {
   scalarMultiplierWithGenerator,
 } from '../../src/gen1/scalar-mult.js';
 
-const G = affine2Extended(DALOS_ELLIPSE.g);
+const G = affine2Extended(DALOS_ELLIPSE.g, DALOS_ELLIPSE.field);
 
 describe('base-49 alphabet', () => {
   it('has exactly 49 characters', () => {
@@ -230,7 +230,7 @@ describe('scalarMultiplier — CRITICAL: [Q]·G = O', () => {
 
   it('scalarMultiplier(Q, G) produces the identity point (affine = (0, 1))', () => {
     const result = scalarMultiplier(DALOS_ELLIPSE.q, G);
-    const affine = extended2Affine(result);
+    const affine = extended2Affine(result, DALOS_ELLIPSE.field);
     expect(affine.ax).toBe(0n);
     expect(affine.ay).toBe(1n);
     // And arePointsEqual against INFINITY:

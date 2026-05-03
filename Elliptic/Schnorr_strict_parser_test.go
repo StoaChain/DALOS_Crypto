@@ -134,3 +134,21 @@ func TestConvertPublicKeyToAffineCoords_RejectsNonDecimalY(t *testing.T) {
 		t.Errorf("expected nil coords on error, got AX=%v AY=%v", coords.AX, coords.AY)
 	}
 }
+
+func TestConvertPublicKeyToAffineCoords_RejectsExtraDot(t *testing.T) {
+	// REQ-22 (F-BUG-005): pubkey parser symmetry — Go now rejects inputs with
+	// 2+ dots at the same boundary as TS (which uses split('.') and rejects
+	// parts.length !== 2). Pre-Phase-7, Go used SplitN(_,_,2) which silently
+	// collapsed extra dots into the second part.
+	coords, err := ConvertPublicKeyToAffineCoords("a.b.c")
+	if err == nil {
+		t.Errorf("expected error for input with extra dot, got nil")
+	}
+	if coords.AX != nil || coords.AY != nil {
+		t.Errorf("expected nil coords on error, got AX=%v AY=%v", coords.AX, coords.AY)
+	}
+	// Pin the specific error message shape for cross-impl symmetry tracking.
+	if err != nil && !strings.Contains(err.Error(), "expected exactly 1") {
+		t.Errorf("expected message to contain 'expected exactly 1', got: %s", err.Error())
+	}
+}

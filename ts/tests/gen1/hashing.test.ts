@@ -74,6 +74,17 @@ describe('parseBigIntInBase', () => {
     expect(parseBigIntInBase('10', 49)).toBe(49n);
     expect(parseBigIntInBase('MM', 49)).toBe(48n * 49n + 48n);
   });
+
+  // REQ-21 (F-BUG-004): match Go's big.Int.SetString all-or-nothing semantics.
+  // A single invalid base-49 character must cause an explicit throw rather than
+  // silently accumulating as digit 0.
+  it('REQ-21: throws on base-49 input containing punctuation (!@) with explicit char in message', () => {
+    expect(() => parseBigIntInBase('123!@', 49)).toThrow(/invalid base-49 character '!'/);
+  });
+
+  it('REQ-21: throws on base-49 input containing uppercase past M (e.g., "N") with explicit char in message', () => {
+    expect(() => parseBigIntInBase('123N', 49)).toThrow(/invalid base-49 character 'N'/);
+  });
 });
 
 // ============================================================================
@@ -122,6 +133,13 @@ describe('publicKeyToAffineCoords + affineToPublicKey round-trip', () => {
   it('rejects malformed public keys', () => {
     expect(() => publicKeyToAffineCoords('no-dot-here')).toThrow();
     expect(() => publicKeyToAffineCoords('.')).toThrow();
+  });
+
+  // REQ-22 (TS portion): the EXTRA-DOT case must produce a clear error
+  // identifying the actual problem (got 2 dots instead of 1), not the
+  // misleading "missing ." message that hid the real issue.
+  it('REQ-22: rejects extra-dot public keys with explicit count in message', () => {
+    expect(() => publicKeyToAffineCoords('a.b.c')).toThrow(/expected exactly 1 ".", got 2/);
   });
 });
 

@@ -69,6 +69,22 @@ export function digitValueBase49(c: string): number {
 }
 
 /**
+ * Returns true iff `c` is a valid base-49 digit character (i.e.,
+ * `digitValueBase49(c)` would return a real digit value, not the
+ * silent-0 sentinel for unknown characters).
+ *
+ * Used by callers that need to reject mixed-validity inputs
+ * (validatePrivateKey, parseBigIntInBase) — REQ-20 + REQ-21.
+ */
+export function isValidBase49Char(c: string): boolean {
+  const code = c.charCodeAt(0);
+  if (code >= 48 && code <= 57) return true; // '0'..'9'
+  if (code >= 97 && code <= 122) return true; // 'a'..'z'
+  if (code >= 65 && code <= 77) return true; // 'A'..'M'
+  return false;
+}
+
+/**
  * Convert a non-negative bigint to its base-49 string representation
  * as produced by Go's `big.Int.Text(49)`.
  *

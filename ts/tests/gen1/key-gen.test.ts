@@ -101,6 +101,23 @@ describe('validatePrivateKey (BYTE-IDENTITY vs Go corpus)', () => {
     expect(validatePrivateKey('abc', 10).valid).toBe(false); // non-decimal
     expect(validatePrivateKey('1', 10).valid).toBe(false); // too small
   });
+
+  // REQ-20 (F-API-007): mixed-validity base-49 inputs must be rejected at the
+  // earliest boundary, naming the offending character. Without this guard,
+  // unknown chars silently accumulate as digit 0 and the validator returns
+  // a misleading "core bits length" / "first bit not '1'" reason instead of
+  // the actual cause.
+  it('REQ-20: rejects base-49 input containing punctuation (!@#) with explicit char in reason', () => {
+    const v = validatePrivateKey('valid49chars!@#', 49);
+    expect(v.valid).toBe(false);
+    expect(v.reason).toMatch(/invalid base-49 character '!'/);
+  });
+
+  it('REQ-20: rejects base-49 input containing uppercase past M (e.g., "N") with explicit char in reason', () => {
+    const v = validatePrivateKey('123N', 49);
+    expect(v.valid).toBe(false);
+    expect(v.reason).toMatch(/invalid base-49 character 'N'/);
+  });
 });
 
 // ============================================================================

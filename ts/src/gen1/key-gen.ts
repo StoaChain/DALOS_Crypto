@@ -37,7 +37,7 @@ import type { Bitmap } from './bitmap.js';
 import { bitmapToBitString, validateBitmap } from './bitmap.js';
 import { DALOS_ELLIPSE, type Ellipse, extended2Affine } from './curve.js';
 import { affineToPublicKey, dalosAddressMaker, seedWordsToBitString } from './hashing.js';
-import { bigIntToBase49, scalarMultiplierWithGenerator } from './scalar-mult.js';
+import { bigIntToBase49, isValidBase49Char, scalarMultiplierWithGenerator } from './scalar-mult.js';
 
 // ============================================================================
 // Types
@@ -144,6 +144,17 @@ export function validatePrivateKey(
       }
       pk = BigInt(privateKey);
     } else {
+      // REQ-20 (F-API-007): reject mixed-validity inputs at the earliest
+      // boundary. Without this, unknown characters (e.g. '!', '@', uppercase
+      // past 'M') would silently accumulate as digit 0, producing a non-zero
+      // bigint that downstream checks reject with a misleading "core bits
+      // length" / "first bit not '1'" reason rather than the actual
+      // "invalid base-49 character" cause.
+      for (const ch of privateKey) {
+        if (!isValidBase49Char(ch)) {
+          return { valid: false, bitString: '', reason: `invalid base-49 character '${ch}'` };
+        }
+      }
       // Walk char-by-char via the base-49 alphabet semantics.
       pk = 0n;
       for (const ch of privateKey) {

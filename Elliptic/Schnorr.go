@@ -126,10 +126,16 @@ func ConvertBase49toBase10(NumberBase49 string) *big.Int {
 //   - All error paths return CoordAffine{} (nil AX, nil AY) so downstream
 //     callers cannot read a partially-constructed coords value (STK-003).
 func ConvertPublicKeyToAffineCoords(publicKey string) (CoordAffine, error) {
-	// Step 1: Split the prefix and the body of the key
-	parts := strings.SplitN(publicKey, ".", 2)
+	// Step 1: Split the prefix and the body of the key.
+	//
+	// REQ-22 (F-BUG-005): use strings.Split (not SplitN(_,_,2)) so that
+	// inputs containing 2+ dots are rejected at the same boundary as the
+	// TypeScript port. SplitN(_,_,2) silently collapsed extra dots into
+	// parts[1], which then either threaded through the rest of the parser
+	// or tripped a downstream guard with a misleading message.
+	parts := strings.Split(publicKey, ".")
 	if len(parts) != 2 {
-		return CoordAffine{}, fmt.Errorf("invalid public key format")
+		return CoordAffine{}, fmt.Errorf("invalid public key format: expected exactly 1 \".\", got %d", len(parts)-1)
 	}
 
 	// Step 2: Convert the entire key body after the dot from base 49 to a big.Int

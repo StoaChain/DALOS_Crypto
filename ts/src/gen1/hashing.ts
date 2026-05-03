@@ -26,7 +26,12 @@ import {
 } from './character-matrix.js';
 import type { CoordAffine } from './coords.js';
 import { DALOS_ELLIPSE, type Ellipse } from './curve.js';
-import { BASE49_ALPHABET, bigIntToBase49, digitValueBase49 } from './scalar-mult.js';
+import {
+  BASE49_ALPHABET,
+  bigIntToBase49,
+  digitValueBase49,
+  isValidBase49Char,
+} from './scalar-mult.js';
 
 // ============================================================================
 // Utilities
@@ -56,6 +61,14 @@ export function parseBigIntInBase(s: string, base: 10 | 49): bigint {
     return BigInt(s);
   }
   // base 49
+  // REQ-21 (F-BUG-004): match Go's big.Int.SetString all-or-nothing
+  // semantics. Reject mixed-validity inputs at first invalid char
+  // instead of silently accumulating as digit 0.
+  for (const ch of s) {
+    if (!isValidBase49Char(ch)) {
+      throw new Error(`parseBigIntInBase: invalid base-49 character '${ch}'`);
+    }
+  }
   let result = 0n;
   for (const ch of s) {
     const v = digitValueBase49(ch);
@@ -162,7 +175,12 @@ export function affineToPublicKey(input: CoordAffine): string {
 export function publicKeyToAffineCoords(publicKey: string): CoordAffine {
   const parts = publicKey.split('.');
   if (parts.length !== 2) {
-    throw new Error('publicKeyToAffineCoords: invalid format (missing ".")');
+    // REQ-22 (F-BUG-005): distinguish missing-dot from extra-dot. The
+    // previous unified "missing ." message was misleading for inputs like
+    // "a.b.c". Mirrors the Go-side reject at Schnorr.go:131.
+    throw new Error(
+      `publicKeyToAffineCoords: invalid public key format: expected exactly 1 ".", got ${parts.length - 1}`,
+    );
   }
   const prefix = parts[0];
   const body = parts[1];

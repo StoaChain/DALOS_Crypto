@@ -132,22 +132,43 @@ func AffineToPublicKey(Input CoordAffine) string {
 }
 
 // VI Key Generation
+//
+// REQ-10 (T4.1): replaced the prior per-bit `rand.Int(rand.Reader, Two)` loop
+// (e.S calls into crypto/rand for a one-bit BigInt each) with a single bulk
+// `rand.Read` of ceil(e.S / 8) bytes followed by an MSB-first bit-render loop.
+// For DALOS S=1600 this is one 200-byte syscall instead of 1600 BigInt ops.
+// crypto/rand.Read is documented to never return a short read on success, and
+// any error is unrecoverable (entropy source failure) so we panic — consistent
+// with the existing key-gen invariants where partial randomness would silently
+// corrupt the generated private key.
+//
+// Output API unchanged: returns a string of length exactly e.S consisting of
+// '0' and '1' runes. Genesis byte-identity is preserved because the testvector
+// generator uses a separate seeded math/rand path (testvectors/generator/main.go
+// randomBitString), not this function.
 func (e *Ellipse) GenerateRandomBitsOnCurve() string {
     var (
-        bitLength     = e.S // Use the length you want for the bit string
+        bitLength     = e.S
         binaryBuilder strings.Builder
     )
-    
-    // Preallocate memory for the expected string length to avoid resizing
     binaryBuilder.Grow(int(bitLength))
-    
-    // Generating k.S random bits
-    for i := uint32(0); i < bitLength; i++ {
-        randomBit, _ := rand.Int(rand.Reader, Two)
-        binaryBuilder.WriteString(randomBit.Text(2)) // Directly append to the builder
+
+    byteLen := (int(bitLength) + 7) / 8
+    buf := make([]byte, byteLen)
+    if _, err := rand.Read(buf); err != nil {
+        panic(fmt.Sprintf("GenerateRandomBitsOnCurve: rand.Read failed: %v", err))
     }
-    Output := binaryBuilder.String()
-    return Output
+
+    for i := 0; i < int(bitLength); i++ {
+        byteIdx := i / 8
+        bitIdx := 7 - (i % 8)
+        if (buf[byteIdx]>>bitIdx)&1 == 1 {
+            binaryBuilder.WriteByte('1')
+        } else {
+            binaryBuilder.WriteByte('0')
+        }
+    }
+    return binaryBuilder.String()
 }
 
 func (e *Ellipse) SeedWordsToBitString(SeedWords []string) string {
@@ -682,7 +703,22 @@ func GenerateFilenameFromPublicKey(publicKey string) string {
     return filename
 }
 
+// characterMatrixCache holds the 16x16 rune matrix used for Demiourgos address
+// derivation. It is built exactly once at package init via makeCharacterMatrix
+// because the matrix is immutable and rebuilding 256 rune literals on every
+// CharacterMatrix() call is wasted work. Option (a) — eager package-level var,
+// not sync.Once — was chosen because the matrix is small (~1 KB) and used
+// unconditionally during every key-gen / address-derive pass.
+var characterMatrixCache = makeCharacterMatrix()
+
+// CharacterMatrix returns the cached 16x16 Unicode rune matrix used for
+// Demiourgos address derivation. The matrix is constructed once at package
+// init; this accessor returns the cached value.
 func CharacterMatrix() [16][16]rune {
+    return characterMatrixCache
+}
+
+func makeCharacterMatrix() [16][16]rune {
     //Digits Block 10 runes
     C000 := '0' //U+0030    [48] Digit Zero
     C001 := '1' //U+0031    [49] Digit One

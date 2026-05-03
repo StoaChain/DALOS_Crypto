@@ -99,14 +99,18 @@ export function bigIntToBase49(n: bigint): string {
   if (n === ZERO) {
     return '0';
   }
-  let result = '';
+  // REQ-29: O(n) array-push + reverse + join, not O(n²) string-prepend.
+  // The digit index is mathematically guaranteed to be in [0, 48] by
+  // `Number(x % 49n)`, so the BASE49_ALPHABET lookup is always defined;
+  // the non-null assertion is honest about that bound.
+  const digits: string[] = [];
   let x = n;
   while (x > ZERO) {
     const digit = Number(x % 49n);
-    result = BASE49_ALPHABET[digit] + result;
+    digits.push(BASE49_ALPHABET[digit]!);
     x = x / 49n;
   }
-  return result;
+  return digits.reverse().join('');
 }
 
 /**

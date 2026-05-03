@@ -58,6 +58,50 @@ describe('validateBitString', () => {
     expect(v.valid).toBe(false);
     expect(v.structureOk).toBe(false);
   });
+
+  // REQ-28 (F-ARCH-006 + F-PERF-005): shape symmetry with PrivateKeyValidation
+  // and validateBitmap. The `reason` field is now populated on every failure
+  // mode; consumers no longer need to fabricate one from `lengthOk`/`structureOk`.
+  it('REQ-28: populates reason on length mismatch', () => {
+    const v = validateBitString('0'.repeat(1599));
+    expect(v.valid).toBe(false);
+    expect(v.lengthOk).toBe(false);
+    expect(v.reason).toMatch(/length/i);
+    expect(v.reason).toContain('1599');
+    expect(v.reason).toContain('1600');
+  });
+
+  it('REQ-28: populates reason on non-binary character (with bad-char + position)', () => {
+    const v = validateBitString(`${'0'.repeat(1599)}X`);
+    expect(v.valid).toBe(false);
+    expect(v.structureOk).toBe(false);
+    expect(v.reason).toMatch(/non-binary/i);
+    expect(v.reason).toContain('X');
+    expect(v.reason).toContain('1599'); // position of bad char
+  });
+
+  // PAT-002: Go-parity independent measurements — both lengthOk and
+  // structureOk reflect actual measurements regardless of which check
+  // failed first. The reason carries combined-failure diagnostic.
+  it('PAT-002: returns lengthOk=false AND structureOk=false when both checks fail', () => {
+    const v = validateBitString(`X${'0'.repeat(1598)}`); // 1599 chars + X at pos 0
+    expect(v.valid).toBe(false);
+    expect(v.lengthOk).toBe(false);
+    expect(v.structureOk).toBe(false);
+    expect(v.reason).toMatch(/length mismatch.*AND.*non-binary/);
+  });
+});
+
+describe('generateScalarFromBitString — single-call + reason-populated (REQ-28)', () => {
+  it('throws with the validator reason on length mismatch (includes actual length)', () => {
+    expect(() => generateScalarFromBitString('0'.repeat(1599))).toThrow(/length/i);
+    expect(() => generateScalarFromBitString('0'.repeat(1599))).toThrow(/1599/);
+  });
+
+  it('throws with the validator reason on non-binary character (includes bad char)', () => {
+    expect(() => generateScalarFromBitString(`${'0'.repeat(1599)}X`)).toThrow(/non-binary/i);
+    expect(() => generateScalarFromBitString(`${'0'.repeat(1599)}X`)).toThrow(/X/);
+  });
 });
 
 // ============================================================================

@@ -38,3 +38,18 @@
 export { LETO } from './leto.js';
 export { ARTEMIS } from './artemis.js';
 export { APOLLO } from './apollo.js';
+
+// REQ-30 + PAT-001: re-export the full math.ts public surface for
+// discoverability parity with the registry/* subpath. Consumers using a
+// historical curve almost always need `new Modular(curve.p)` for field
+// arithmetic plus the bigint constants and bytes/base-10 helpers; this
+// re-export saves a dual-import.
+export {
+  Modular,
+  ZERO,
+  ONE,
+  TWO,
+  bytesToBigIntBE,
+  bigIntToBytesBE,
+  parseBase10,
+} from '../gen1/math.js';

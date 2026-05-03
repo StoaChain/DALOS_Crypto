@@ -85,6 +85,31 @@ describe('digitValueBase49', () => {
   });
 });
 
+describe('digitValueBase49 — single canonical definition (REQ-27)', () => {
+  it('key-gen.ts no longer exports a local copy (consolidation to scalar-mult.ts)', async () => {
+    // The CANONICAL definition lives in scalar-mult.ts (already imported above).
+    // The previously-local copy in key-gen.ts is DELETED — verify by static
+    // analysis: any consumer that needs digitValueBase49 must import from
+    // scalar-mult.js. key-gen.ts never exported its local copy in the first
+    // place, but post-Phase-9 the local copy is GONE entirely (validatePrivateKey
+    // now resolves the call via the named import from ./scalar-mult.js).
+    const keyGenModule = (await import('../../src/gen1/key-gen.js')) as Record<string, unknown>;
+    expect(keyGenModule.digitValueBase49).toBeUndefined();
+    expect(typeof digitValueBase49).toBe('function');
+  });
+
+  it('produces identical output for every base-49 alphabet character (regression sentinel)', () => {
+    // Pin that the consolidated function still produces byte-identical output
+    // for every legitimate input. The deleted local copy in key-gen.ts and
+    // the canonical copy in scalar-mult.ts had byte-identical bodies; this
+    // test ensures the canonical survivor remains correct.
+    for (let i = 0; i < BASE49_ALPHABET.length; i++) {
+      const ch = BASE49_ALPHABET[i]!;
+      expect(digitValueBase49(ch)).toBe(i);
+    }
+  });
+});
+
 describe('bigIntToBase49', () => {
   it('0 → "0"', () => {
     expect(bigIntToBase49(0n)).toBe('0');
@@ -128,6 +153,39 @@ describe('bigIntToBase49', () => {
     expect(s.length).toBeLessThan(290);
     // First character must be non-zero (no leading zeros)
     expect(s[0]).not.toBe('0');
+  });
+
+  // REQ-29 (F-PERF-007): pin algorithmic equivalence + perf bound for the
+  // O(n²) → O(n) refactor of bigIntToBase49.
+  it('huge scalar (Q²) — byte-identical output to inline reference algorithm (REQ-29)', () => {
+    // A scalar at Q² exercises the worst-case digit count (~570 base-49
+    // digits — twice the typical ~285). Algorithmic reference: the same
+    // push-then-reverse loop, written inline against bigint arithmetic.
+    const big = DALOS_ELLIPSE.q * DALOS_ELLIPSE.q;
+    const referenceDigits: number[] = [];
+    let x = big;
+    while (x > 0n) {
+      referenceDigits.push(Number(x % 49n));
+      x = x / 49n;
+    }
+    const referenceString = referenceDigits
+      .reverse()
+      .map((d) => BASE49_ALPHABET[d])
+      .join('');
+    expect(bigIntToBase49(big)).toBe(referenceString);
+  });
+
+  it('Q-sized conversion completes well under the perf bound (REQ-29 — O(n²)→O(n))', () => {
+    // Phase 4-style timeout-as-sentinel: if a future change re-introduces
+    // O(n²) string-prepend, 100 Q-sized conversions will balloon past
+    // 500 ms and trip this gate. Post-refactor expected ≤1 ms/call on a
+    // typical dev machine; 5 ms/call budget is a 10× safety margin.
+    const start = performance.now();
+    for (let i = 0; i < 100; i++) {
+      bigIntToBase49(DALOS_ELLIPSE.q);
+    }
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(500);
   });
 });
 

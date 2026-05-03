@@ -128,3 +128,45 @@ for (const tc of CASES) {
     }, 60_000);
   });
 }
+
+// REQ-30 (F-API-008): the historical/* subpath now re-exports the math
+// helpers so consumers can build field arithmetic against any historical
+// curve from a single import statement, mirroring registry/index.ts's
+// re-export of AddressPrefixPair + DALOS_PREFIXES.
+describe('historical subpath — Modular helpers re-export (REQ-30)', () => {
+  it('Modular class is re-exported from historical/index.ts', async () => {
+    const historical = (await import('../../src/historical/index.js')) as Record<string, unknown>;
+    expect(historical.Modular).toBeDefined();
+    expect(typeof historical.Modular).toBe('function');
+  });
+
+  it('Modular re-exported from historical is identity-equal to gen1/math', async () => {
+    const fromHistorical = (await import('../../src/historical/index.js')) as Record<
+      string,
+      unknown
+    >;
+    const fromMath = (await import('../../src/gen1/math.js')) as Record<string, unknown>;
+    expect(fromHistorical.Modular).toBe(fromMath.Modular);
+  });
+
+  it('ZERO, ONE, TWO are re-exported with the correct bigint values', async () => {
+    const historical = (await import('../../src/historical/index.js')) as Record<string, unknown>;
+    expect(historical.ZERO).toBe(0n);
+    expect(historical.ONE).toBe(1n);
+    expect(historical.TWO).toBe(2n);
+  });
+
+  it('bytesToBigIntBE, bigIntToBytesBE, parseBase10 are re-exported (PAT-001 expansion)', async () => {
+    const historical = (await import('../../src/historical/index.js')) as Record<string, unknown>;
+    expect(typeof historical.bytesToBigIntBE).toBe('function');
+    expect(typeof historical.bigIntToBytesBE).toBe('function');
+    expect(typeof historical.parseBase10).toBe('function');
+  });
+
+  it('LETO + Modular round-trip (single-import consumer ergonomics)', async () => {
+    const { LETO: LetoCurve, Modular: M } = await import('../../src/historical/index.js');
+    const field = new M(LetoCurve.p);
+    expect(field.canon(LetoCurve.p + 5n)).toBe(5n);
+    expect(field.add(3n, 4n)).toBe(7n);
+  });
+});

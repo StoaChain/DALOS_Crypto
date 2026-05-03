@@ -37,7 +37,12 @@ import type { Bitmap } from './bitmap.js';
 import { bitmapToBitString, validateBitmap } from './bitmap.js';
 import { DALOS_ELLIPSE, type Ellipse, extended2Affine } from './curve.js';
 import { affineToPublicKey, dalosAddressMaker, seedWordsToBitString } from './hashing.js';
-import { bigIntToBase49, isValidBase49Char, scalarMultiplierWithGenerator } from './scalar-mult.js';
+import {
+  bigIntToBase49,
+  digitValueBase49,
+  isValidBase49Char,
+  scalarMultiplierWithGenerator,
+} from './scalar-mult.js';
 
 // ============================================================================
 // Types
@@ -95,6 +100,10 @@ export interface BitStringValidation {
   readonly valid: boolean;
   readonly lengthOk: boolean;
   readonly structureOk: boolean;
+  // REQ-28: shape symmetry with PrivateKeyValidation + validateBitmap.
+  // Populated on failure (length mismatch and/or non-binary character),
+  // omitted on success.
+  readonly reason?: string;
 }
 
 export function validateBitString(
@@ -102,14 +111,33 @@ export function validateBitString(
   e: Ellipse = DALOS_ELLIPSE,
 ): BitStringValidation {
   const lengthOk = bitString.length === e.s;
+  // PAT-002: always run the structure walk so both booleans reflect actual
+  // measurements, matching Go's `(*Ellipse).ValidateBitString`
+  // (Elliptic/KeyGeneration.go:190-208) which never short-circuits.
   let structureOk = true;
-  for (const ch of bitString) {
+  let badChar = '';
+  let badPos = -1;
+  for (let i = 0; i < bitString.length; i++) {
+    const ch = bitString[i]!;
     if (ch !== '0' && ch !== '1') {
       structureOk = false;
+      badChar = ch;
+      badPos = i;
       break;
     }
   }
-  return { valid: lengthOk && structureOk, lengthOk, structureOk };
+  if (lengthOk && structureOk) {
+    return { valid: true, lengthOk: true, structureOk: true };
+  }
+  let reason: string;
+  if (!lengthOk && !structureOk) {
+    reason = `length mismatch (got ${bitString.length}, expected ${e.s}) AND non-binary character "${badChar}" at position ${badPos}`;
+  } else if (!lengthOk) {
+    reason = `length mismatch: got ${bitString.length}, expected ${e.s}`;
+  } else {
+    reason = `non-binary character "${badChar}" at position ${badPos}`;
+  }
+  return { valid: false, lengthOk, structureOk, reason };
 }
 
 /**
@@ -194,15 +222,6 @@ export function validatePrivateKey(
   return { valid: true, bitString };
 }
 
-// Internal: base-49 digit map. Imported lazily to avoid circular deps.
-function digitValueBase49(c: string): number {
-  const code = c.charCodeAt(0);
-  if (code >= 48 && code <= 57) return code - 48;
-  if (code >= 97 && code <= 122) return code - 97 + 10;
-  if (code >= 65 && code <= 77) return code - 65 + 36;
-  return 0;
-}
-
 // ============================================================================
 // Core pipeline
 // ============================================================================
@@ -250,14 +269,13 @@ export function generateRandomBitsOnCurve(e: Ellipse = DALOS_ELLIPSE): string {
  * Matches Go's `(*Ellipse).GenerateScalarFromBitString`.
  */
 export function generateScalarFromBitString(bitString: string, e: Ellipse = DALOS_ELLIPSE): bigint {
-  const { valid, reason } = {
-    ...validateBitString(bitString, e),
-    reason: undefined as string | undefined,
-  };
-  if (!valid) {
-    const v = validateBitString(bitString, e);
+  // REQ-28 (F-PERF-005 + F-ARCH-006): single validator call; the diagnostic
+  // detail flows from `validateBitString`'s `reason` field instead of a dead
+  // `${reason ? ` (${reason})` : ''}` placeholder that was always undefined.
+  const v = validateBitString(bitString, e);
+  if (!v.valid) {
     throw new Error(
-      `generateScalarFromBitString: invalid bitstring (length ${bitString.length}, expected ${e.s}): ${v.lengthOk ? 'structure' : 'length'} check failed${reason ? ` (${reason})` : ''}`,
+      `generateScalarFromBitString: invalid bitstring (length ${bitString.length}, expected ${e.s}): ${v.reason ?? 'unknown validation failure'}`,
     );
   }
 

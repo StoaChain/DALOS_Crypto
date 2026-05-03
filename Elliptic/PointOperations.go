@@ -51,13 +51,9 @@ type EllipseMethods interface {
     ScalarToPrivateKey(Scalar *big.Int) (DalosPrivateKey, error)
     ScalarToPublicKey(Scalar *big.Int) string
     
-    // VII Key Processing
-    ProcessIntegerFlag(flagValue string, isBase10 bool)
-    ProcessPrivateKeyConversion(BitString string)
-    ProcessKeyGeneration(BitString string, smartFlag *bool, password string)
-    SaveBitString(BitString string, Password string)
-    ExportPrivateKey(BitString, Password string)
-    
+    // VII Wallet I/O — moved to ../keystore/ in v4.0.0 (Phase 10, REQ-31).
+    //                  See ../keystore/{export,import,decrypt,filename}.go.
+
     // VIII Schnorr Signature
     SchnorrHash(R *big.Int, PublicKey string, Message string) *big.Int
     SchnorrSign(KeyPair DalosKeyPair, Message string) string

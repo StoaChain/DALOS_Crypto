@@ -1,7 +1,6 @@
 package Elliptic
 
 import (
-    "DALOS_Crypto/AES"
     "DALOS_Crypto/Bitmap"
     "DALOS_Crypto/Blake3"
     aux "DALOS_Crypto/Auxilliary"
@@ -9,7 +8,6 @@ import (
     "errors"
     "fmt"
     "math/big"
-    "os"
     "strings"
 )
 
@@ -24,35 +22,10 @@ type DalosPrivateKey struct {
     Int49     string
 }
 
-// Non Elliptic Functions
-
-func PrintKeys(Keys DalosKeyPair) {
-    fmt.Println("")
-    fmt.Println("")
-    fmt.Println("=====================ѺurѺ₿ѺrѺΣ=====================")
-    fmt.Println("Your Key-Pair is:")
-    fmt.Println("")
-    fmt.Println("PRIV: ", Keys.PRIV)
-    fmt.Println("")
-    fmt.Print("PUBL: ", Keys.PUBL)
-    fmt.Println("")
-    fmt.Println("=====================ѺurѺ₿ѺrѺΣ=====================")
-}
-
-func PrintPrivateKey(Keys DalosPrivateKey) {
-    fmt.Println("")
-    fmt.Println("")
-    fmt.Println("=====================ѺurѺ₿ѺrѺΣ=====================")
-    fmt.Println("Your Private Key is in (Binary, Decimal, Base49):")
-    fmt.Println("")
-    fmt.Println("Bits : ", Keys.BitString)
-    fmt.Println("")
-    fmt.Println("Int10: ", Keys.Int10)
-    fmt.Println("")
-    fmt.Println("Int49: ", Keys.Int49)
-    fmt.Println("")
-    fmt.Println("=====================ѺurѺ₿ѺrѺΣ=====================")
-}
+// Phase 10 (REQ-31, v4.0.0): PrintKeys + PrintPrivateKey moved to
+// `print.go` at repo root (package main). This file retains pure-crypto
+// only — see ../keystore/ for wallet I/O and ../process.go for CLI
+// orchestration.
 
 func DalosAddressMaker(PublicKey string, SmartOrStandard bool) string {
     //Creates either a Standard Dalos Account Address or a Smart Dalor Account Address
@@ -374,334 +347,21 @@ func (e *Ellipse) GenerateFromBitmap(b Bitmap.Bitmap) (DalosKeyPair, error) {
     return e.ScalarToKeys(scalar)
 }
 
-// VII Key Processing
-
-func (e *Ellipse) ProcessIntegerFlag(flagValue string, isBase10 bool) string {
-    // Validate the private key
-    isValid, BitString := e.ValidatePrivateKey(flagValue, isBase10)
-    if !isValid {
-        fmt.Println("Error: Invalid private key.")
-        return ""
-    }
-    return BitString
-}
-
-// ProcessPrivateKeyConversion derives and prints the key pair + addresses
-// from a bit-string private key.
-//
-// KG-2 hardening (v2.1.0): previously this swallowed any error from
-// GenerateScalarFromBitString silently. Now an invalid bit string
-// produces a clean error message on stderr and the function returns
-// early without printing misleading output. The CLI contract stays
-// the same (no error return), but the failure mode is now visible.
-func (e *Ellipse) ProcessPrivateKeyConversion(BitString string) {
-    Scalar, err := e.GenerateScalarFromBitString(BitString)
-    if err != nil {
-        fmt.Println("Error: invalid bit string:", err)
-        return
-    }
-    // Get the Private Key
-    PrivateKey, err := e.ScalarToPrivateKey(Scalar)
-    if err != nil {
-        fmt.Println("Error generating private key:", err)
-        return
-    }
-
-    // Get the Key Pair
-    KeyPair, err2 := e.ScalarToKeys(Scalar)
-    if err2 != nil {
-        fmt.Println("Error generating key pair:", err2)
-        return
-    }
-    
-    // Print the Private Key
-    PrintPrivateKey(PrivateKey)
-    
-    // Print the Key Pair
-    PrintKeys(KeyPair)
-    
-    //Printing Accounts
-    SmartAccount := DalosAddressMaker(KeyPair.PUBL, true)
-    StandardAccount := DalosAddressMaker(KeyPair.PUBL, false)
-    fmt.Println("")
-    fmt.Println("")
-    fmt.Println("=====================ѺurѺ₿ѺrѺΣ=====================")
-    fmt.Println("Your Smart DALOS Account Address is:")
-    fmt.Println("")
-    fmt.Println(SmartAccount)
-    fmt.Println("")
-    fmt.Println("")
-    fmt.Println("Your Standard DALOS Account Address is:")
-    fmt.Println("")
-    fmt.Println(StandardAccount)
-    fmt.Println("")
-    fmt.Println("=====================ѺurѺ₿ѺrѺΣ=====================")
-}
-
-// ProcessKeyGeneration runs the full CLI key-generation pipeline:
-// bitstring → scalar → keys → addresses → encrypted file.
-//
-// KG-2 hardening (v2.1.0): an invalid bit string is now reported
-// cleanly instead of cascading silently into downstream garbage.
-func (e *Ellipse) ProcessKeyGeneration(BitString string, smartFlag *bool, password string) {
-    // Generate Scalar from BitString
-    Scalar, err := e.GenerateScalarFromBitString(BitString)
-    if err != nil {
-        fmt.Println("Error: invalid bit string:", err)
-        return
-    }
-
-    // Get the Private Key
-    PrivateKey, err := e.ScalarToPrivateKey(Scalar)
-    if err != nil {
-        fmt.Println("Error generating private key:", err)
-        return
-    }
-    
-    // Get the Key Pair
-    KeyPair, err := e.ScalarToKeys(Scalar)
-    if err != nil {
-        fmt.Println("Error generating key pair:", err)
-        return
-    }
-    
-    // Print the Private Key
-    PrintPrivateKey(PrivateKey)
-    
-    // Print the Key Pair
-    PrintKeys(KeyPair)
-    
-    // Generate account based on the smart or standard flag
-    if *smartFlag {
-        SmartAccount := DalosAddressMaker(KeyPair.PUBL, true)
-        fmt.Println("")
-        fmt.Println("")
-        fmt.Println("=====================ѺurѺ₿ѺrѺΣ=====================")
-        fmt.Println("Your Smart DALOS Account Address is:")
-        fmt.Println("")
-        fmt.Println(SmartAccount)
-        fmt.Println("")
-        fmt.Println("=====================ѺurѺ₿ѺrѺΣ=====================")
-    } else {
-        StandardAccount := DalosAddressMaker(KeyPair.PUBL, false)
-        fmt.Println("")
-        fmt.Println("")
-        fmt.Println("=====================ѺurѺ₿ѺrѺΣ=====================")
-        fmt.Println("Your Standard DALOS Account Address is:")
-        fmt.Println("")
-        fmt.Println(StandardAccount)
-        fmt.Println("")
-        fmt.Println("=====================ѺurѺ₿ѺrѺΣ=====================")
-    }
-    
-    // Save the BitString with the provided password
-    e.SaveBitString(BitString, password)
-}
-
-func (e *Ellipse) SaveBitString(BitString string, Password string) {
-    var P2 string
-    var Condition bool
-    
-    fmt.Println("")
-    fmt.Println("The BitString representing the Private-Key is being saved!")
-    
-    // Confirm password
-    for {
-        fmt.Println("Confirm the entered Password by retyping it:")
-        _, _ = fmt.Scanln(&P2)
-        if Password == P2 {
-            Condition = true
-        } else {
-            fmt.Println("Retyped password doesn't match the previous entered password!")
-            Condition = false
-        }
-        
-        // If confirmed correctly, break the loop
-        if Condition {
-            break
-        }
-    }
-    
-    // Export the private key using the confirmed password
-    e.ExportPrivateKey(BitString, Password)
-}
-
-func (e *Ellipse) ExportPrivateKey(BitString, Password string) {
-    // Helper function to convert from base 2 to base 49
-    convertBase2ToBase49 := func(input string) string {
-        // Convert the input string from base 2 to big.Int
-        bigIntValue := new(big.Int)
-        if _, success := bigIntValue.SetString(input, 2); success {
-            // Convert the big.Int value to base 49
-            return bigIntValue.Text(49)
-        }
-        return "" // Return an empty string on failure
-    }
-    encryptedRaw := AES.EncryptBitString(BitString, Password)
-    if encryptedRaw == "" {
-        fmt.Println("Error: AES encryption failed; aborting key export.")
-        return
-    }
-    EncryptedPK := convertBase2ToBase49(encryptedRaw)
-
-    Scalar, err := e.GenerateScalarFromBitString(BitString)
-    if err != nil {
-        fmt.Println("Error: invalid bit string in ExportPrivateKey:", err)
-        return
-    }
-    KeyPair, err := e.ScalarToKeys(Scalar)
-    if err != nil {
-        fmt.Println("Error: failed to derive key pair in ExportPrivateKey:", err)
-        return
-    }
-    PublicKey := KeyPair.PUBL
-    FileName := GenerateFilenameFromPublicKey(PublicKey)
-    SmartAddress := DalosAddressMaker(PublicKey, true)
-    StandardAddress := DalosAddressMaker(PublicKey, false)
-    
-    String0 := "=====================ѺurѺ₿ѺrѺΣ====================="
-    String1 := "Your DALOS Account PrivateKey in encrypted form is:"
-    String2 := "Your DALOS Account PublicKey:"
-    String3 := "Your Smart DALOS Account Address is:"
-    String4 := "Your Standard DALOS Account Address is:"
-    
-    OutputFile, err := os.Create(FileName)
-    if err != nil {
-        fmt.Println("Error: failed to create export file:", err)
-        return
-    }
-    defer OutputFile.Close()
-    
-    //Exporting Data
-    _, _ = fmt.Fprintln(OutputFile, String0)
-    _, _ = fmt.Fprintln(OutputFile, String1)
-    _, _ = fmt.Fprintln(OutputFile, EncryptedPK)
-    _, _ = fmt.Fprintln(OutputFile, String0)
-    _, _ = fmt.Fprintln(OutputFile, String2)
-    _, _ = fmt.Fprintln(OutputFile, PublicKey)
-    _, _ = fmt.Fprintln(OutputFile, String0)
-    _, _ = fmt.Fprintln(OutputFile, String3)
-    _, _ = fmt.Fprintln(OutputFile, SmartAddress)
-    _, _ = fmt.Fprintln(OutputFile, String4)
-    _, _ = fmt.Fprintln(OutputFile, StandardAddress)
-    _, _ = fmt.Fprint(OutputFile, String0)
-}
-
-// ImportPrivateKey decrypts the private key, verifies the public key, and a Dalos Key Pair
-func (e *Ellipse) ImportPrivateKey(PathWithName, Password string) (DalosKeyPair, error) {
-    var Output DalosKeyPair
-    fmt.Println("DALOS Keys are being opened!")
-    
-    // Read the file content using os.ReadFile
-    fileContent, err := os.ReadFile(PathWithName)
-    if err != nil {
-        return Output, err
-    }
-    
-    // Extract the lines from the file content
-    lines := strings.Split(string(fileContent), "\n")
-    if len(lines) != 12 {
-        return Output, errors.New("invalid file format")
-    }
-    
-    // Line 2 contains the encrypted private key (index 2 - 3rd line)
-    encryptedPrivateKey := strings.TrimSpace(lines[2])
-    // Line 5 contains the public key (index 5 - 6th line)
-    publicKeyFromFile := strings.TrimSpace(lines[5])
-    
-    // Decrypt the private key using the AESDecrypt function
-    decryptedBitString, err2 := AESDecrypt(encryptedPrivateKey, Password)
-    if err2 != nil {
-        return Output, errors.New("incorrect password or decryption failed")
-    }
-    
-    // Check if the decrypted bit string is less than the expected length (e.S = 1600 bits)
-    expectedLength := int(e.S)
-    currentLength := len(decryptedBitString)
-    if currentLength < expectedLength {
-        // Prepend zeros to make the length 1600 bits
-        zerosToAdd := expectedLength - currentLength
-        decryptedBitString = strings.Repeat("0", zerosToAdd) + decryptedBitString
-    }
-    
-    // Generate the scalar from the decrypted bit string
-    scalar, err3 := e.GenerateScalarFromBitString(decryptedBitString)
-    if err3 != nil {
-        return Output, errors.New("failed to generate scalar from bit string")
-    }
-    
-    // Generate the DalosKeyPair from the scalar
-    GeneratedDalosKeyPair, err4 := e.ScalarToKeys(scalar)
-    if err4 != nil {
-        return Output, errors.New("failed to generate keys from scalar")
-    }
-    
-    // Verify the public key
-    if GeneratedDalosKeyPair.PUBL != publicKeyFromFile {
-        return Output, errors.New("computed public key does not match the public key in the file")
-    }
-    
-    fmt.Println("Public Key verification successful!")
-    Output = GeneratedDalosKeyPair
-    // Return the decrypted bit string
-    return Output, nil
-}
-
-//Remaining non-Elliptic Functions
-
-// AESDecrypt function decrypts the private key from base 49 using AES decryption
-func AESDecrypt(encryptedPrivateKeyBase49, password string) (string, error) {
-    // Step 1: Convert the base 49 encrypted private key to base 10 (big.Int)
-    encryptedBigInt := ConvertBase49toBase10(encryptedPrivateKeyBase49)
-    
-    // Step 2: Convert the big.Int to a binary string (base 2)
-    encryptedBitString := encryptedBigInt.Text(2)
-    
-    // Step 3: Decrypt the binary string using AES decryption
-    decryptedBitString, err := AES.DecryptBitString(encryptedBitString, password)
-    if err != nil {
-        return "", err
-    }
-    
-    // The decrypted private key (in bit string form) is returned
-    return decryptedBitString, nil
-}
-
-// Function to generate the filename from the public key
-func GenerateFilenameFromPublicKey(publicKey string) string {
-    // Split the public key at the first occurrence of '.'
-    parts := strings.SplitN(publicKey, ".", 2)
-    
-    if len(parts) < 2 {
-        // Handle case where the public key doesn't contain a '.'
-        fmt.Println("Invalid public key format. No dot found.")
-        return "InvalidPublicKey.txt"
-    }
-    
-    // Get the prefix and the part after the dot
-    prefix := parts[0]
-    afterDot := parts[1]
-    
-    // Extract the first 7 characters after the dot
-    first7 := ""
-    if len(afterDot) > 7 {
-        first7 = afterDot[:7]
-    } else {
-        first7 = afterDot // Take the whole string if it's less than 7
-    }
-    
-    // Extract the last 7 characters of the public key
-    last7 := ""
-    if len(publicKey) > 7 {
-        last7 = publicKey[len(publicKey)-7:]
-    } else {
-        last7 = publicKey // Take the whole string if it's less than 7
-    }
-    
-    // Combine into the filename
-    filename := fmt.Sprintf("%s.%s...%s.txt", prefix, first7, last7)
-    return filename
-}
+// Phase 10 (REQ-31, v4.0.0): The following symbols moved out of this
+// package to enforce the pure-crypto invariant on Elliptic/ —
+//   - PrintKeys, PrintPrivateKey            -> ../print.go (package main)
+//   - ProcessIntegerFlag,
+//     ProcessPrivateKeyConversion,
+//     ProcessKeyGeneration,
+//     SaveBitString                          -> ../process.go (package main)
+//   - ExportPrivateKey, ImportPrivateKey,
+//     AESDecrypt,
+//     GenerateFilenameFromPublicKey          -> ../keystore/ (NEW package)
+// All retain output-preserving behaviour; the receivers were rewritten
+// from `(e *Ellipse)` methods to free functions taking `e *el.Ellipse`
+// because Go forbids defining methods on types from external packages.
+// See ../.bee/specs/2026-05-02-unified-audit-2026-04-29/phases/
+// 10-elliptic-package-carve-out/MIGRATION.md for the full migration table.
 
 // characterMatrixCache holds the 16x16 rune matrix used for Demiourgos address
 // derivation. It is built exactly once at package init via makeCharacterMatrix

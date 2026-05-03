@@ -30,14 +30,17 @@ import (
 // CommandContext + DeadlineExceeded converts that hang into a clean test
 // diagnostic instead of stalling the entire `go test` run.
 //
-// The test invokes `go run Dalos.go ...`, which compiles and runs the
-// binary on demand. CI environments and local dev shells both have `go`
-// on PATH; no separate build artifact is managed.
+// The test invokes `go run .` (Phase 10 v4.0.0 cutover from
+// `go run Dalos.go` — the carve-out splits package main across Dalos.go
+// + print.go + process.go, so the single-file compile no longer resolves
+// the relocated free functions ProcessIntegerFlag / ProcessKeyGeneration
+// / etc.). CI environments and local dev shells both have `go` on PATH;
+// no separate build artifact is managed.
 func TestCLI_InvalidIntegerFlag_ExitsNonZeroWithError(t *testing.T) {
     ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
     defer cancel()
 
-    cmd := exec.CommandContext(ctx, "go", "run", "Dalos.go", "-g", "-i10", "not_an_integer", "-p", "test")
+    cmd := exec.CommandContext(ctx, "go", "run", ".", "-g", "-i10", "not_an_integer", "-p", "test")
     out, err := cmd.CombinedOutput()
 
     if ctx.Err() == context.DeadlineExceeded {

@@ -2,6 +2,7 @@ package main
 
 import (
     el "DALOS_Crypto/Elliptic"
+    "DALOS_Crypto/keystore"
     "flag"
     "fmt"
     "log"
@@ -109,7 +110,7 @@ func main() {
         fmt.Println("Generating a DALOS Key-Pair with special variant...")
         // Handle special generation logic here
         RandomBits := DalosEllipse.GenerateRandomBitsOnCurve()
-        DalosEllipse.ProcessPrivateKeyConversion(RandomBits)
+        ProcessPrivateKeyConversion(&DalosEllipse, RandomBits)
         os.Exit(0) // Exit after special generation
     }
     // Ensure that if -g is used, we also have the required flags
@@ -128,7 +129,7 @@ func main() {
         if *rawFlag {
             fmt.Println("Generating Key-Pair from random bits...")
             RandomBits := DalosEllipse.GenerateRandomBitsOnCurve()
-            DalosEllipse.ProcessKeyGeneration(RandomBits, smartFlag, *passwordFlag)
+            ProcessKeyGeneration(&DalosEllipse, RandomBits, smartFlag, *passwordFlag)
         }
         // If -seed is used, validate that the correct number of seed words are provided
         if *seedFlag > 0 {
@@ -166,7 +167,7 @@ func main() {
             }
             // Call the key generation logic using the valid seed words
             BitString := DalosEllipse.SeedWordsToBitString(seedWords)
-            DalosEllipse.ProcessKeyGeneration(BitString, smartFlag, *passwordFlag)
+            ProcessKeyGeneration(&DalosEllipse, BitString, smartFlag, *passwordFlag)
         }
         
         // Handle other generation methods (e.g., -bits, -i10, -i49) here...
@@ -189,26 +190,26 @@ func main() {
             
             // Proceed with processing the bit string since validation passed
             BitString := *bitFlag
-            DalosEllipse.ProcessKeyGeneration(BitString, smartFlag, *passwordFlag)
+            ProcessKeyGeneration(&DalosEllipse, BitString, smartFlag, *passwordFlag)
         }
         
         if *intaFlag != "" {
             fmt.Println("Generating key pair from string representing an integer in base 10...")
-            BitString := DalosEllipse.ProcessIntegerFlag(*intaFlag, true)
+            BitString := ProcessIntegerFlag(&DalosEllipse, *intaFlag, true)
             if BitString == "" {
                 fmt.Println("Aborting -i10 base-10 key generation.")
                 os.Exit(1)
             }
-            DalosEllipse.ProcessKeyGeneration(BitString, smartFlag, *passwordFlag)
+            ProcessKeyGeneration(&DalosEllipse, BitString, smartFlag, *passwordFlag)
         }
         if *intbFlag != "" {
             fmt.Println("Generating key pair from string representing an integer in base 49...")
-            BitString := DalosEllipse.ProcessIntegerFlag(*intbFlag, false)
+            BitString := ProcessIntegerFlag(&DalosEllipse, *intbFlag, false)
             if BitString == "" {
                 fmt.Println("Aborting -i49 base-49 key generation.")
                 os.Exit(1)
             }
-            DalosEllipse.ProcessKeyGeneration(BitString, smartFlag, *passwordFlag)
+            ProcessKeyGeneration(&DalosEllipse, BitString, smartFlag, *passwordFlag)
         }
         
     } else if *convertFlag {
@@ -216,23 +217,23 @@ func main() {
         if *bitConvFlag != "" {
             fmt.Println("Converting The BitString to Public key and Dalos Accounts...")
             BitString := *bitConvFlag
-            DalosEllipse.ProcessPrivateKeyConversion(BitString)
+            ProcessPrivateKeyConversion(&DalosEllipse, BitString)
         } else if *intConvFlag != "" {
             fmt.Println("Converting The String Representing an Integer in base 10 to Public key and Dalos Accounts...")
-            BitString := DalosEllipse.ProcessIntegerFlag(*intConvFlag, true)
+            BitString := ProcessIntegerFlag(&DalosEllipse, *intConvFlag, true)
             if BitString == "" {
                 fmt.Println("Aborting -int10 base-10 conversion.")
                 os.Exit(1)
             }
-            DalosEllipse.ProcessPrivateKeyConversion(BitString)
+            ProcessPrivateKeyConversion(&DalosEllipse, BitString)
         } else if *strConvFlag != "" {
             fmt.Println("Converting The String Representing an Integer in base 49 to Public key and Dalos Accounts...")
-            BitString := DalosEllipse.ProcessIntegerFlag(*strConvFlag, false)
+            BitString := ProcessIntegerFlag(&DalosEllipse, *strConvFlag, false)
             if BitString == "" {
                 fmt.Println("Aborting -int49 base-49 conversion.")
                 os.Exit(1)
             }
-            DalosEllipse.ProcessPrivateKeyConversion(BitString)
+            ProcessPrivateKeyConversion(&DalosEllipse, BitString)
         } else {
             fmt.Println("Error: No valid conversion method selected.")
             flag.Usage()
@@ -246,18 +247,18 @@ func main() {
         }
         
         // Call the ImportPrivateKey function
-        ReadKeyPair, err := DalosEllipse.ImportPrivateKey(*openFlag, *passwordFlag)
+        ReadKeyPair, err := keystore.ImportPrivateKey(&DalosEllipse, *openFlag, *passwordFlag)
         if err != nil {
             log.Fatalf("Error opening wallet: %v", err)
         }
         
         //Print the Private Key on Screen
-        BitString := DalosEllipse.ProcessIntegerFlag(ReadKeyPair.PRIV, false)
+        BitString := ProcessIntegerFlag(&DalosEllipse, ReadKeyPair.PRIV, false)
         if BitString == "" {
             fmt.Println("Aborting wallet open: private key invalid.")
             os.Exit(1)
         }
-        DalosEllipse.ProcessPrivateKeyConversion(BitString)
+        ProcessPrivateKeyConversion(&DalosEllipse, BitString)
     } else if *signFlag != "" {
         // Check if the password flag is also set
         if *passwordFlag == "" {
@@ -270,7 +271,7 @@ func main() {
         }
         
         // Call the ImportPrivateKey function
-        ReadKeyPair, err := DalosEllipse.ImportPrivateKey(*signFlag, *passwordFlag)
+        ReadKeyPair, err := keystore.ImportPrivateKey(&DalosEllipse, *signFlag, *passwordFlag)
         if err != nil {
             log.Fatalf("Error opening wallet: %v", err)
         }

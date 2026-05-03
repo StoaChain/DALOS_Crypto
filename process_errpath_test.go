@@ -1,4 +1,4 @@
-package Elliptic
+package main
 
 import (
 	"os"
@@ -13,31 +13,27 @@ import (
 // the input; it must print the existing "Error: Invalid private key." message
 // to stdout and return "" so callers can decide how to react.
 //
-// Pre-fix: ProcessIntegerFlag called os.Exit(1) on invalid input, terminating
-// the process and making the function non-composable inside library callers
-// or test binaries.
-//
-// Post-fix: the invalid-input path uses fmt.Println + return "", matching the
-// empty-string sentinel convention already established in AES.EncryptBitString
-// (AES/AES.go:95,100,105) and Elliptic.SchnorrSign (Elliptic/Schnorr.go:315).
-// The function's existing string return type is preserved.
+// Phase 10 (REQ-31, v4.0.0): moved verbatim from
+// Elliptic/ProcessIntegerFlag_errpath_test.go alongside ProcessIntegerFlag's
+// move to package main. The source-text target was retargeted from
+// "KeyGeneration.go" to "process.go" (the Phase-10 home of the function), and
+// the receiver-method regex was retargeted to the free-function form
+// `func ProcessIntegerFlag(e *el.Ellipse, ...)`.
 func TestProcessIntegerFlag_NoOsExit(t *testing.T) {
-	src, err := os.ReadFile("KeyGeneration.go")
+	src, err := os.ReadFile("process.go")
 	if err != nil {
-		t.Fatalf("failed to read KeyGeneration.go: %v", err)
+		t.Fatalf("failed to read process.go: %v", err)
 	}
 	body := string(src)
 
 	// Isolate the ProcessIntegerFlag function body so the assertion does not
-	// false-positive on the legitimate os.Create / os.ReadFile usages
-	// elsewhere in the file (ExportPrivateKey at line 547, ImportPrivateKey
-	// at line 575).
+	// false-positive on legitimate os.* usages elsewhere.
 	fnPattern := regexp.MustCompile(
-		`(?s)func\s+\(e\s*\*Ellipse\)\s+ProcessIntegerFlag\([^)]*\)\s+string\s*\{(.*?)\n\}`,
+		`(?s)func\s+ProcessIntegerFlag\([^)]*\)\s+string\s*\{(.*?)\n\}`,
 	)
 	match := fnPattern.FindStringSubmatch(body)
 	if match == nil {
-		t.Fatalf("could not locate ProcessIntegerFlag function body in KeyGeneration.go")
+		t.Fatalf("could not locate ProcessIntegerFlag function body in process.go")
 	}
 	fnBody := match[1]
 
@@ -73,13 +69,12 @@ func TestProcessIntegerFlag_NoOsExit(t *testing.T) {
 }
 
 // TestProcessIntegerFlag_InvalidBranchShape pins the exact shape of the
-// invalid-input block to the empty-string sentinel pattern used in
-// AES.EncryptBitString and Elliptic.SchnorrSign. Drift in shape is a
-// regression.
+// invalid-input block to the empty-string sentinel pattern. Drift in shape
+// is a regression.
 func TestProcessIntegerFlag_InvalidBranchShape(t *testing.T) {
-	src, err := os.ReadFile("KeyGeneration.go")
+	src, err := os.ReadFile("process.go")
 	if err != nil {
-		t.Fatalf("failed to read KeyGeneration.go: %v", err)
+		t.Fatalf("failed to read process.go: %v", err)
 	}
 	body := string(src)
 

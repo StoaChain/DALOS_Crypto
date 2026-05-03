@@ -6,7 +6,7 @@
 > `CryptographicRegistry` for multi-generation forward compatibility.
 
 [![npm](https://img.shields.io/npm/v/@stoachain/dalos-crypto.svg)](https://www.npmjs.com/package/@stoachain/dalos-crypto)
-[![tests](https://img.shields.io/badge/tests-390%20passing-brightgreen.svg)](#verification)
+[![tests](https://img.shields.io/badge/tests-426%20passing-brightgreen.svg)](#verification)
 [![license](https://img.shields.io/badge/license-UNLICENSED-blue.svg)](https://github.com/StoaChain/DALOS_Crypto)
 
 ---
@@ -250,7 +250,7 @@ against 105 canonical test vectors:
 Plus `[Q]·G = O` end-to-end verification per curve. Run locally:
 
 ```bash
-npm test   # 390 tests, ~30s
+npm test   # 426 tests, ~30s
 ```
 
 See the Go-reference corpus: [`testvectors/v1_genesis.json`](https://github.com/StoaChain/DALOS_Crypto/blob/main/testvectors/v1_genesis.json).

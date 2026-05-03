@@ -8,25 +8,194 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
-### Publish-pipeline hygiene (infra, no npm version bump)
-
-Landed alongside the v3.1.0 release work but does NOT bump the npm package version — these changes are repo-infrastructure cleanup that take effect on the NEXT publish (v3.2.0). Documented here so the v3.2.0 CHANGELOG entry can reference back.
-
-- **GitHub Releases backfilled.** All 7 prior `ts-v*` tags (`ts-v1.0.0`, `ts-v1.1.0`, `ts-v1.2.0`, `ts-v3.0.0`, `ts-v3.0.1`, `ts-v3.0.2`, `ts-v3.0.3`) now have GitHub Release pages, populated from each tag's annotation body plus the matching CHANGELOG section where one exists. Display titles drop the `ts-` prefix (e.g. `v3.0.3` rather than `ts-v3.0.3`) so the Releases page reads identically to the npm version listing — the underlying tag retains the prefix for git-side disambiguation against the Go-reference `v*` tags.
-- **`ts-v3.1.0` Release title renamed** from `ts-v3.1.0` to `v3.1.0` for the same display consistency.
-- **`.github/workflows/ts-publish.yml` patched.** Three fixes:
-  1. The `Create GitHub Release for the pushed tag` step previously called `gh release create --notes-from-tag --repo X`, a flag combination that became unsupported on GitHub-hosted runners around 2026-04-30 (gh CLI image update). Removed the `--repo` flag so the gh CLI defaults to the checked-out repo. Same fix applied to the backfill step. Title computation updated to strip the `ts-` prefix.
-  2. The backfill list now enumerates all 8 `ts-v*` tags (was missing `ts-v3.0.2`, `ts-v3.0.3`, `ts-v3.1.0`).
-  3. **npm provenance enabled.** Added `id-token: write` to the job permissions block and `--provenance` to the `npm publish` step. Future publishes (v3.2.0 onward) will carry an SLSA attestation linking the npm package back to the GitHub Action run that produced it. npmjs.com displays a "Provenance" badge on the package page; consumers can verify the package was built by this exact workflow on this exact commit.
-- **`/bee:pollinate` command** added to the user-global Bee plugin commands at `commands/pollinate.md`. Post-ship publishing pipeline for npm-backed GitHub repos: pushes to origin/main, creates the annotated tag from CHANGELOG content, monitors the CI publish workflow, falls back to REST-API Release creation if the workflow's gh-release step fails, verifies the npm registry and provenance attestation, and backfills any missing prior Releases. Driven by a per-project `lifecycle` block in `.bee/config.json` so it works for both dual-stack monorepos (DALOS_Crypto with `ts/` subpath) and single-stack packages.
-- **`.bee/config.json` lifecycle block added** wiring DALOS_Crypto into the pollinate flow: `npm_dir: "ts"`, `tag_pattern: "ts-v{version}"`, `release_title_pattern: "v{version}"`, `use_provenance: true`. The next release (v3.2.0 medium-bundle) will publish through `/bee:pollinate` end-to-end instead of the manual sequence used for v3.1.0.
-
 ### Planned
 
-- TypeScript port (`ts/` subdirectory) — begin Phase 1 of [`docs/TS_PORT_PLAN.md`](docs/TS_PORT_PLAN.md) (math foundation).
 - Expand test-vector corpus from 85 → 500+ — edge cases (all-zero, all-ones, boundary scalars), invalid-input rejection vectors.
 - `docs/SCHNORR_HARDENING.md` — detailed fix plan for the 7 Schnorr findings (Category B, applied in the TS port).
 - Third-party cryptographic audit engagement.
+
+---
+
+## [4.0.0] — 2026-05-03
+
+**M3 BREAKING release (major).** Closes the `unified-audit-2026-04-29` audit cycle in 11 sequenced phases plus a merge of the parallel v3.1.0 high-additive bundle. Three milestones combined into a single major rather than three separate releases (M1 medium → would-be v3.2.0, M2 low → would-be v3.2.1, M3 architecture → forces v4.0.0): the M3 Elliptic-package carve-out is the load-bearing reason for the major bump. **426/426 TS tests + 5 Go packages all green.** Genesis 105-vector corpus byte-identity preserved at extended-elided SHA-256 = `082f7a40405d4c075f1975af0a6075bb0228bbccae60a53b05b350a09ce223ae` (unchanged since v3.0.0); historical SHA-256 = `80c93f4d4956e01236808f81f518d17eeaad431f4fedb7c26233d2508f06e68b` (unchanged since v3.0.0).
+
+### BREAKING CHANGES
+
+#### Go reference — `Elliptic/` package carve-out (Phase 10, REQ-31, F-ARCH-001)
+
+The historical `DALOS_Crypto/Elliptic` package mixed three concerns under one boundary: pure crypto, wallet I/O, CLI orchestration. Library consumers wanting just the crypto primitives transitively pulled in `os`, `fmt`, AES, and the interactive-stdin code path. v4.0.0 carves it into three surfaces:
+
+- **`Elliptic/`** retains pure-crypto only — curve, point ops, scalar mult, key-gen math, address derivation, Schnorr. 1017 → 664 lines (-353). No `os.*` calls in non-test source; no `fmt.Scanln`; only 3 plan-allowed `fmt.Println` diagnostics inside `ValidatePrivateKey`.
+- **`keystore/`** (NEW package, sibling of `AES/`, `Bitmap/`, `Blake3/`) — receives wallet I/O: `ExportPrivateKey`, `ImportPrivateKey`, `AESDecrypt`, `GenerateFilenameFromPublicKey`. Strict one-way dep: `keystore → Elliptic + AES`. Never reverse.
+- **`main`** (CLI orchestration in NEW `print.go` + `process.go` alongside `Dalos.go`) — receives CLI orchestration: `PrintKeys`, `PrintPrivateKey`, `ProcessIntegerFlag`, `ProcessPrivateKeyConversion`, `ProcessKeyGeneration`, `SaveBitString`.
+
+10 symbols moved. Receivers rewritten from `(e *Ellipse)` methods to free functions taking `e *el.Ellipse` first parameter — Go forbids defining methods on types from external packages. **The carve-out is output-preserving by construction**: no function bodies changed, only package binding + receiver-to-free-function rewrite.
+
+**Consumer migration (full table in `.bee/specs/2026-05-02-unified-audit-2026-04-29/phases/10-elliptic-package-carve-out/MIGRATION.md`):**
+
+```go
+// v3.x
+import el "DALOS_Crypto/Elliptic"
+DalosEllipse.ExportPrivateKey(BitString, password)
+DalosEllipse.ProcessKeyGeneration(BitString, smartFlag, password)
+keyPair, err := DalosEllipse.ImportPrivateKey(walletPath, password)
+plaintext, err := el.AESDecrypt(ciphertext, password)
+filename := el.GenerateFilenameFromPublicKey(keyPair.PUBL)
+
+// v4.0.0
+import (
+    el "DALOS_Crypto/Elliptic"
+    "DALOS_Crypto/keystore"
+)
+keystore.ExportPrivateKey(&DalosEllipse, BitString, password)
+ProcessKeyGeneration(&DalosEllipse, BitString, smartFlag, password)
+keyPair, err := keystore.ImportPrivateKey(&DalosEllipse, walletPath, password)
+plaintext, err := keystore.AESDecrypt(ciphertext, password)
+filename := keystore.GenerateFilenameFromPublicKey(keyPair.PUBL)
+```
+
+The `EllipseMethods` interface in `Elliptic/PointOperations.go` is trimmed of 5 declarations (`ProcessIntegerFlag`, `ProcessPrivateKeyConversion`, `ProcessKeyGeneration`, `SaveBitString`, `ExportPrivateKey`) per the carve-out. A new section-VII breadcrumb comment points readers to `../keystore/`.
+
+#### Go reference — `EllipseMethods.SchnorrVerify` parameter order aligned (Phase 11, REQ-32, F-ARCH-002)
+
+Pre-v4.0.0 the interface declaration was `SchnorrVerify(Signature, PublicKey, Message string) bool`. The implementation in `Elliptic/Schnorr.go` always declared `(Signature, Message, PublicKey string) bool`. The interface declaration is now aligned to the implementation's canonical order.
+
+**Migration impact: ZERO in-repo migration needed.** All 9 in-repo `.SchnorrVerify(...)` call sites already pass arguments in canonical `(sig, msg, key)` order. External consumers who dispatch through the `EllipseMethods` interface type (rather than calling the method directly on `*Ellipse`) update their call sites — per repo-wide grep at release time, ZERO such consumers exist in this repo or its known dependents.
+
+A new `Elliptic/assertions.go` file adds compile-time conformance enforcement:
+
+```go
+var _ EllipseMethods = (*Ellipse)(nil)
+```
+
+Any future drift in TYPE SIGNATURES (parameter types, return types, method names, additions/removals) causes `go build ./Elliptic/...` to fail. The check does NOT detect parameter-name drift (Go's structural typing doesn't include parameter names) — for parameter-name hygiene, the next `/bee:audit` cycle remains the safety net. Filename note: deliberately `assertions.go` not `_assertions.go` (Go's build tool ignores files starting with `.` or `_`).
+
+#### TypeScript port — `Modular` field structural property + `validateBitString` shape (Phases 5 + 9)
+
+- **Phase 5 (REQ-13, F-ARCH-004):** the `Ellipse` interface gained a `readonly field: Modular` structural property (populated at construction time). Functions across `gen1/` no longer take `m: Modular = DALOS_FIELD` default-param — `e.field` is the canonical access pattern. The `DALOS_FIELD` module-level singleton was eliminated as a footgun (it baked DALOS_ELLIPSE.p into every default-arg call site, silently using the wrong field for non-DALOS curves). **External consumers: no observable change** — the `*Async` consumer surfaces still accept the same arguments; internal arithmetic helpers dropped the redundant `m` parameter. Custom-curve consumers gain correct field-derivation per curve.
+- **Phase 9 (REQ-28, F-ARCH-006):** `BitStringValidation` interface extended with optional `reason?: string` field (shape parity with `PrivateKeyValidation` and `validateBitmap`). `validateBitString` now ALWAYS runs the structure walk regardless of length-check outcome (Go-parity per `Elliptic/KeyGeneration.go:190-208 ValidateBitString` — both booleans reflect actual measurements). `generateScalarFromBitString` rewritten to call the validator exactly once and source the `reason` directly. **External consumers: error message now strictly more informative** (sources from a real field instead of a dead `${reason ? ...}` placeholder); shape is additive (the `reason?` field is optional, existing destructure patterns continue to work).
+
+### Added
+
+#### Test coverage + CI gate (Phase 1, REQ-01-08, REQ-38)
+
+- **`ts/tests/gen1/key-gen.test.ts`** — 3 boundary-scalar tests pinning observed `validatePrivateKey` behavior at Q boundaries (REQ-01).
+- **`ts/tests/gen1/bitmap.test.ts`** — 3 rejection tests covering invalid bitmap shapes.
+- **`ts/tests/gen1/aes.test.ts`** — 4 rejection-cases tests (REQ-03, F-TEST-004 odd-nibble bitstring round-trip).
+- **`ts/tests/ci-workflow/docs-check-step.test.ts`** — pins the docs:check CI step ordering relative to the test step + dist upload.
+- **CI coverage gate** (`.github/workflows/ts-ci.yml` Coverage step gated to Node 24) — Vitest coverage thresholds: lines ≥ 80, functions ≥ 80, branches ≥ 75, statements ≥ 80. Enforced by `@vitest/coverage-v8@2.1.9`.
+
+#### Go reference — error-handling regression locks (Phase 2, REQ-09)
+
+- **`AES/BitStringToHex_doc_test.go`** (NEW) — regression-lock test for the BitStringToHex docstring documenting odd-nibble truncation behavior.
+- **`Elliptic/QuoModulus_test.go`** (NEW) — 4 tests including `TestQuoModulus_BEqualsModulus_Panics` (F-001 fix: nil-guard panic with descriptive message instead of obscure runtime error).
+
+#### Schnorr cofactor hardening (Phase 6, REQ-15-19, F-SEC-001)
+
+- **`Elliptic/Schnorr.go`** — cofactor subgroup-membership check on R and P components (`[4]·R ≠ O`, `[4]·P ≠ O`) immediately after the existing `IsOnCurve` checks. Rejects order-4 small-subgroup attack signatures the pre-Phase-6 verifier accepted.
+- **`Elliptic/Schnorr_strict_parser_test.go`** (NEW) — 4 tests pinning the strict pubkey parser (T6.5, F-SEC-002 / F-ERR-006).
+- **`Elliptic/Schnorr_adversarial_test.go`** (NEW + later merged with origin's v3.1.0 SC-5 perturbation tests) — combined Phase 6 cofactor adversarial tests + origin's SC-5 off-curve perturbation tests in a single file. Two test families now coexist as distinct describe sections covering Layers 2 (`IsOnCurve`) + 3 (cofactor check) of the multi-layer-defence chain.
+- **`testvectors/v1_adversarial.json`** (NEW) — 5 adversarial cofactor vectors (4 attacks + 1 control); generated reproducibly by `testvectors/generator/main.go`.
+- **TS port** — same cofactor checks added to `ts/src/gen1/schnorr.ts` `schnorrVerify` AND `schnorrVerifyAsync` (the async variant predated Phase 6 in origin's v3.1.0; the merge preserved Phase 6's hardening + applied it to async for security parity).
+- **`ts/tests/gen1/schnorr.test.ts`** — adversarial cofactor corpus describe block with 5 vector-driven tests via the `adversarialCofactorVectors()` fixture loader.
+
+#### Cross-impl error-path consistency (Phase 7, REQ-20-22)
+
+- **`ts/src/gen1/scalar-mult.ts`** — `isValidBase49Char` exported helper. Used by `validatePrivateKey` (REQ-20) and `parseBigIntInBase` (REQ-21) to reject mixed-validity inputs at the earliest boundary, naming the offending character.
+- **`ts/src/gen1/key-gen.ts`** — `validatePrivateKey` walks input via `isValidBase49Char` BEFORE the accumulation loop (silent-zero accumulation pre-Phase-7 produced misleading "core bits length" errors for what was really an "invalid base-49 character" cause).
+- **Go-side parser symmetry (REQ-22):** `Elliptic/Schnorr.go` `ConvertPublicKeyToAffineCoords` rewritten from `SplitN` to `Split` with `len(parts) != 2` reject + descriptive error. Matches the TS port's strict-parse semantics.
+
+#### TS gen1 consistency + historical re-exports (Phase 9, REQ-27-30)
+
+- **`ts/src/historical/index.ts`** — re-exports `Modular`, `ZERO`, `ONE`, `TWO`, `bytesToBigIntBE`, `bigIntToBytesBE`, `parseBase10` from `gen1/math.js`. Discoverability parity with the registry/* subpath: consumers can now `import { Modular, LETO } from '@stoachain/dalos-crypto/historical'` without dual-importing.
+
+#### Public API ergonomic re-exports (Phase 3, REQ-12)
+
+- **`ts/src/index.ts`** — added `export * as historical` + `export * as blake3` namespace re-exports. Previously dead `SCAFFOLD_VERSION` constant removed.
+
+### Changed
+
+#### Architecture cleanup (Phase 5)
+
+- **`ts/src/gen1/curve.ts`** — `Ellipse` interface gained `readonly field: Modular` structural property. All 4 curve factories populated `field` at construction (DALOS_ELLIPSE + LETO + ARTEMIS + APOLLO).
+- **`ts/src/gen1/point-ops.ts`** (10 call sites), **`ts/src/gen1/scalar-mult.ts`** (2 call sites), **`ts/src/gen1/schnorr.ts`** + **`key-gen.ts`** (8 consumer call site updates) — dropped `m: Modular = DALOS_FIELD` default-param across the gen1 layer; helpers derive `m` internally from the curve's `e.field`.
+- **`Elliptic/Schnorr.go`** — deleted ~36 lines of dead helpers (`BinaryStringToBytes` + `Hash2BigInt`, both rendered unused by Schnorr v2 wire-format finalization in v2.0.0).
+- **TS-side** — 7 historical/registry files unified to a single canonical "production primitives as of v3.0.0+" status JSDoc.
+
+#### Algorithm refactor (Phase 9, REQ-29, F-PERF-007)
+
+- **`ts/src/gen1/scalar-mult.ts`** `bigIntToBase49` refactored from O(n²) string-prepend to O(n) array-push + reverse + join. Byte-identical output for every input (proven by 500-iter round-trip + Q² huge-scalar reference test). ~47× faster on Q-sized scalars; visible on every `schnorrSign`/`schnorrVerify` call.
+
+#### Symbol consolidation (Phase 9, REQ-27)
+
+- **`ts/src/gen1/key-gen.ts`** — deleted local non-exported `digitValueBase49` copy; canonical version imported from `./scalar-mult.js`. Stale "Imported lazily to avoid circular deps" comment removed (the dep was never circular — `key-gen.ts` already imports from `./scalar-mult.js`).
+
+### Performance
+
+- **Phase 4 (REQ-09-12):** `Elliptic/KeyGeneration.go` `CharacterMatrix` cache (built once at package init via `makeCharacterMatrix`; eliminates the per-call rebuild of 256 rune literals); bulk `rand.Read` in `GenerateRandomBitsOnCurve` (single 200-byte syscall rather than per-byte loop).
+- **Phase 4 (TS):** `ts/package.json` `files` array tightened to explicit globs (`["dist/**/*.js", "dist/**/*.d.ts", ...]`) so the npm tarball excludes incidental sources; Vitest timeouts on the slowest tests pulled from 60s/120s down to 30s.
+- **Phase 9 (TS, REQ-29):** `bigIntToBase49` O(n²) → O(n), as above.
+- **From v3.1.0 (now also active in v4.0.0):** Generator-precompute matrix cache (Go `sync.Once` + TS `WeakMap`); per-curve `Modular` cache (TS port — Phase 5's `e.field` structural property supersedes the v3.1.0 `getModularFor` WeakMap with the same per-curve instance semantics); async wrappers (`scalarMultiplierAsync`, `schnorrSignAsync`, `schnorrVerifyAsync`) yielding to the event loop every 8 outer-loop iterations on a fixed data-independent cadence (browser INP < 200 ms target met).
+
+### Hardened
+
+#### Schnorr (Phase 6 / Cat-A & Cat-B continuation)
+
+- **F-SEC-001 cofactor subgroup-membership check** on R and P (Go + TS, sync + async). Rejects order-4 small-subgroup attack constructions.
+- **F-SEC-002 strict pubkey parser** (Go) — `ConvertPublicKeyToAffineCoords` now rejects `xLength < 1`, captures the ok-flag from both `big.Int.SetString` calls, and returns `CoordAffine{}` on any failure.
+
+#### Cross-impl error symmetry (Phase 7)
+
+- **REQ-20:** TS `validatePrivateKey` now walks input via `isValidBase49Char` and rejects mixed-validity base-49 inputs at the earliest boundary, naming the offending character.
+- **REQ-21:** TS `parseBigIntInBase` throws on first invalid char (was: silent accumulation as digit 0).
+- **REQ-22:** Go `ConvertPublicKeyToAffineCoords` strict 2-part split (was: lenient `SplitN`).
+
+### Removed
+
+- **TS `SCAFFOLD_VERSION` constant** (Phase 3) — was a placeholder from the early scaffold; never referenced post-Genesis-port.
+- **Go `Elliptic.BinaryStringToBytes` + `Hash2BigInt`** (Phase 5) — dead since the v2.0.0 Schnorr v2 wire-format finalization.
+- **Phase 8 dead-code + stale-docs cleanup:** stale Schnorr-randomness comments updated to v2.0.0+ RFC-6979-style determinism (`testvectors/generator/main.go`); `ts/tsconfig.json` removed unused `"types": ["node"]` injection (full DOM-lib hygienic isolation deferred to a future cycle — see `.bee/false-positives.md` FP-003).
+
+### Verified
+
+- **Genesis 105-vector corpus byte-identity preserved** at extended-elided SHA-256 = `082f7a40405d4c075f1975af0a6075bb0228bbccae60a53b05b350a09ce223ae` (post-v2.0.0 baseline; same hash held since v3.0.0 through v3.1.0 and now v4.0.0).
+- **Historical 60-vector corpus byte-identity preserved** at extended-elided SHA-256 = `80c93f4d4956e01236808f81f518d17eeaad431f4fedb7c26233d2508f06e68b` (since v3.0.0).
+- **All 50 bitstring + 15 seed-words + 20 bitmap + 20 Schnorr deterministic records** byte-identical to the v3.1.0 corpus.
+- **All 5 adversarial cofactor records** verify with their pre-computed `expected_verify_result` under both Go and TS.
+- **Compile-time interface conformance assertion live** (`Elliptic/assertions.go`) — `*Ellipse` satisfies `EllipseMethods` enforced by `go build`. Live-fire mutation test (substituting `(*string)(nil)` for `(*Ellipse)(nil)`) reproduces the expected "*string does not implement EllipseMethods" build failure.
+- **TS test suite:** 366 (v3.0.x) → 388 (v3.1.0) → 426 (v4.0.0) — net +60 tests across the audit cycle.
+- **Go test suite:** 5 packages all green (DALOS_Crypto root + AES + Auxilliary + Elliptic + new keystore).
+
+### Doc/Audit
+
+- **AUDIT.md** updated with closure rows for all 11 audit-cycle phases (REQ-01 through REQ-32 marked closed at v4.0.0).
+- **`.bee/specs/2026-05-02-unified-audit-2026-04-29/phases/10-elliptic-package-carve-out/MIGRATION.md`** — full carve-out migration table with before/after consumer code.
+- **`.bee/specs/2026-05-02-unified-audit-2026-04-29/phases/10-elliptic-package-carve-out/SYMBOLS.md`** — 10-symbol relocation authority + EllipseMethods interface enumeration + test-file disposition.
+- **`ts/README.md`** — ESM-only blockquote in Install section (clarifies CommonJS `require()` will fail with `ERR_REQUIRE_ESM`); PNG-omission inline comment in Quick-start (TS port intentionally omits the Go reference's `ParsePngFileToBitmap` helper); test count badge bumped 346 → 426; "RFC-6979" → "RFC-6979-style" terminology fix throughout.
+
+### Publish-pipeline hygiene (folded forward from v3.1.0 Unreleased)
+
+- **GitHub Releases backfilled.** All 8 prior `ts-v*` tags (`ts-v1.0.0`, `ts-v1.1.0`, `ts-v1.2.0`, `ts-v3.0.0`, `ts-v3.0.1`, `ts-v3.0.2`, `ts-v3.0.3`, `ts-v3.1.0`) have GitHub Release pages, populated from each tag's annotation body plus the matching CHANGELOG section. Display titles drop the `ts-` prefix for clean reading on the Releases page; the underlying tag retains the prefix for git-side disambiguation against the Go-reference `v*` tags.
+- **`.github/workflows/ts-publish.yml` patched** for the 2026-04-30 gh-CLI flag-incompatibility (`--notes-from-tag` + `--repo` no longer supported on GitHub-hosted runners). Backfill list enumerates all `ts-v*` tags. **npm provenance enabled** (`id-token: write` permission + `--provenance` flag on `npm publish`) — v4.0.0 publishes carry an SLSA attestation linking the npm package back to the GitHub Action run that produced it. npmjs.com displays a "Provenance" badge on the package page.
+- **`/bee:pollinate` command** added to the user-global Bee plugin commands. Post-ship publishing pipeline: pushes to origin/main, creates the annotated tag from CHANGELOG content, monitors the CI publish workflow, falls back to REST-API Release creation if the gh-release step fails, verifies the npm registry + provenance, backfills missing prior Releases.
+- **`.bee/config.json` lifecycle block** wires DALOS_Crypto into the pollinate flow: `npm_dir: "ts"`, `tag_pattern: "ts-v{version}"`, `release_title_pattern: "v{version}"`, `use_provenance: true`. v4.0.0 publishes through `/bee:pollinate` end-to-end.
+
+### Migration Guide
+
+#### Go consumers
+
+The two BREAKING changes on the Go side are the `Elliptic/` carve-out (Phase 10) and the `EllipseMethods.SchnorrVerify` parameter-order alignment (Phase 11). The carve-out is the load-bearing one; the SchnorrVerify alignment is a documentation/godoc-level change.
+
+**Carve-out migration:** see `.bee/specs/2026-05-02-unified-audit-2026-04-29/phases/10-elliptic-package-carve-out/MIGRATION.md` for the full 10-symbol table. Summary: import `DALOS_Crypto/keystore` for wallet I/O; rewrite `DalosEllipse.X(...)` method calls to `X(&DalosEllipse, ...)` free-function form for the 6 method-bound symbols (`ProcessIntegerFlag`, `ProcessPrivateKeyConversion`, `ProcessKeyGeneration`, `SaveBitString`, `ExportPrivateKey`, `ImportPrivateKey`).
+
+**SchnorrVerify alignment:** zero migration needed if you call `*Ellipse.SchnorrVerify(...)` directly (Go's structural typing preserves call-site argument order). Only matters if you dispatched through the `EllipseMethods` interface type. Per repo-wide grep at release time, no in-repo or known-external consumer does this.
+
+#### TypeScript consumers
+
+No BREAKING surface changes. The `Modular` field structural property (Phase 5) and the `validateBitString` `reason` field (Phase 9) are additive. `bigIntToBase49`'s O(n²) → O(n) refactor is byte-identical for every input. New ergonomic re-exports in `@stoachain/dalos-crypto/historical` (`Modular`, `ZERO`, `ONE`, `TWO`, etc.) save the dual-import for historical-curve consumers.
+
+The v3.1.0 throw-contract change (`schnorrSign` throws `SchnorrSignError` on internal failure rather than returning `""`) is retained in v4.0.0 — see [v3.1.0 Migration Guide](#310--2026-05-02) for the full pattern.
 
 ---
 

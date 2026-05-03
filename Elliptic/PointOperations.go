@@ -57,7 +57,9 @@ type EllipseMethods interface {
     // VIII Schnorr Signature
     SchnorrHash(R *big.Int, PublicKey string, Message string) *big.Int
     SchnorrSign(KeyPair DalosKeyPair, Message string) string
-    SchnorrVerify(Signature, PublicKey, Message string) bool
+    // F-ARCH-002 (Phase 11, v4.0.0): parameter order aligned with implementation.
+    // Compile-time conformance assertion in assertions.go enforces non-drift.
+    SchnorrVerify(Signature, Message, PublicKey string) bool
 }
 
 func (e *Ellipse) AddModP(a, b *big.Int) *big.Int {

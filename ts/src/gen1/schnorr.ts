@@ -38,11 +38,26 @@ import {
   isInfinityPoint,
   isOnCurve,
 } from './curve.js';
+import { SchnorrSignError } from './errors.js';
 import { affineToPublicKey, parseBigIntInBase, publicKeyToAffineCoords } from './hashing.js';
 import type { DalosKeyPair } from './key-gen.js';
 import { bigIntToBytesBE, bytesToBigIntBE } from './math.js';
 import { addition } from './point-ops.js';
-import { bigIntToBase49, scalarMultiplier, scalarMultiplierWithGenerator } from './scalar-mult.js';
+import {
+  bigIntToBase49,
+  getOrBuildGeneratorPM,
+  scalarMultiplier,
+  scalarMultiplierAsync,
+  scalarMultiplierWithGenerator,
+} from './scalar-mult.js';
+// Self-namespace re-import: routes the in-module `schnorrHash` reference
+// through this module's exports object so test-time `vi.spyOn(schnorrModule,
+// 'schnorrHash')` actually intercepts the call. Without this indirection,
+// same-module local bindings are inlined and bypass the spy. The runtime
+// cost is a single property lookup per sign — negligible relative to scalar
+// multiplication. The throw-contract tests at tests/gen1/schnorr.test.ts
+// rely on this seam.
+import * as self from './schnorr.js';
 
 // ============================================================================
 // Constants
@@ -299,18 +314,23 @@ export function schnorrMessageDigest(message: string | Uint8Array): Uint8Array {
  * Deterministic: same (keyPair, message) always produces byte-identical
  * output. Signature format is the canonical `"{R-in-pubkey-form}|{s-base49}"`.
  *
- * Returns `""` on internal failure (challenge hash unable to derive).
+ * @throws {SchnorrSignError} when the Fiat-Shamir challenge cannot be
+ *   derived (typically caused by an unparseable public key in
+ *   `keyPair.publ`). Catch via `instanceof SchnorrSignError`.
  */
 export function schnorrSign(
   keyPair: DalosKeyPair,
   message: string | Uint8Array,
   e: Ellipse = DALOS_ELLIPSE,
 ): string {
-  // v4.0.0 Phase 5: use the curve's own Modular helper (populated at
-  // construction). The v1.2.0 fix threaded a curve-specific Modular through
-  // the arithmetic helpers; Phase 5 made that structural by adding `field`
-  // to the Ellipse interface so non-DALOS curves cannot silently fall back
-  // to DALOS's modulus.
+  // v4.0.0 Phase 5 + origin v3.1.0 merge: use the curve's own Modular
+  // helper (populated at construction time on the Ellipse interface).
+  // The v1.2.0 fix threaded a curve-specific Modular through the arithmetic
+  // helpers; v3.1.0 hoisted that into a per-Ellipse WeakMap cache via
+  // `getModularFor`; Phase 5 superseded both with the structural `e.field`
+  // property — same per-curve instance semantics, no separate cache needed
+  // because `field` is computed once at curve construction and pinned to
+  // the Ellipse object lifetime.
   const m = e.field;
 
   // Parse private key from base-49
@@ -327,9 +347,14 @@ export function schnorrSign(
   const rAffine = extended2Affine(rExtended, m);
   const rX = rAffine.ax;
 
-  // Fiat–Shamir challenge (may fail if pubkey unparseable)
-  const challenge = schnorrHash(rX, keyPair.publ, message, e);
-  if (challenge === null) return '';
+  // Fiat–Shamir challenge (may fail if pubkey unparseable). Routed through
+  // `self.schnorrHash` so test-time spies intercept this call site.
+  const challenge = self.schnorrHash(rX, keyPair.publ, message, e);
+  if (challenge === null) {
+    throw new SchnorrSignError(
+      'Fiat-Shamir challenge produced null — likely caused by an unparseable public key in keyPair.publ',
+    );
+  }
 
   // s = (z + e·k) mod Q — canonical range (0, Q)
   let s = (challenge * k) % e.q;
@@ -359,7 +384,8 @@ export function schnorrVerify(
   publicKey: string,
   e: Ellipse = DALOS_ELLIPSE,
 ): boolean {
-  // v4.0.0 Phase 5: use the curve's own Modular helper. See schnorrSign.
+  // v4.0.0 Phase 5: use the curve's own Modular via the structural
+  // `e.field` property — see schnorrSign for the merge-context rationale.
   const m = e.field;
 
   const sig = parseSignature(signature);
@@ -416,6 +442,161 @@ export function schnorrVerify(
 
   // Compute left term: s·G
   const leftTerm = scalarMultiplierWithGenerator(sig.s, e);
+
+  return arePointsEqual(leftTerm, rightTerm, e);
+}
+
+// ============================================================================
+// Async sign / verify (browser-friendly)
+// ============================================================================
+
+/**
+ * Async variant of `schnorrSign`. Delegates the scalar-multiplication
+ * step to `scalarMultiplierAsync` (yields every 8 iterations,
+ * data-independent). All other operations remain synchronous within
+ * the async body.
+ *
+ * Use this in browser contexts to keep Interaction-to-Next-Paint (INP)
+ * under 200 ms during full-curve-scale signing. The yield trigger
+ * depends only on the scalar-mult outer-loop iteration index — never
+ * on the scalar value or any secret-derived branch — so the
+ * constant-time property of the sync path is preserved.
+ *
+ * Output is byte-identical to `schnorrSign(keyPair, message, e)` for
+ * the same inputs (deterministic v2 RFC-6979-style nonces).
+ *
+ * @throws {SchnorrSignError} (rejected promise) when the Fiat-Shamir
+ *   challenge cannot be derived (typically caused by an unparseable
+ *   public key in `keyPair.publ`). Catch via `instanceof SchnorrSignError`.
+ */
+export async function schnorrSignAsync(
+  keyPair: DalosKeyPair,
+  message: string | Uint8Array,
+  e: Ellipse = DALOS_ELLIPSE,
+): Promise<string> {
+  // Phase 5: structural `e.field` instead of the eliminated DALOS_FIELD/m
+  // default-param footgun. Origin v3.1.0 used a separate WeakMap cache
+  // (`getModularFor`); same per-curve instance semantics — see schnorrSign.
+  const m = e.field;
+
+  const k = parseBigIntInBase(keyPair.priv, 49);
+
+  const msgDigest = schnorrMessageDigest(message);
+
+  const z = deterministicNonce(k, msgDigest, e);
+
+  // R = z · G — the only async delegation. The cached generator-PM
+  // (populated lazily via getOrBuildGeneratorPM) is threaded through
+  // scalarMultiplierAsync's `precomputed` parameter so the matrix is
+  // built at most once per curve across both sync and async callers.
+  const rExtended = await scalarMultiplierAsync(
+    z,
+    affine2Extended(e.g, m),
+    e,
+    getOrBuildGeneratorPM(e),
+  );
+  const rAffine = extended2Affine(rExtended, m);
+  const rX = rAffine.ax;
+
+  // Routed through `self.schnorrHash` so test-time spies intercept (mirrors
+  // the sync site above).
+  const challenge = self.schnorrHash(rX, keyPair.publ, message, e);
+  if (challenge === null) {
+    throw new SchnorrSignError(
+      'Fiat-Shamir challenge produced null — likely caused by an unparseable public key in keyPair.publ',
+    );
+  }
+
+  let s = (challenge * k) % e.q;
+  s = (s + z) % e.q;
+
+  return serializeSignature({ r: rAffine, s });
+}
+
+/**
+ * Async variant of `schnorrVerify`. Delegates the scalar-multiplication
+ * steps to `scalarMultiplierAsync` (yields every 8 iterations,
+ * data-independent). All other operations remain synchronous within
+ * the async body.
+ *
+ * Use this in browser contexts to keep Interaction-to-Next-Paint (INP)
+ * under 200 ms during full-curve-scale verification. The yield trigger
+ * depends only on the scalar-mult outer-loop iteration index — never
+ * on the scalar value or any secret-derived branch — so the
+ * constant-time property of the sync path is preserved.
+ *
+ * The `e·P` call rebuilds the per-`P` PrecomputeMatrix on every
+ * invocation (P varies per call); the `s·G` call hits the cached
+ * generator-PM via `getOrBuildGeneratorPM`.
+ */
+export async function schnorrVerifyAsync(
+  signature: string,
+  message: string | Uint8Array,
+  publicKey: string,
+  e: Ellipse = DALOS_ELLIPSE,
+): Promise<boolean> {
+  // Phase 5: structural `e.field`. See schnorrSign for merge rationale.
+  const m = e.field;
+
+  const sig = parseSignature(signature);
+  if (sig === null) return false;
+
+  if (sig.r.ax === undefined || sig.r.ay === undefined) return false;
+
+  // SC-4: canonical s range (0, Q)
+  if (sig.s <= 0n || sig.s >= e.q) return false;
+
+  // SC-5: R on curve
+  const rExtended = affine2Extended(sig.r, m);
+  const [onCurveR] = isOnCurve(rExtended, e);
+  if (!onCurveR) return false;
+
+  // F-SEC-001 (Phase 6): cofactor subgroup-membership check on R — security
+  // parity with the sync `schnorrVerify` path. Origin v3.1.0 added the
+  // async surface BEFORE Phase 6 landed; without this check the async
+  // verifier would accept order-4 small-subgroup attack signatures the
+  // sync verifier rejects. Same construction: legitimate R = [k]·G has
+  // [4]·R = [4k]·G ≠ O (gcd(4, Q) = 1, k ∈ [1, Q-1]).
+  const rCofactor = scalarMultiplier(e.r, rExtended, e);
+  if (isInfinityPoint(rCofactor)) return false;
+
+  let pkAffine: CoordAffine;
+  try {
+    pkAffine = publicKeyToAffineCoords(publicKey);
+  } catch {
+    return false;
+  }
+  if (pkAffine.ax === undefined || pkAffine.ay === undefined) return false;
+
+  // SC-5: P on curve
+  const pExtended = affine2Extended(pkAffine, m);
+  const [onCurveP] = isOnCurve(pExtended, e);
+  if (!onCurveP) return false;
+
+  // F-SEC-001 (Phase 6): cofactor subgroup-membership check on P — same
+  // rationale as R above; rejects order-4 small-subgroup public keys.
+  const pCofactor = scalarMultiplier(e.r, pExtended, e);
+  if (isInfinityPoint(pCofactor)) return false;
+
+  const challenge = schnorrHash(sig.r.ax, publicKey, message, e);
+  if (challenge === null) return false;
+
+  // e·P — async, no PM cache reuse (P varies per call).
+  const ePExt = await scalarMultiplierAsync(challenge, pExtended, e);
+  let rightTerm: ReturnType<typeof addition>;
+  try {
+    rightTerm = addition(rExtended, ePExt, e);
+  } catch {
+    return false;
+  }
+
+  // s·G — async, hits the cached generator-PM via getOrBuildGeneratorPM.
+  const leftTerm = await scalarMultiplierAsync(
+    sig.s,
+    affine2Extended(e.g, m),
+    e,
+    getOrBuildGeneratorPM(e),
+  );
 
   return arePointsEqual(leftTerm, rightTerm, e);
 }

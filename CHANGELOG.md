@@ -8,12 +8,102 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Publish-pipeline hygiene (infra, no npm version bump)
+
+Landed alongside the v3.1.0 release work but does NOT bump the npm package version — these changes are repo-infrastructure cleanup that take effect on the NEXT publish (v3.2.0). Documented here so the v3.2.0 CHANGELOG entry can reference back.
+
+- **GitHub Releases backfilled.** All 7 prior `ts-v*` tags (`ts-v1.0.0`, `ts-v1.1.0`, `ts-v1.2.0`, `ts-v3.0.0`, `ts-v3.0.1`, `ts-v3.0.2`, `ts-v3.0.3`) now have GitHub Release pages, populated from each tag's annotation body plus the matching CHANGELOG section where one exists. Display titles drop the `ts-` prefix (e.g. `v3.0.3` rather than `ts-v3.0.3`) so the Releases page reads identically to the npm version listing — the underlying tag retains the prefix for git-side disambiguation against the Go-reference `v*` tags.
+- **`ts-v3.1.0` Release title renamed** from `ts-v3.1.0` to `v3.1.0` for the same display consistency.
+- **`.github/workflows/ts-publish.yml` patched.** Three fixes:
+  1. The `Create GitHub Release for the pushed tag` step previously called `gh release create --notes-from-tag --repo X`, a flag combination that became unsupported on GitHub-hosted runners around 2026-04-30 (gh CLI image update). Removed the `--repo` flag so the gh CLI defaults to the checked-out repo. Same fix applied to the backfill step. Title computation updated to strip the `ts-` prefix.
+  2. The backfill list now enumerates all 8 `ts-v*` tags (was missing `ts-v3.0.2`, `ts-v3.0.3`, `ts-v3.1.0`).
+  3. **npm provenance enabled.** Added `id-token: write` to the job permissions block and `--provenance` to the `npm publish` step. Future publishes (v3.2.0 onward) will carry an SLSA attestation linking the npm package back to the GitHub Action run that produced it. npmjs.com displays a "Provenance" badge on the package page; consumers can verify the package was built by this exact workflow on this exact commit.
+- **`/bee:pollinate` command** added to the user-global Bee plugin commands at `commands/pollinate.md`. Post-ship publishing pipeline for npm-backed GitHub repos: pushes to origin/main, creates the annotated tag from CHANGELOG content, monitors the CI publish workflow, falls back to REST-API Release creation if the workflow's gh-release step fails, verifies the npm registry and provenance attestation, and backfills any missing prior Releases. Driven by a per-project `lifecycle` block in `.bee/config.json` so it works for both dual-stack monorepos (DALOS_Crypto with `ts/` subpath) and single-stack packages.
+- **`.bee/config.json` lifecycle block added** wiring DALOS_Crypto into the pollinate flow: `npm_dir: "ts"`, `tag_pattern: "ts-v{version}"`, `release_title_pattern: "v{version}"`, `use_provenance: true`. The next release (v3.2.0 medium-bundle) will publish through `/bee:pollinate` end-to-end instead of the manual sequence used for v3.1.0.
+
 ### Planned
 
 - TypeScript port (`ts/` subdirectory) — begin Phase 1 of [`docs/TS_PORT_PLAN.md`](docs/TS_PORT_PLAN.md) (math foundation).
 - Expand test-vector corpus from 85 → 500+ — edge cases (all-zero, all-ones, boundary scalars), invalid-input rejection vectors.
 - `docs/SCHNORR_HARDENING.md` — detailed fix plan for the 7 Schnorr findings (Category B, applied in the TS port).
 - Third-party cryptographic audit engagement.
+
+---
+
+## [3.1.0] — 2026-05-02
+
+**High-additive bundle (minor).** Closes three additive HIGH-severity audit findings (F-TEST-001 SC-5 regression coverage, F-PERF-001 generator-precompute cache, F-PERF-004 async signing surface) plus one consumer-observable behavior change (F-API-001 typed `SchnorrSignError` throw on internal failure) bundled into a single coordinated minor release. The throw contract is the SOLE consumer-observable behavior change and the reason for the minor bump rather than a patch. **~388/388 TS tests pass** (366 baseline + new SC-5 rejection-cases + PM-cache instrumentation + async-surface watchdog + REQ-14 yield-count constant-time + T3.5 forced-failure tests).
+
+### Added
+
+- **`scalarMultiplierAsync`** — exported from `@stoachain/dalos-crypto/gen1`. Async wrapper over `scalarMultiplier` that yields to the event loop every 8 outer-loop iterations on a fixed data-independent cadence.
+- **`schnorrSignAsync`** — exported from `@stoachain/dalos-crypto/gen1`. Async wrapper over `schnorrSign` for browser-friendly signing without blocking the event loop. Throws `SchnorrSignError` on internal failure (same condition as sync surface).
+- **`schnorrVerifyAsync`** — exported from `@stoachain/dalos-crypto/gen1`. Async wrapper over `schnorrVerify`. Yields on the same fixed cadence as the sign path.
+- **`SchnorrSignError`** — typed exception class exported from `@stoachain/dalos-crypto/gen1`. Importable for `instanceof` catch blocks. Thrown on internal sign failure (Fiat-Shamir challenge derivation null-result).
+- **`ts/tests/gen1/schnorr.test.ts`** — 2 new TS rejection-cases tests for off-curve R (line 255) + off-curve P (line 268) (Phase 1 SC-5 regression coverage).
+- **`Elliptic/Schnorr_adversarial_test.go`** — new Go-side adversarial test file with mutation-test verification (off-curve R, off-curve P, scalar-out-of-range, identity-point edge cases).
+- **PM-cache instrumentation tests** — Go-side pointer-equality assertion (same `*Ellipse` returns same precompute matrix pointer across calls) and TS-side spy counter (verifies `precomputeMatrix` factory is called exactly once per `Ellipse` instance across N sign+verify cycles).
+- **Async-surface watchdog test** — event-loop responsiveness verified via per-yield `performance.now()` instrumentation (NOT `Promise.race` against an arbitrary timeout — condition-based to avoid CI flakes). Asserts no single sync slice exceeds the INP budget.
+- **REQ-14 mechanical guard** — yield-count constant-time test: 3 scalars of identical base-49 length but different numerical values produce equal yield counts in `scalarMultiplierAsync`. Catches accidental data-dependent yield cadences in future refactors.
+- **T3.5 forced-failure tests** — 6 cases at gen1 + registry layers proving `SchnorrSignError` propagation through the public registry API, the Genesis inline adapter, the gen1-factory shared adapter, and both sync + async sign surfaces.
+
+### Changed
+
+- **TypeScript `sign` throw contract (consumer-observable).** Previously, `schnorrSign` (and registry-level `primitive.sign`) returned `""` on internal failure (specifically when Fiat-Shamir challenge derivation produced null due to unparseable public key); v3.1.0 throws `SchnorrSignError` instead. Underlying detection condition unchanged — only the failure body changed. This is the SOLE consumer-observable behavior change in this release and the reason for the minor bump.
+- **Affects:** `ts/src/gen1/schnorr.ts` sync `schnorrSign` + new async `schnorrSignAsync`; propagates through `ts/src/gen1/aliases.ts` `sign` alias, `ts/src/registry/gen1-factory.ts:127` shared adapter, `ts/src/registry/genesis.ts:134` Genesis inline adapter.
+- **`ts/src/registry/primitive.ts`** — JSDoc on `CryptographicPrimitive.sign` interface updated to document the new throw contract (replaces prior "returns empty string on failure" wording with "throws `SchnorrSignError` on internal failure").
+- See **Migration Guide** below for consumer migration steps.
+
+### Performance
+
+- **Generator-precompute matrix cache.** Go side: `*Ellipse` pointer field with `sync.Once` guard. TS port: `WeakMap<Ellipse, PrecomputeMatrix>`. Eliminates per-call PM rebuilds on the Schnorr hot path. Estimated **~17% sign/verify speed-up** under typical workloads.
+- **Per-curve `Modular` cache (TS port).** `WeakMap<Ellipse, Modular>` in `schnorr.ts` — eliminates per-call `new Modular(e.p)` allocations.
+- **Async wrappers (TS port)** yield to the event loop every 8 outer-loop iterations on a fixed data-independent cadence (browser INP < 200 ms target met for the `scalarMultiplierAsync` / `schnorrSignAsync` / `schnorrVerifyAsync` path).
+- **Test timeouts tightened.** Vitest timeouts on the slowest tests pulled from 60s/120s down to 30s (closes F-PERF-010 LOW conditionally — tightened ceiling now reflects the post-cache reality).
+
+### Verified
+
+- **Genesis 105-vector corpus byte-identity preserved** at extended-elided SHA-256 = `082f7a40405d4c075f1975af0a6075bb0228bbccae60a53b05b350a09ce223ae` (post-v2.0.0 baseline; same hash held since v3.0.0 through v3.0.3 and now v3.1.0).
+- **All 50 bitstring + 15 seed-words + 20 bitmap + 20 Schnorr deterministic records** byte-identical to the committed v3.0.3 corpus.
+- **User-provided seed-word verification fixture** byte-for-byte identical pre-v3.1.0 vs post-v3.1.0 across the full keygen pipeline (bitstring → int10 → int49 → public key → Standard + Smart Ouronet accounts). The PM cache and async wrappers are pure performance/ergonomic additions; they do not perturb any deterministic output.
+
+### Doc/Audit
+
+- **AUDIT.md** updated with four `RESOLVED v3.1.0` closure rows (F-TEST-001, F-PERF-001, F-PERF-004, F-API-001) appended to the TypeScript-port findings table at lines 316-319; section heading at line 310 extended to enumerate the four new closures alongside the existing v3.0.3 closures.
+- **AUDIT.md** "Last updated:" preamble at line 5 bumped from `2026-05-01 (after frontend-fixes closure shipped at v3.0.3)` to `2026-05-02 (after high-additive-bundle closure shipped at v3.1.0)` (deferred from Phase 1 T1.4 to the cross-phase release boundary per the Phase 1 plan-review fix).
+- **AUDIT.md** "Hardening Status (current as of `vX.Y.Z`)" header at line 10 bumped from `v3.0.3` to `v3.1.0` in lock-step with the preamble.
+- **AUDIT.md** SC-5 historical entry at line 230 annotated with `regression-pinned in tests at v3.1.0 — see ts/tests/gen1/schnorr.test.ts (off-curve R + off-curve P cases) and Elliptic/Schnorr_adversarial_test.go` (delivered by Phase 1 T1.4; carried forward unchanged).
+
+### Migration Guide
+
+The throw-contract change is the only consumer-observable behavior change. Update any consumer code that catches the prior empty-string sentinel:
+
+**Before v3.1.0:**
+
+```ts
+const sig = primitive.sign(kp, msg);
+if (sig === '') { /* handle failure */ }
+```
+
+**After v3.1.0:**
+
+```ts
+import { SchnorrSignError } from '@stoachain/dalos-crypto/gen1';
+try {
+  const sig = primitive.sign(kp, msg);
+  // ...
+} catch (e) {
+  if (e instanceof SchnorrSignError) {
+    /* handle failure */
+  } else {
+    throw e;
+  }
+}
+```
+
+The new async surfaces (`schnorrSignAsync`, `schnorrVerifyAsync`, `scalarMultiplierAsync`) are pure additions — every existing sync export remains in place at the same import path with the same signature.
+
+Implementation mode: **quality**. Spec lifecycle: high-additive-bundle (audit-spec composition; Phase 1 → Phase 2 → Phase 3).
 
 ---
 

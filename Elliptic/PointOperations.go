@@ -417,7 +417,25 @@ func (e *Ellipse) FortyNiner(P CoordExtended) CoordExtended {
 }
 
 func (e *Ellipse) PrecomputeMatrixWithGenerator() [7][7]CoordExtended {
-    //Creates Precomputed Matrix using the Ellipse Generator Point
+    //Creates Precomputed Matrix using the Ellipse Generator Point.
+    //
+    //Cached per *Ellipse via a sync.Once guard so the matrix is built
+    //exactly once per curve regardless of how many goroutines call this
+    //concurrently. The populator body — `e.PrecomputeMatrix(e.Affine2-
+    //Extended(e.G))` — is unchanged; the cache only avoids re-running
+    //it on subsequent calls. Cached matrix is byte-identical to the
+    //rebuilt matrix; Genesis output is preserved.
+    if e.generatorCache != nil {
+        e.generatorCache.once.Do(func() {
+            pm := e.PrecomputeMatrix(e.Affine2Extended(e.G))
+            e.generatorCache.pm = &pm
+        })
+        return *e.generatorCache.pm
+    }
+    //Defensive fallback for callers that constructed an Ellipse outside
+    //the curve factories (zero-value struct or hand-built test curve).
+    //Behaves like the pre-cache path: rebuild on every call. No cache
+    //hit, but no NPE either.
     return e.PrecomputeMatrix(e.Affine2Extended(e.G))
 }
 
@@ -484,8 +502,17 @@ func (e *Ellipse) PrecomputeMatrix(P CoordExtended) [7][7]CoordExtended {
     return [7][7]CoordExtended{MR1, MR2, MR3, MR4, MR5, MR6, MR7}
 }
 
+// ScalarMultiplierWithGenerator computes Scalar * G using the cached
+// generator-precompute matrix populated lazily by
+// PrecomputeMatrixWithGenerator under a sync.Once guard. After the
+// first call on a given curve, every subsequent call (across all
+// goroutines, across both sync and async callers) reuses the cached
+// matrix instead of rebuilding it on every invocation. The cached
+// matrix is byte-identical to the rebuilt matrix; Genesis output is
+// preserved.
 func (e *Ellipse) ScalarMultiplierWithGenerator(Scalar *big.Int) CoordExtended {
-    return e.ScalarMultiplier(Scalar, e.Affine2Extended(e.G))
+    PM := e.PrecomputeMatrixWithGenerator()
+    return e.scalarMultiplierWithPM(Scalar, PM)
 }
 
 
@@ -534,9 +561,25 @@ func digitValueBase49(c byte) int {
 // implementation for all inputs. Verified against the committed
 // testvectors/v1_genesis.json corpus (85 deterministic records).
 func (e *Ellipse) ScalarMultiplier(Scalar *big.Int, P CoordExtended) CoordExtended {
+    PM := e.PrecomputeMatrix(P)
+    return e.scalarMultiplierWithPM(Scalar, PM)
+}
+
+// scalarMultiplierWithPM is the shared Horner-evaluation core that
+// powers both ScalarMultiplier (which rebuilds the PM per call from an
+// arbitrary point P) and ScalarMultiplierWithGenerator (which threads
+// in the cached generator-PM populated by PrecomputeMatrixWithGenerator
+// under a sync.Once guard). Splitting the PM construction from the
+// Horner loop is what allows the cache to deliver its time-saving
+// without changing the COMPUTED VALUE — the loop body is invariant.
+//
+// Constant-time discipline (PO-1) is preserved verbatim: every
+// iteration performs exactly one Addition + (on all but the last
+// digit) one FortyNiner, with a branch-free 48-entry linear scan for
+// point selection.
+func (e *Ellipse) scalarMultiplierWithPM(Scalar *big.Int, PM [7][7]CoordExtended) CoordExtended {
     var (
         PrivKey49 = Scalar.Text(49)
-        PM        = e.PrecomputeMatrix(P)
         Result    = InfinityPoint
     )
 

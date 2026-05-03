@@ -9,8 +9,14 @@
  * strings exactly.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { sign as signAlias } from '../../src/gen1/aliases.js';
+import type { CoordAffine } from '../../src/gen1/coords.js';
+import { DALOS_ELLIPSE, affine2Extended, isOnCurve } from '../../src/gen1/curve.js';
+import { SchnorrSignError } from '../../src/gen1/errors.js';
+import { affineToPublicKey, publicKeyToAffineCoords } from '../../src/gen1/hashing.js';
 import { fromIntegerBase49 } from '../../src/gen1/key-gen.js';
+import * as schnorrModule from '../../src/gen1/schnorr.js';
 import {
   SCHNORR_HASH_DOMAIN_TAG,
   SCHNORR_NONCE_DOMAIN_TAG,
@@ -22,7 +28,9 @@ import {
   schnorrHash,
   schnorrMessageDigest,
   schnorrSign,
+  schnorrSignAsync,
   schnorrVerify,
+  schnorrVerifyAsync,
   serializeSignature,
 } from '../../src/gen1/schnorr.js';
 import { adversarialCofactorVectors, schnorrVectors } from '../fixtures.js';
@@ -248,7 +256,7 @@ describe('schnorrSign (BYTE-IDENTITY vs Go corpus)', () => {
       const sig = schnorrSign(fullKey.keyPair, v.message);
       expect(sig).toBe(v.signature);
     }
-  }, 60_000);
+  }, 30_000); // 30s ceiling per REQ-15; PM cache landed in v3.1.0
 
   it('signing the same inputs twice yields identical output (cross-run determinism)', () => {
     const v = schnorrVectors()[0]!;
@@ -293,7 +301,7 @@ describe('schnorrVerify — accepts all 20 committed signatures', () => {
       expect(result).toBe(v.verify_expected);
       expect(result).toBe(true);
     }
-  }, 60_000);
+  }, 30_000); // 30s ceiling per REQ-15; PM cache landed in v3.1.0
 });
 
 // ============================================================================
@@ -341,6 +349,97 @@ describe('schnorrVerify — rejection cases', () => {
     const hugeS = 2n ** 2000n;
     const bigSig = serializeSignature({ r: parsed.r, s: hugeS });
     expect(schnorrVerify(bigSig, v.message, v.public_key)).toBe(false);
+  });
+
+  it('rejects an off-curve R component (SC-5)', () => {
+    const v = schnorrVectors()[0]!;
+    const parsed = parseSignature(v.signature)!;
+    // CoordAffine is readonly — construct a new object with ay perturbed by +1n.
+    // The probability that (ax, ay+1) lands on the 1606-bit-prime Edwards curve
+    // is ≈ 1/P, so the perturbation reliably moves R off-curve.
+    const perturbedR: CoordAffine = { ax: parsed.r.ax, ay: parsed.r.ay + 1n };
+    // Phase 5 post-merge: explicit field (DALOS_FIELD default-param eliminated).
+    const [onCurveR] = isOnCurve(affine2Extended(perturbedR, DALOS_ELLIPSE.field));
+    expect(onCurveR).toBe(false);
+    const perturbedSig = serializeSignature({ r: perturbedR, s: parsed.s });
+    expect(schnorrVerify(perturbedSig, v.message, v.public_key)).toBe(false);
+  });
+
+  it('rejects an off-curve P public key (SC-5)', () => {
+    const v = schnorrVectors()[0]!;
+    const pkAffine = publicKeyToAffineCoords(v.public_key);
+    // Same readonly-construct-new-object discipline as the R-perturbation case.
+    const perturbedP: CoordAffine = { ax: pkAffine.ax, ay: pkAffine.ay + 1n };
+    // Phase 5 post-merge: explicit field (see comment above).
+    const [onCurveP] = isOnCurve(affine2Extended(perturbedP, DALOS_ELLIPSE.field));
+    expect(onCurveP).toBe(false);
+    const fakePk = affineToPublicKey(perturbedP);
+    expect(schnorrVerify(v.signature, v.message, fakePk)).toBe(false);
+  });
+});
+
+// ============================================================================
+// schnorrSign — internal-failure throw contract (forced via schnorrHash spy)
+// ============================================================================
+//
+// These tests force `schnorrHash` to return null via vi.spyOn on the ESM
+// module namespace import — the same spy form T2.2's PM-cache test landed
+// on (cf. tests/gen1/scalar-mult.test.ts:281). When schnorrHash returns
+// null, the Fiat-Shamir challenge inside schnorrSign / schnorrSignAsync /
+// the `sign` alias / the registry adapters takes the `if (challenge ===
+// null)` branch. Pre-T3.2 that branch silently `return ''`s; post-T3.2 it
+// throws SchnorrSignError. T3.5 (this block) is written FIRST against the
+// still-silent signer — these tests are EXPECTED to be RED at task close
+// and green-flip in Wave 3 when T3.2 lands the throw.
+// ============================================================================
+
+describe('schnorrSign — internal-failure throw contract', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('throws SchnorrSignError when schnorrHash returns null (sync schnorrSign)', () => {
+    const v = schnorrVectors()[0]!;
+    const fullKey = fromIntegerBase49(v.priv_int49);
+    vi.spyOn(schnorrModule, 'schnorrHash').mockReturnValueOnce(null);
+    expect(() => schnorrSign(fullKey.keyPair, 'test message')).toThrow(SchnorrSignError);
+  });
+
+  it('throws SchnorrSignError when schnorrHash returns null (sign alias)', () => {
+    const v = schnorrVectors()[0]!;
+    const fullKey = fromIntegerBase49(v.priv_int49);
+    vi.spyOn(schnorrModule, 'schnorrHash').mockReturnValueOnce(null);
+    expect(() => signAlias(fullKey.keyPair, 'test message')).toThrow(SchnorrSignError);
+  });
+
+  it('rejects with SchnorrSignError when schnorrHash returns null (async schnorrSignAsync)', async () => {
+    const v = schnorrVectors()[0]!;
+    const fullKey = fromIntegerBase49(v.priv_int49);
+    vi.spyOn(schnorrModule, 'schnorrHash').mockReturnValueOnce(null);
+    await expect(schnorrSignAsync(fullKey.keyPair, 'test message')).rejects.toThrow(
+      SchnorrSignError,
+    );
+  });
+
+  it('PM cache survives schnorrSign throw (cross-phase invariant)', () => {
+    const v = schnorrVectors()[0]!;
+    const fullKey = fromIntegerBase49(v.priv_int49);
+
+    // (a) Populate the Phase 2 PM cache for DALOS_ELLIPSE with a clean call.
+    const sigBefore = schnorrSign(fullKey.keyPair, 'first message');
+    expect(sigBefore.length).toBeGreaterThan(0);
+
+    // (b) Install the null-returning spy; (c) confirm throw fires.
+    vi.spyOn(schnorrModule, 'schnorrHash').mockReturnValueOnce(null);
+    expect(() => schnorrSign(fullKey.keyPair, 'second message')).toThrow(SchnorrSignError);
+
+    // (d) Restore the spy and re-sign — cache must still be consistent
+    // and produce a valid (non-empty) signature. A future refactor that
+    // moved cache population AFTER schnorrHash would corrupt cache state
+    // when the throw fires; this assertion catches that regression.
+    vi.restoreAllMocks();
+    const sigAfter = schnorrSign(fullKey.keyPair, 'third message');
+    expect(sigAfter.length).toBeGreaterThan(0);
   });
 });
 
@@ -397,4 +496,98 @@ describe('schnorrVerify — adversarial cofactor corpus (REQ-19 / F-SEC-001)', (
       expect(result).toBe(v.expected_verify_result);
     });
   }
+});
+
+// ============================================================================
+// schnorrSignAsync — event-loop responsiveness (REQ-13 watchdog, origin v3.1.0)
+// ============================================================================
+
+describe('schnorrSignAsync — event-loop responsiveness', () => {
+  // The async signer delegates the only scalar-mult call (R = z·G) to
+  // scalarMultiplierAsync, which yields every 8 outer-loop iterations
+  // via globalThis.setImmediate. The watchdog test uses per-yield
+  // performance.now() instrumentation (PRIMARY form per plan-review)
+  // because Promise.race has a microtask-vs-macrotask priority hole:
+  // a non-yielding async fn that takes 250ms still wins the race
+  // because microtasks drain before next-macrotask timers. The
+  // per-yield deltas directly measure the inter-yield window, which
+  // is exactly the property REQ-14's data-independence promise
+  // constrains.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('inter-yield gap stays under 200ms for a full-curve-scale signature', async () => {
+    const v = schnorrVectors()[0]!;
+    const fullKey = fromIntegerBase49(v.priv_int49);
+
+    const originalSetImmediate = globalThis.setImmediate;
+    expect(typeof originalSetImmediate).toBe('function');
+
+    const timestamps: number[] = [performance.now()];
+    type SetImmediateRest = Parameters<typeof globalThis.setImmediate> extends [unknown, ...infer R]
+      ? R
+      : never[];
+    vi.spyOn(globalThis, 'setImmediate').mockImplementation(((cb: () => void, ...args: unknown[]) =>
+      originalSetImmediate(
+        () => {
+          timestamps.push(performance.now());
+          cb();
+        },
+        ...(args as SetImmediateRest),
+      )) as typeof globalThis.setImmediate);
+
+    const sig = await schnorrSignAsync(fullKey.keyPair, v.message);
+
+    // Sanity: we got a real signature back.
+    expect(typeof sig).toBe('string');
+    expect(sig.length).toBeGreaterThan(0);
+
+    // At least one yield observed — proves the trigger fires.
+    expect(timestamps.length).toBeGreaterThanOrEqual(2);
+
+    const gaps = timestamps.slice(1).map((v_, i) => v_ - (timestamps[i] ?? 0));
+    const maxGap = Math.max(...gaps);
+
+    // Inter-yield gap < 200ms is the correctness gate. The outer
+    // 5_000-ms it() ceiling is the safety net for hangs.
+    expect(maxGap).toBeLessThan(200);
+  }, 5_000);
+});
+
+// ============================================================================
+// schnorrSignAsync / schnorrVerifyAsync — equivalence with sync (origin v3.1.0)
+// ============================================================================
+
+describe('schnorrSignAsync / schnorrVerifyAsync — equivalence with sync', () => {
+  it('schnorrSignAsync produces byte-identical output to schnorrSign on sampled vectors', async () => {
+    // Sample three vectors spanning the corpus to bound the runtime
+    // while exercising real keys + full-curve-scale scalars. Full
+    // 20-vector parity is implicit through the sync byte-identity
+    // gate (lines 144-156) plus equivalence here.
+    const vectors = schnorrVectors();
+    const sampled = [vectors[0]!, vectors[10]!, vectors[19]!];
+    for (const v of sampled) {
+      const fullKey = fromIntegerBase49(v.priv_int49);
+      const sync = schnorrSign(fullKey.keyPair, v.message);
+      const async_ = await schnorrSignAsync(fullKey.keyPair, v.message);
+      expect(async_).toBe(sync);
+      expect(async_).toBe(v.signature);
+    }
+  }, 30_000);
+
+  it('schnorrVerifyAsync accepts every committed signature in the sampled set', async () => {
+    const vectors = schnorrVectors();
+    const sampled = [vectors[0]!, vectors[10]!, vectors[19]!];
+    for (const v of sampled) {
+      const result = await schnorrVerifyAsync(v.signature, v.message, v.public_key);
+      expect(result).toBe(true);
+    }
+  }, 30_000);
+
+  it('schnorrVerifyAsync rejects a tampered message', async () => {
+    const v = schnorrVectors()[0]!;
+    const tamperedMsg = `${v.message}-tampered`;
+    expect(await schnorrVerifyAsync(v.signature, tamperedMsg, v.public_key)).toBe(false);
+  });
 });

@@ -78,6 +78,12 @@ export function bitStringToText(bitString: string): string {
  *
  * Deterministic: the same `(keyPair, message)` always yields a
  * byte-identical signature.
+ *
+ * @throws {SchnorrSignError} On internal sign failure (Fiat-Shamir
+ *   challenge derivation produced null — typically caused by an
+ *   unparseable public key in `keyPair`). v3.1.0 throw contract; prior
+ *   versions returned `""`. See README.md "Hardening catalogue" and
+ *   CHANGELOG.md for migration notes.
  */
 export function sign(keyPair: DalosKeyPair, message: string): string {
   return schnorrSign(keyPair, message);

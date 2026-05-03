@@ -2,10 +2,10 @@
 
 [![Audit](https://img.shields.io/badge/Audit-Complete-brightgreen)](AUDIT.md)
 [![Curve](https://img.shields.io/badge/Curve-verified-brightgreen)](verification/VERIFICATION_LOG.md)
-[![Version](https://img.shields.io/badge/Version-3.0.3-blue)](CHANGELOG.md)
-[![Phases 0-11 + v3.0.3](https://img.shields.io/badge/Phases%200--11%20%2B%20v3.0.3-COMPLETE-brightgreen)](docs/TS_PORT_PLAN.md)
+[![Version](https://img.shields.io/badge/Version-3.1.0-blue)](CHANGELOG.md)
+[![Phases 0-11 + v3.1.0](https://img.shields.io/badge/Phases%200--11%20%2B%20v3.1.0-COMPLETE-brightgreen)](docs/TS_PORT_PLAN.md)
 [![Language](https://img.shields.io/badge/Language-Go%201.19-00ADD8)](go.mod)
-[![TypeScript Port](https://img.shields.io/badge/TypeScript%20port-v3.0.3%20on%20npm-brightgreen)](https://www.npmjs.com/package/@stoachain/dalos-crypto)
+[![TypeScript Port](https://img.shields.io/badge/TypeScript%20port-v3.1.0%20on%20npm-brightgreen)](https://www.npmjs.com/package/@stoachain/dalos-crypto)
 [![Historical Curves](https://img.shields.io/badge/Historical%20curves-LETO%20%2F%20ARTEMIS%20%2F%20APOLLO%20%E2%9C%93%20production-brightgreen)](docs/HISTORICAL_CURVES.md)
 
 **Ouro-Network Cryptography**, codename **DALOS**, is the cryptographic foundation of the **Ouro-Network Blockchain**. It is built around a custom Twisted Edwards elliptic curve defined over a 1606-bit prime field, supporting **2¹⁶⁰⁰ unique private keys** — vastly more than the 2²⁵⁶ space of traditional blockchains.
@@ -27,7 +27,7 @@ This repository is the **canonical Go reference implementation**. The **TypeScri
 | Blake3 + AES inlined | ✅ Self-contained — no external Go module dependencies |
 | **40×40 bitmap input** | ✅ **Added in v1.2.0** — 6th key-gen path, see [`Bitmap/Bitmap.go`](Bitmap/Bitmap.go) |
 | **Historical curves** | ✅ **Production-ready as of TS v1.2.0** — LETO / ARTEMIS / APOLLO exposed as full `CryptographicPrimitive` wrappers with their own address prefixes + Schnorr v2 + registry detection. See [`docs/HISTORICAL_CURVES.md`](docs/HISTORICAL_CURVES.md). |
-| **TypeScript port** | ✅ **Live on npm** as [`@stoachain/dalos-crypto@3.0.3`](https://www.npmjs.com/package/@stoachain/dalos-crypto) — byte-identical with this Go reference on DALOS Genesis + LETO + ARTEMIS + APOLLO (366/366 tests incl. the 39-test historical-primitive integration suite + 11 alias round-trip + 8 CI-workflow structural). v3.0.3 ships `CHANGELOG.md` in the npm tarball + auto-creates GitHub Releases on tag push (release-engineering hygiene; pattern replicated from sibling project `StoaChain/OuronetCore`). |
+| **TypeScript port** | ✅ **Live on npm** as [`@stoachain/dalos-crypto@3.1.0`](https://www.npmjs.com/package/@stoachain/dalos-crypto) — byte-identical with this Go reference on DALOS Genesis + LETO + ARTEMIS + APOLLO (366/366 tests incl. the 39-test historical-primitive integration suite + 11 alias round-trip + 8 CI-workflow structural). v3.1.0 ships `CHANGELOG.md` in the npm tarball + auto-creates GitHub Releases on tag push (release-engineering hygiene; pattern replicated from sibling project `StoaChain/OuronetCore`). |
 | Third-party cryptographic audit | 📋 Recommended before production Schnorr use |
 
 ---
@@ -227,6 +227,8 @@ Category-B fixes (Schnorr, output-changing — v2.0.0 of the Schnorr signature f
 
 One **TS-only improvement** — strictly additive, not changing wire format:
 - The TS port constrains the AES IV's high nibble to be non-zero. This sidesteps a latent round-trip edge case in the Go reference's IV serialisation (a `big.Int → hex → bytes` path that drops the high nibble when it's zero — ≈ 6% of random IVs). Ciphertexts produced by the TS port always decrypt in both TS and Go; Go-produced ciphertexts round-trip correctly in TS as long as their IV landed in the 94% safe range. This is an implementation-level avoidance rather than a spec change.
+
+**TypeScript async surface (since v3.1.0)** — additive browser-friendly path: `scalarMultiplierAsync`, `schnorrSignAsync`, `schnorrVerifyAsync` are exported from `@stoachain/dalos-crypto/gen1`. The synchronous variants block the UI thread for hundreds of milliseconds to seconds at full curve scale; the async variants yield to the event loop every 8 outer-loop iterations on a fixed data-independent cadence and keep INP under 200 ms. Output is byte-identical to the sync variants. See the `### Browser-friendly async signing` section in [`ts/README.md`](ts/README.md) for the consumer snippet.
 
 See [`docs/SCHNORR_V2_SPEC.md`](docs/SCHNORR_V2_SPEC.md) for the full Schnorr v2 spec
 and [`AUDIT.md § 3`](AUDIT.md#3-fix-classification) for the finding catalogue that drove the Go-side hardening.

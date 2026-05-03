@@ -61,6 +61,7 @@ export {
   bigIntToBase49,
   scalarMultiplier,
   scalarMultiplierWithGenerator,
+  scalarMultiplierAsync,
 } from './scalar-mult.js';
 
 // Character matrix (Phase 3)
@@ -148,7 +149,10 @@ export {
   deterministicNonce,
   schnorrSign,
   schnorrVerify,
+  schnorrSignAsync,
+  schnorrVerifyAsync,
 } from './schnorr.js';
+export { SchnorrSignError } from './errors.js';
 
 // Ergonomic plain-string aliases (Phase 12 / v3.0.3+)
 export {

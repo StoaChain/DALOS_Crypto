@@ -2,12 +2,12 @@
 
 **Audit target:** `StoaChain/DALOS_Crypto` (Go reference implementation)
 **Initial audit date:** 2026-04-23 (against commit `d136e8d` / tag `v1.0.0`)
-**Last updated:** 2026-05-01 (after frontend-fixes closure shipped at `v3.0.3`)
+**Last updated:** 2026-05-02 (after high-additive-bundle closure shipped at `v3.1.0`)
 **Audit scope:** Complete source audit + mathematical verification + hardening verification
 
 ---
 
-## Hardening Status (current as of `v3.0.3`) — **PHASE 0 + PHASE 8 COMPLETE**
+## Hardening Status (current as of `v3.1.0`) — **PHASE 0 + PHASE 8 COMPLETE**
 
 > **Every finding from the v1.0.0 audit is now resolved, partial-with-rationale, or explicitly not-fixed-by-design. No items remain in "deferred" state.**
 >
@@ -227,7 +227,7 @@ The v2.0.0 format is **not interoperable** with pre-v2 signatures. No DALOS Schn
 | SC-2 | **Nonce generated from `crypto/rand` only.** No RFC-6979 deterministic option. If `crypto/rand` is weak or repeats, private key leaks (Sony PS3 / Playstation ECDSA bug). | ⚠️ Medium | Cat. B (changes sig output) | **✅ RESOLVED v2.0.0** (tagged Blake3 KDF from (priv, msg); Schnorr fully deterministic) |
 | SC-3 | **No domain-separation tag** in the hash. Collides namespace-wise with other protocols using Blake3-1600. | ⚠️ Low–Medium | Cat. B | **✅ RESOLVED v2.0.0** (distinct tags for challenge-hash and nonce-derivation) |
 | SC-4 | **No range check on `s`** in `SchnorrVerify` (should enforce `0 < s < Q`). | ⚠️ Low | Cat. A (output-preserving, just adds rejection) | **✅ RESOLVED v2.0.0** (full `(0, Q)` check active; v1.3.0 was partial with only `s > 0`) |
-| SC-5 | **No on-curve validation of R** in `SchnorrVerify`. | ⚠️ Medium | Cat. A | **✅ RESOLVED v1.3.0** (R and P both validated) |
+| SC-5 | **No on-curve validation of R** in `SchnorrVerify`. | ⚠️ Medium | Cat. A | **✅ RESOLVED v1.3.0** (R and P both validated); regression-pinned in tests at v3.1.0 — see `ts/tests/gen1/schnorr.test.ts` (off-curve R + off-curve P cases) and `Elliptic/Schnorr_adversarial_test.go`. |
 | SC-6 | Errors silently discarded on lines 147, 161, 229, 239 — if point parsing fails, `SchnorrHashOutput` is nil → nil deref on next use. | ⚠️ Medium | Cat. A | **✅ RESOLVED v1.3.0** (explicit false returns) |
 | SC-7 | Non-constant-time scalar mult inherited from `ScalarMultiplier`. Same caveat as PO-1. | ⚠️ Low (for local); Critical (for remote signing) | Cat. A (new primitive) | **✅ RESOLVED v1.3.0** (inherits PO-1 hardening) |
 
@@ -307,12 +307,16 @@ Now inlined into the repo (was previously in the sibling `Cryptographic-Hash-Fun
 
 **Decision (locked 2026-04-23):** AES stays as-is in the Go reference AND in the TypeScript port. Changing the KDF would break the encrypted-file format without any Genesis-key benefit. The AES wrapper is used only by the CLI's `ExportPrivateKey` / `ImportPrivateKey` (saving encrypted key-files to disk); the OuronetUI does **not** use this path — it uses ouronet-core's V1/V2 codex encryption instead. Weak-KDF risk is explicitly documented as "user responsibility to choose a strong password" for CLI consumers. See `docs/FUTURE.md` §4 for the design rationale and `CHANGELOG.md` [1.1.2] for the decision log.
 
-### TypeScript port (`ts/`) ✅ (F-FE-001 + F-INT-002 resolved v3.0.3)
+### TypeScript port (`ts/`) ✅ (F-FE-001 + F-INT-002 resolved v3.0.3; F-TEST-001 + F-PERF-001 + F-PERF-004 + F-API-001 resolved v3.1.0)
 
 | #          | Finding                                                                                                                  | Severity | Status                                                                                                                                   |
 |------------|--------------------------------------------------------------------------------------------------------------------------|----------|------------------------------------------------------------------------------------------------------------------------------------------|
 | **F-FE-001** | `ts/README.md` quick-start examples imported non-existent `sign`/`verify`/`encrypt`/`decrypt`, used wrong arg order, called async functions synchronously. Mint + Subpaths blocks contained placeholder syntax that wouldn't compile. | HIGH     | ✅ **RESOLVED v3.0.3** (option (a) ergonomic aliases added to `ts/src/gen1/aliases.ts`; all 5 broken README blocks rewritten; `npm run docs:check` CI gate prevents future drift). |
 | **F-INT-002** | `ts/README.md` Detect example used `detected.metadata.id` (wrong path; `id` is top-level on the primitive) and literal `"dalos-genesis"` (wrong; actual id is `"dalos-gen-1"`). Cross-listed with F-FE-001.            | MEDIUM   | ✅ **RESOLVED v3.0.3** (rewritten in same PR as F-FE-001).                                                                                |
+| **F-TEST-001** | SC-5 hardening (on-curve R + P validation in `SchnorrVerify`, added v1.3.0) had no regression tests; if the guards were removed, no test would catch it. | HIGH | ✅ **RESOLVED v3.1.0** (off-curve regression tests added at `ts/tests/gen1/schnorr.test.ts` and `Elliptic/Schnorr_adversarial_test.go`; multi-layer defence: tests cover off-curve REJECTION end-to-end via the algebraic check + on-curve guards together). |
+| **F-PERF-001** | Generator-precompute matrix rebuilt on every scalar-mult call. | HIGH | ✅ **RESOLVED v3.1.0** (one-shot-guarded cache on Go `*Ellipse`; `WeakMap<Ellipse, PrecomputeMatrix>` on TS port; ~17% sign/verify speed-up). |
+| **F-PERF-004** | Browser UI freezes during Schnorr at full curve scale. | HIGH | ✅ **RESOLVED v3.1.0** (`scalarMultiplierAsync` + `schnorrSignAsync` + `schnorrVerifyAsync` exported from gen1 subpath; yield every 8 iterations on a fixed, data-independent cadence; INP < 200 ms target met). |
+| **F-API-001** | TS `sign()` returns empty-string sentinel on internal failure. | HIGH | ✅ **RESOLVED v3.1.0** (typed `SchnorrSignError` throw at the registry contract boundary; propagates through `gen1-factory.ts` shared adapter, `genesis.ts` inline adapter, and `aliases.ts` `sign` alias; pinned with forced-failure tests at gen1 + registry layers). |
 
 ---
 

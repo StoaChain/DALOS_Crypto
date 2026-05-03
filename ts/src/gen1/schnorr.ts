@@ -241,11 +241,7 @@ export function schnorrHash(
  * unit tests (REQ-18) — otherwise it's unobservable through the
  * `deterministicNonce` API, which only returns a single bigint.
  */
-export function buildNonceSeed(
-  tag: Uint8Array,
-  k: bigint,
-  msgHash: Uint8Array,
-): Uint8Array {
+export function buildNonceSeed(tag: Uint8Array, k: bigint, msgHash: Uint8Array): Uint8Array {
   const kBytes = bigIntBytesCanon(k);
   const out = new Uint8Array(tag.length + 1 + kBytes.length + msgHash.length);
   out.set(tag, 0);

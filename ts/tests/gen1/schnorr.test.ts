@@ -72,9 +72,7 @@ describe('lenPrefixedConcat (component pin)', () => {
   // the regression at the helper boundary instead of at the 20-vector
   // BYTE-IDENTITY gate.
   it('produces 4-byte BE length-prefixed concatenation matching Go', () => {
-    expect(
-      lenPrefixedConcat([new Uint8Array([0xaa, 0xbb]), new Uint8Array([0xcc])]),
-    ).toEqual(
+    expect(lenPrefixedConcat([new Uint8Array([0xaa, 0xbb]), new Uint8Array([0xcc])])).toEqual(
       new Uint8Array([0x00, 0x00, 0x00, 0x02, 0xaa, 0xbb, 0x00, 0x00, 0x00, 0x01, 0xcc]),
     );
   });
@@ -488,11 +486,7 @@ describe('schnorrHash (internal)', () => {
 describe('schnorrVerify — adversarial cofactor corpus (REQ-19 / F-SEC-001)', () => {
   for (const v of adversarialCofactorVectors()) {
     it(`${v.id}: ${v.description} → expects ${v.expected_verify_result}`, () => {
-      const result = schnorrVerify(
-        v.malformed_signature,
-        v.legit_message,
-        v.legit_public_key,
-      );
+      const result = schnorrVerify(v.malformed_signature, v.legit_message, v.legit_public_key);
       expect(result).toBe(v.expected_verify_result);
     });
   }

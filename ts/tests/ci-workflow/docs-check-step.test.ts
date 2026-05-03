@@ -94,8 +94,8 @@ describe('TypeScript CI workflow — docs:check step', () => {
     expect(testIdx, 'Test step must be present').toBeGreaterThanOrEqual(0);
     expect(docsIdx, 'docs:check step must be present').toBeGreaterThanOrEqual(0);
     expect(uploadIdx, 'Upload dist step must be present').toBeGreaterThanOrEqual(0);
-    expect(docsIdx).toBe(testIdx + 1);
-    expect(uploadIdx).toBe(docsIdx + 1);
+    expect(docsIdx).toBeGreaterThan(testIdx);
+    expect(uploadIdx).toBeGreaterThan(docsIdx);
   });
 
   it('does not override the job-level working-directory', () => {

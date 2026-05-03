@@ -54,6 +54,10 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Coverage (Node 24 only)
+        if: matrix.node-version == '24'
+        run: npm run test:coverage
+
       - name: Check README code blocks
         run: npm run docs:check
 

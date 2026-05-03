@@ -104,4 +104,32 @@ describe('validateBitmap', () => {
     const b: Bitmap = Array(39).fill([]);
     expect(validateBitmap(b).valid).toBe(false);
   });
+
+  it('rejects 41-row input with row-count reason', () => {
+    const b = Array(41)
+      .fill(null)
+      .map(() => Array(40).fill(false)) as Bitmap;
+    const result = validateBitmap(b);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toMatch(/expected 40 rows, got 41/);
+  });
+
+  it('rejects jagged array with column-count reason', () => {
+    const b = Array(40)
+      .fill(null)
+      .map((_, i) => Array(i < 20 ? 40 : 39).fill(false)) as Bitmap;
+    const result = validateBitmap(b);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toMatch(/row \d+ must have 40 columns, got \d+/);
+  });
+
+  it('rejects single 41-column row inside an otherwise 40×40 array', () => {
+    const rows: boolean[][] = Array(40)
+      .fill(null)
+      .map(() => Array(40).fill(false));
+    rows[5] = Array(41).fill(false);
+    const result = validateBitmap(rows as Bitmap);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toMatch(/row \d+ must have 40 columns, got 41/);
+  });
 });

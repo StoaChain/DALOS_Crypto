@@ -175,6 +175,95 @@ describe('encryptBitString / decryptBitString round-trips', () => {
 });
 
 // ============================================================================
+// Odd-nibble bitstring round-trip (Genesis-format pin, REQ-03 / F-TEST-004)
+// ============================================================================
+
+describe('odd-nibble bitstring round-trip (Genesis-format pin, REQ-03 / F-TEST-004)', () => {
+  // This block pins the documented lossy round-trip for inputs whose
+  // bigint magnitude expressed in hex has an ODD number of nibbles.
+  //
+  // Two layered constraints govern this round-trip:
+  //
+  // (A) Genesis-format limitation (Go + TS, byte-for-byte): the encoder
+  //     `bitStringToBytes` (aes.ts:58-84) maps bitstring → bigint → hex →
+  //     bytes. When the hex length is odd, the last half-nibble is dropped
+  //     (`evenLen = hex.length - (hex.length % 2)` at aes.ts:78). Go's
+  //     `hex.DecodeString` returns ErrLength on odd input which DALOS
+  //     silently discards (AES/AES.go:39-46 `BitStringToHex`). Round-trip
+  //     of an odd-nibble input therefore produces the EVEN-NIBBLE PREFIX,
+  //     not the original. This is frozen behaviour — the Genesis corpus
+  //     depends on it.
+  //
+  // (B) TS-only IV high-nibble constraint (aes.ts:140-157, "TS-only
+  //     deviation, by design" per CLAUDE.md "Hardening catalogue"):
+  //     `encryptBitString` regenerates the 12-byte AES-GCM nonce until
+  //     `nonce[0] >= 0x10`, sidestepping a latent Go-era big.Int → hex →
+  //     bytes round-trip edge case (≈6% failure rate on Go for random
+  //     IVs whose top nibble is zero). This is implementation-level, not
+  //     a wire-format change. With this guard in place, TS encrypt never
+  //     produces a ciphertext that the TS decrypter cannot read back.
+  //
+  // Together, (A) means the PLAINTEXT round-trip is lossy for odd-nibble
+  // magnitudes; (B) means the CIPHERTEXT envelope itself is always
+  // round-trippable. The pin below asserts both behaviours hold for the
+  // canonical odd-nibble example from `bitStringToBytes` line 67:
+  //
+  //   '100010001'  (9 bits, bigint 273)
+  //     → hex "111" (3 chars, odd)
+  //     → evenLen = 2 → bytes [0x11]
+  //     → bytesToBitString([0x11]) = '10001'  (5 bits, NOT 9)
+  //
+  // Failure of this pin would indicate either (A) the Genesis-format
+  // truncation behaviour shifted (corpus-breaking), or (B) the IV
+  // high-nibble guard regressed (intermittent decrypt failures).
+
+  it('pins odd-nibble bitstring round-trip ("100010001" → "10001")', async () => {
+    const plaintext = '100010001'; // 9 bits, hex "111" (odd-nibble magnitude)
+    const password = 'odd-nibble-pin-pw';
+
+    const ct = await encryptBitString(plaintext, password);
+    expect(ct).not.toBe(''); // IV high-nibble guard ensures encrypt always succeeds
+
+    const recovered = await decryptBitString(ct, password);
+
+    // Genesis-format truncation: last half-nibble dropped, recovered output
+    // is the even-nibble prefix decoded back to a bigint-shrunk bitstring.
+    expect(recovered).toBe('10001');
+    expect(recovered).not.toBe(plaintext); // round-trip is intentionally lossy
+  });
+
+  it('pins documented truncation across degenerate and even-clean regimes', async () => {
+    // Parametrized in-`it` for-loop matches the codebase-wide convention
+    // (see key-gen.test.ts:69 and aes.test.ts:88) over `it.each`.
+    // The canonical odd-nibble case ('100010001' → '10001') is already pinned
+    // by the prior `it()` at lines 220-233, so this loop covers the two
+    // remaining regimes (degenerate empty-bytes; even-clean full round-trip).
+    // Each row: [input, expected_recovered, hex_form, why].
+    const cases: ReadonlyArray<readonly [string, string, string, string]> = [
+      ['1000', '0', '8', '4 bits, hex "8" (1 nibble) → bytes empty → bytesToBitString "0"'],
+      [
+        '100000001000000010000000',
+        '100000001000000010000000',
+        '808080',
+        '24 bits, hex "808080" (6 nibbles, even) → clean full round-trip',
+      ],
+    ];
+    const password = 'odd-nibble-table-pw';
+
+    for (const [input, expectedRecovered, _hex, _why] of cases) {
+      const ct = await encryptBitString(input, password);
+      // IV high-nibble guard ensures encrypt always emits a non-empty envelope,
+      // even when bitStringToBytes(input) collapses to zero bytes pre-encryption
+      // (the '1000' degenerate row): AES-GCM still produces nonce+tag, and the
+      // recovered plaintext is empty bytes → bytesToBitString → '0'.
+      expect(ct).not.toBe('');
+      const recovered = await decryptBitString(ct, password);
+      expect(recovered).toBe(expectedRecovered);
+    }
+  });
+});
+
+// ============================================================================
 // AES-wrapper limitations (matches Go byte-for-byte)
 // ============================================================================
 

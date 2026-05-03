@@ -104,6 +104,62 @@ describe('validatePrivateKey (BYTE-IDENTITY vs Go corpus)', () => {
 });
 
 // ============================================================================
+// validatePrivateKey — boundary scalars (REQ-01 / F-TEST-002)
+// ============================================================================
+//
+// These three tests pin the OBSERVED behavior of the structural
+// `validatePrivateKey` at the boundaries of the subgroup order Q.
+//
+// IMPORTANT: `validatePrivateKey` is a STRUCTURAL validator — it checks
+// the binary shape of the scalar (first bit '1', last 2 bits match the
+// cofactor tail "00", middle length == e.s = 1600), NOT subgroup
+// membership against Q. A scalar's acceptance therefore depends on its
+// binary shape, not on whether it lies in [1, Q-1].
+//
+// Range-vs-Q semantic validation (a hypothetical
+// `validatePrivateKeyRange(scalar, q)` helper) is OUT OF SCOPE for
+// Phase 1 of the unified-audit-2026-04-29 spec; if such a helper is
+// later introduced, a new boundary suite should pin its semantics
+// separately.
+//
+// Concrete bit-shapes at these boundaries (verified against curve.ts:54-61):
+//   - Q       = 1604 bits, first '1', last 2 = "01"   (Q is odd)
+//   - Q - 1   = 1604 bits, first '1', last 2 = "00"   (passes cofactor
+//               tail, fails middle-length check: 1601 != 1600)
+//   - Q + 1   = 1604 bits, first '1', last 2 = "10"   (fails cofactor
+//               tail check FIRST — never reaches the length check)
+//   - 1 << 1602 = 1603 bits, first '1', last 2 = "00", middle = 1600
+//               zeros — STRUCTURALLY VALID, exact `bitString` is 1600 zeros.
+
+describe('validatePrivateKey — boundary scalars (REQ-01 / F-TEST-002)', () => {
+  it('rejects scalar = Q-1 (just below subgroup order) — structural check fails on middle-length 1601 != 1600', () => {
+    const scalar = (DALOS_ELLIPSE.q - 1n).toString(10);
+    const v = validatePrivateKey(scalar, 10);
+    expect(v.valid).toBe(false);
+    expect(v.reason).toMatch(/core bits length 1601/);
+  });
+
+  it('rejects scalar = Q+1 (just above subgroup order) — structural check fails on cofactor-tail mismatch', () => {
+    // Q+1's binary shape (1604 bits, first '1', last 2 = "10") fails the
+    // cofactor-tail check ("00" required) BEFORE the middle-length check
+    // is reached. This pins the OBSERVED short-circuit order of the
+    // structural validator. Both Q-1 and Q+1 are rejected, but for
+    // DIFFERENT structural reasons — a useful coverage anchor.
+    const scalar = (DALOS_ELLIPSE.q + 1n).toString(10);
+    const v = validatePrivateKey(scalar, 10);
+    expect(v.valid).toBe(false);
+    expect(v.reason).toMatch(/last 2 bits must match cofactor tail "00"/);
+  });
+
+  it('accepts scalar = 1n << 1602n (edge-valid 1603-bit clamped form) — bitString is 1600 zeros', () => {
+    const scalar = (1n << 1602n).toString(10);
+    const v = validatePrivateKey(scalar, 10);
+    expect(v.valid).toBe(true);
+    expect(v.bitString).toBe('0'.repeat(1600));
+  });
+});
+
+// ============================================================================
 // Scalar ↔ key conversions (algebraic round-trip)
 // ============================================================================
 

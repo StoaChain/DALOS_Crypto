@@ -1,11 +1,11 @@
 /**
  * Scaffold sanity tests. Proves the TS build + Vitest + fixture loader
- * are all wired up correctly. No cryptographic logic tested here —
- * Phase 1 onwards will add real math.
+ * + root namespace re-exports are all wired up correctly. No
+ * cryptographic logic tested here — Phase 1 onwards will add real math.
  */
 
 import { describe, expect, it } from 'vitest';
-import { SCAFFOLD_VERSION } from '../src/index.js';
+import { blake3, historical } from '../src/index.js';
 import {
   bitmapVectors,
   bitstringVectors,
@@ -15,8 +15,32 @@ import {
 } from './fixtures.js';
 
 describe('scaffold', () => {
-  it('exports SCAFFOLD_VERSION (bumped to 0.7.0 at Phase 7 landing)', () => {
-    expect(SCAFFOLD_VERSION).toBe('0.7.0');
+  it('exposes historical and blake3 namespaces from the package root', () => {
+    expect(typeof historical).toBe('object');
+    expect(typeof blake3).toBe('object');
+
+    expect('LETO' in historical).toBe(true);
+    expect('ARTEMIS' in historical).toBe(true);
+    expect('APOLLO' in historical).toBe(true);
+
+    expect(typeof blake3.blake3SumCustom).toBe('function');
+    expect(typeof blake3.sevenFoldBlake3).toBe('function');
+
+    const out = blake3.blake3SumCustom(new Uint8Array([0]), 8);
+    expect(out).toBeInstanceOf(Uint8Array);
+    expect(out.length).toBe(8);
+
+    expect(historical.LETO.name).toBe('LETO');
+    expect(typeof historical.LETO.p).toBe('bigint');
+    expect(typeof historical.LETO.s).toBe('number');
+
+    expect(historical.ARTEMIS.name).toBe('ARTEMIS');
+    expect(typeof historical.ARTEMIS.p).toBe('bigint');
+    expect(typeof historical.ARTEMIS.s).toBe('number');
+
+    expect(historical.APOLLO.name).toBe('APOLLO');
+    expect(typeof historical.APOLLO.p).toBe('bigint');
+    expect(typeof historical.APOLLO.s).toBe('number');
   });
 });
 

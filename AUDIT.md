@@ -2,7 +2,7 @@
 
 **Audit target:** `StoaChain/DALOS_Crypto` (Go reference implementation)
 **Initial audit date:** 2026-04-23 (against commit `d136e8d` / tag `v1.0.0`)
-**Last updated:** 2026-05-02 (after high-additive-bundle closure shipped at `v3.1.0`)
+**Last updated:** 2026-05-05 (after audit-cycle-2 close-out; see "Audit Cycle 2 Close-Out" section below)
 **Audit scope:** Complete source audit + mathematical verification + hardening verification
 
 ---
@@ -47,6 +47,81 @@
 > **LETO + ARTEMIS Schnorr signatures and seedword-derived keys** — wire-format changed at v3.0.0 (XCURVE-1..4). Pre-v3.0.0 outputs do NOT verify under v3.0.0+ for these two curves. APOLLO (S=1024 byte-aligned) and DALOS Genesis (S=1600 byte-aligned) are unaffected — XCURVE-1..4 produce identical output for byte-aligned curves. Cross-implementation byte-identity now formalized via `testvectors/v1_historical.json` (60 vectors, schema_version: 2).
 
 See [`CHANGELOG.md`](CHANGELOG.md) for per-release detail, [`docs/SCHNORR_V2_SPEC.md`](docs/SCHNORR_V2_SPEC.md) for the hardened Schnorr specification.
+
+---
+
+## Audit Cycle 2 Close-Out (`v4.0.1` → `v4.0.2`, 2026-05-04 → 2026-05-05)
+
+A second comprehensive audit pass ran on 2026-05-04 against the v4.0.0 tree using BeeDev's 10-agent fleet (security, error-handling, database, architecture, api, frontend, performance, testing, audit-bug-detector, integration-checker). Validators routed 64 raw findings through 5 parallel verification agents; 0 false positives, 60 substantive findings (1 CRITICAL, 16 HIGH, 23 MEDIUM, 20 LOW, with 3 reclassified to NEEDS-CONTEXT). All CRITICAL + HIGH findings closed in `v4.0.1`; this section catalogues the MEDIUM-band disposition reached on `v4.0.2`.
+
+> **20 / 23 MEDIUM findings dispositioned in v4.0.2 — three remain open by deliberate deferral, three NEEDS-CONTEXT findings remain open pending user policy decisions.**
+
+### MEDIUM-band fixes shipped in v4.0.2
+
+**Cluster A — CLI hardening + Elliptic purity (commit `30cd056`):**
+- **F-MED-001** ✅ — `-g` input-method branches converted to `else if` chain + multi-flag rejection guard (prevents the multi-wallet generation bug where `dalos -g -raw -bits 0101` produced two unrelated wallets in one run).
+- **F-MED-002** 📝 DOCUMENTED-NOT-FIXED — `-p PASSWORD` shell-history leak. The proper fix (interactive `term.ReadPassword` fallback) requires `golang.org/x/term`, which would break this package's "no external deps" invariant (see `CLAUDE.md` "Common commands" → "go1.19, no external deps"). Documented as a known limitation; CLI is documented as developer/test surface.
+- **F-MED-004** ✅ — 16-character minimum password length validation at the `-p` flag boundary.
+- **F-MED-006** ✅ — `confirmSeedWords` no longer calls `os.Exit(1)` from helper; returns sentinel.
+- **F-MED-016** ✅ — `ValidatePrivateKey` `fmt.Println` calls removed; failure reason returned as third value (preserves Phase 10 / REQ-31 pure-crypto invariant on `Elliptic/`).
+
+**Cluster B — Library API hygiene (commit `05eb8dd`):**
+- **F-MED-008** ✅ — TS gen1 surface gained 3 typed exception classes (`InvalidBitStringError`, `InvalidPrivateKeyError`, `InvalidBitmapError`) re-exported from `ts/src/gen1/index.ts`. Consumers can now `catch (e) { if (e instanceof InvalidBitStringError) ... }` instead of message-string sniffing. 5 throw sites in `key-gen.ts` swapped.
+- **F-MED-009** ✅ — `keystore.ImportPrivateKey` `fmt.Println` calls removed (library purity restored post-v4.0.0 carve-out); breadcrumb prints relocated to `Dalos.go` around both call sites. CLI behaviour preserved byte-for-byte.
+- **F-MED-020** ✅ — `GenerateFromBitmap` declaration added to `EllipseMethods` interface (Phase 11 conformance assertion now verifies both directions of the contract).
+
+**Cluster C — Test coverage gaps (commit `510913b`):**
+- **F-MED-012** ✅ — `Blake3/Blake3_test.go` added (336 lines): empty-input KAT lock + 7 cross-path consistency tests covering all 3 size paths (single-block / single-chunk / multi-chunk) and all output paths (Sum256/512/1024/Custom/XOF/Hasher).
+- **F-MED-013** ✅ — `AES/AES_test.go` added (337 lines): round-trip integrity (with the AES-1/2 retry helper from `keystore/import_test.go`), wrong-password rejection, tampered-ciphertext rejection, KDF determinism + non-degeneracy, nonce randomness, ZeroBytes scrub.
+- **F-MED-014** ✅ — `Elliptic/PointOperations_test.go` added (460 lines): 11 tests × 5 curves = 44 cross-curve subtest cases. Identity element, [Q]·G=O group-order check, addition/doubling/tripling consistency, commutativity, associativity, dispatch-variant agreement, FortyNiner=[49]G. **Latent-bug fix bundled:** `E521Ellipse()` was missing `e.G.AX = new(big.Int)` and `e.G.AY = new(big.Int)` allocations since v1.0.0 — surfaced by the cross-curve sweep, fixed inline. No production callers existed (verified via grep), so the bug was undetected for the entire codebase lifetime.
+
+**Cluster D — Hot-path optimizations (commit `9a28e4c`):**
+- **F-MED-010** ✅ — `ConvertHashToBitString` O(n²) `+=` loop replaced with `strings.Builder.Grow + WriteByte` (Go) and `Array.push + join` (TS). For DALOS (200-byte hash → 1600-char bitstring) this drops ~160 KB of intermediate-string garbage per call. Mirrors the existing REQ-29 `bigIntToBase49` pattern on TS.
+- **F-MED-011** ✅ — Extracted `schnorrHashFromAffine(R, PAffine, Message)` helper from `SchnorrHash`. Verifier path (Go `SchnorrVerify`, TS `schnorrVerify` + `schnorrVerifyAsync`) now skips the redundant `ConvertPublicKeyToAffineCoords` parse — public key was already parsed for the on-curve and cofactor checks. Public API surface unchanged.
+
+**Solo cycle commits (pre-cluster phase):**
+- **F-MED-017** ✅ — Hybrid cofactor-check dispatch (commit `cf5b2fe`). Schnorr cofactor-rejection now dispatches on `e.r`: h=4 fast path (2 doublings, byte-identical to v4.0.1 behaviour) + general fallback via `scalarMultiplier(h, X, e)`. Per-curve doc playbook in [`docs/COFACTOR_GENERALIZATION.md`](docs/COFACTOR_GENERALIZATION.md) (~430 lines: math, threat model, per-cofactor cost table, Ed25519 worked example, "for AI agents" section).
+- **F-MED-018** 📝 DOCUMENTED-NOT-FIXED — `fullKeyFromBitString` always uses DALOS prefixes (commit `cd5d986`). The TS `gen1/from*` entry points are DALOS-default by design at the gen1 layer; multi-curve consumers route via the `/registry` subpath which re-stamps prefixes correctly (see OuronetUI's `src/lib/dalos/key-gen.ts` for the canonical pattern). Mirrors the F-API-006 / F-TEST-002 architectural-boundary precedent.
+- **F-MED-015** ✅ — CRLF wallet import (consolidated into F-HIGH-009's fix shipped in v4.0.1). `ImportPrivateKey`'s positional `len(lines) != 12` parser was replaced with header-anchored extraction (`findValueAfterHeader` in `keystore/import.go`), trims CRLF per-line, and tolerates trailing whitespace.
+
+### MEDIUMs explicitly NOT-FIXED-BY-DESIGN in this cycle
+
+- **F-MED-019** ❎ — `dist/gen1/` lacks 4 v3.0.3+ exports. Verified `git ls-files ts/dist/` returns 0 entries; `dist/` is in `ts/.gitignore`. The local `dist/` is a developer-side build artifact only; CI's `npm run build` step at `.github/workflows/ts-publish.yml`'s `gates` job rebuilds from `src/` on every release. The `prepare`/`prepack` lifecycle additionally rebuilds before `npm publish`. Local `npm link` consumers should run `npm run build` themselves. Promoting this to a tracked-`dist/` model would defeat the CI rebuild guarantee — declined as a regression risk.
+
+### MEDIUMs already resolved (stale findings)
+
+- **F-MED-021** ✅ STALE — already fixed in v4.0.1 (commit `a191bfa`) under tracking ID **F-INT-002**. The current `.github/workflows/ts-publish.yml` already implements every mitigation the auditor recommended: workflow-level `concurrency` group with `cancel-in-progress: false`, `gates` matrix job exercising Node 20/22/24 with lint + typecheck + build + test + docs:check, and `publish: needs: gates`. The auditor's snapshot pre-dated commit `a191bfa`; the report wasn't refreshed against post-fix state. Workflow-file docstring explicitly cites the F-INT-002 v4.0.1 closure.
+
+### MEDIUMs that survive the audit cycle (open by deliberate deferral)
+
+| ID | Title | Why deferred |
+|----|-------|--------------|
+| **F-MED-003** | Outdated Go toolchain pin (go 1.19, EOL since Aug 2023) | Toolchain bump requires testing build matrix against ouronet-go consumers + updating CI runner pins. Worth its own dedicated spec. |
+| **F-MED-005** | `ImportPrivateKey` swallows underlying decrypt error | In direct tension with F-NEEDS-001 (decrypt-oracle question). Both findings touch the same return-path; resolving them together as a single coordinated spec preserves consistency. Awaiting user policy on selective-`%w`-wrap. |
+| **F-MED-007** | `Bitmap.ValidateBitmap` is a no-op | Resolution requires deciding what "validation" should reject — purely structural (dimensions, allowed values) or also semantic (e.g., reject all-zero / all-one bitmaps as low-entropy). User judgment needed. |
+
+### NEEDS-CONTEXT findings (validator-flagged for user judgment)
+
+Three findings were CONFIRMED-real but reclassified by the validator agent as needing user policy decisions before they can be filed as actionable specs:
+
+- **F-NEEDS-001** — Wrong-password / corrupt-ciphertext oracle through differing error messages (`keystore/import.go:38-41` + `AES/AES.go:170-173`). Live oracle is closed at the only current consumer (CLI surfaces conflated message), but `AES.DecryptBitString` returns a parenthetical `"(likely wrong password or corrupt ciphertext)"` with `%w`-wrap — a future library consumer that surfaces the inner error would re-leak. **Tension with F-MED-005:** which errors stay generic (auth-tag-mismatch — keep generic per OWASP) and which should propagate (NewCipher / NewGCM / nonce-too-short / scalar-gen / key-derive — wrap with `%w`).
+- **F-NEEDS-002** — Bare `_, _ =` on Blake3.Write / XOF.Read swallows hash-state corruption (4 sites in `Blake3/Blake3.go`). `hash.Hash.Write` is documented per `io.Writer` contract to never return non-nil error; Blake3 follows the same convention. Today these are no-op suppressions of by-contract-nil errors. Validator suggests reclassifying as LOW (defensive-coding hygiene).
+- **F-NEEDS-003** — Schnorr `IsOnCurve` infinity flag silently dropped (`Elliptic/Schnorr.go:376, 404`). The two call sites discard the second return; HOWEVER, lines 384-387 / 411-414 immediately perform a cofactor check (`[4]·R` and `[4]·P`) that rejects infinity via `IsInfinityPoint`. Defence-in-depth-on-defence-in-depth. Validator suggests reclassifying as LOW (cosmetic / future-proofing).
+
+### Genesis byte-identity tracking through the cycle
+
+Through every cluster (A → D), the deterministic record sets in both corpora hash identical to the pre-cycle baseline:
+
+|                       | Pre-cycle baseline | Post-cycle (v4.0.2) | Status |
+|-----------------------|--------------------|--------------------|--------|
+| `bitstring_vectors`   | `bd4d14ca1ba070b7…` | `bd4d14ca1ba070b7…` | MATCH |
+| `seed_words_vectors`  | `6c9a2577c23caa64…` | `6c9a2577c23caa64…` | MATCH |
+| `bitmap_vectors`      | `cd530b3b125a4546…` | `cd530b3b125a4546…` | MATCH |
+| `historical/leto`     | `daad91d2427ddb2b…` | `daad91d2427ddb2b…` | MATCH |
+| `historical/artemis`  | `abd32a4660819d63…` | `abd32a4660819d63…` | MATCH |
+| `historical/apollo`   | `7bc541f94fa3cd4a…` | `7bc541f94fa3cd4a…` | MATCH |
+
+The frozen contract holds. Schnorr signatures themselves vary per-run (deterministic on TS, randomised on Go's `crypto/rand` path) but the self-verify-true and Go↔TS cross-verify invariants are locked in test.
 
 ---
 

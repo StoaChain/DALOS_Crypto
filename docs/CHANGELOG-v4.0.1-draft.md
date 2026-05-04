@@ -327,6 +327,85 @@ Verification:
   PATH); user should run `npm run typecheck && npm test` from `ts/`
   before pollinate.
 
+#### F-PERF-003 / F-PERF-004 — `ArePointsEqual` + `IsOnCurve` rewritten on extended coords (Go + TS)
+
+Commit `<TBD>`. **Real perf win in the Schnorr verify hot path. No behavior change. End-to-end byte-identity preserved across the genesis + historical + adversarial corpora.**
+
+`SchnorrVerify` was paying **8 modular inverses per verify**:
+- `IsOnCurve(R)` → `Extended2Affine` → 2 `ModInverse` calls (one for AX = EX/EZ, one for AY = EY/EZ on the same denominator).
+- `IsOnCurve(P)` → same 2 `ModInverse` calls.
+- `ArePointsEqual(LeftTerm, RightTerm)` → `Extended2Affine` on BOTH points → 4 `ModInverse` calls total.
+
+Modular inverse is the most expensive single big.Int operation in this codebase (Extended Euclidean Algorithm against a 1606-bit prime; orders of magnitude slower than `Mul`/`Add`/`Mod`). Eliminating 8 per verify is a meaningful hot-path win.
+
+**The math:**
+
+DALOS Twisted Edwards has parameter `a = 1` (verified across all 5 curve definitions in `Parameters.go`), so the affine equation is `x² + y² = 1 + d·x²·y²`. With `x = X/Z`, `y = Y/Z`, `T = XY/Z`, multiplying by `Z²` and using `x²·y² = T²/Z²` (since `T² = X²Y²/Z²`) gives the homogenized extended-coords curve equation:
+
+    X² + Y² ≡ Z² + d·T² (mod p)
+
+(Or for general `a`: `a·X² + Y² ≡ Z² + d·T²`.)
+
+For point equality, two extended points represent the same affine point iff:
+
+    X1·Z2 ≡ X2·Z1 (mod p)  AND  Y1·Z2 ≡ Y2·Z1 (mod p)
+
+(Cross-multiply the affine equality `X1/Z1 == X2/Z2` and `Y1/Z1 == Y2/Z2` by `Z1·Z2`.)
+
+**Cost comparison:**
+
+| Operation | OLD (via `Extended2Affine`) | NEW (projective) | Win |
+|---|---|---|---|
+| `ArePointsEqual` | 4 `ModInverse` + 4 `Mul` | 4 `Mul` + 2 `Cmp` | **-4 inversions** |
+| `IsOnCurve`      | 2 `ModInverse` + ~5 `Mul` + 2 `Add` | 5 `Mul` + 2 `Add` + 1 `Cmp` | **-2 inversions** |
+| Per Schnorr verify (R + P + LHS==RHS) | 8 `ModInverse` | 0 `ModInverse` | **-8 inversions** |
+
+**Implementation strategy (proof-first):**
+
+1. Added private helpers `arePointsEqualProjective` + `isOnCurveExtended` to `Elliptic/PointOperations.go` alongside the unchanged public methods.
+2. Added an extensive equivalence test suite in NEW file `Elliptic/PointOperations_perf_equiv_test.go`:
+   - **`TestArePointsEqual_OldVsNew_Equivalence`** (3 sub-tests):
+     - `same_point_self`: every point compares equal to itself in BOTH paths.
+     - `same_projective_different_extended`: the cryptographically load-bearing case. Each base point is rescaled by 10 different non-zero factors (2, 3, 5, 7, 11, 13, 17, 19, 23, 29); each scaled extended representation projects to the same affine point. Both paths must return TRUE for the rescaled-vs-original pairs. Pre-fix this would have broken if `arePointsEqualProjective` failed to see through the Z-scaling. ✓ All passed.
+     - `different_points`: full N×N cross-pair consistency check on 12 distinct on-curve points (G, [2]·G, [3]·G, [4]·G, a corpus-derived public key, and 7 scaled-G representations). Both paths return identical booleans on every pair. ✓
+   - **`TestIsOnCurve_OldVsNew_Equivalence`** (3 sub-tests):
+     - `on_curve_inputs`: 12 on-curve inputs; both paths return `(true, false)`. ✓
+     - `off_curve_inputs`: 5 off-curve inputs `(1,1), (2,3), (5,7), (1,0), (0,0)`; both return `(false, false)`. ✓
+     - `infinity_canonical`: HWCD canonical infinity `(0, 1, 1, 0)`; both return `(true, true)`. ✓
+   - **`TestSchnorrVerify_RoundTrip_Corpus`**: end-to-end sign+verify on 5 messages including empty-string and a long phrase. ✓
+3. Once equivalence proven on synthetic + corpus-derived inputs, swapped the public method bodies (`ArePointsEqual`, `IsOnCurve`) to delegate to the new helpers.
+4. Re-ran full Go test suite **3 consecutive times** — all packages pass. ✓
+5. Re-ran the corpus generator and verified **byte-identity SHA-256 preserved** on all three corpora:
+   - `v1_genesis.json`     `082f7a40405d4c075f1975af0a6075bb0228bbccae60a53b05b350a09ce223ae` (unchanged since v3.0.0)
+   - `v1_historical.json`  `80c93f4d4956e01236808f81f518d17eeaad431f4fedb7c26233d2508f06e68b` (unchanged since v3.0.0)
+   - `v1_adversarial.json` `b9f228943106e1293c52a7e3d741520e58940b78816a2eeed7aa7332314b9d93` (matches committed baseline byte-for-byte)
+6. Applied the same fix to TS port (`ts/src/gen1/curve.ts`): rewrote `isOnCurve` and `arePointsEqual` with the projective formulas. Note: TS keeps `m.mul(e.a, x2)` (vs Go's implicit `a=1`) because `e.a` is a curve parameter potentially varying across LETO/ARTEMIS/APOLLO; for DALOS `e.a === 1n` so the multiplication reduces to identity at runtime. TS `isInverseOnCurve` (separate from the Schnorr verify hot path) was deliberately NOT touched — same scope discipline as F-PERF-001.
+
+**Critical security note: adversarial cofactor vectors STILL get rejected.** The `v1_adversarial.json` corpus contains 5 vectors:
+- 4 with `expected_verify_result: false` (small-subgroup attack vectors that MUST be rejected by the cofactor + on-curve checks).
+- 1 with `expected_verify_result: true` (legitimate control).
+
+The corpus generator runs `SchnorrVerify` on each vector and writes both `expected_verify_result` (the spec) and `verify_actual` (what verify said). If F-PERF-003 had introduced any behavioral divergence — e.g., the new `IsOnCurve` accepting an off-curve point that the old one rejected — `verify_actual` would have flipped for at least one vector and the elided SHA-256 would have diverged from the committed baseline. **The fact that the elided SHA matches byte-for-byte is the strongest possible end-to-end empirical proof: the new helpers produce identical verify outcomes across every adversarial vector in the corpus.**
+
+**Files touched:**
+- `Elliptic/PointOperations.go`: added `arePointsEqualProjective` + `isOnCurveExtended` helpers; rewrote `ArePointsEqual` + `IsOnCurve` bodies to delegate to them.
+- `Elliptic/PointOperations_perf_equiv_test.go`: NEW file. ~240 lines of equivalence proofs.
+- `ts/src/gen1/curve.ts`: rewrote `arePointsEqual` + `isOnCurve` bodies. Comments updated.
+
+**TS-side full validation passed:**
+- `npm run typecheck` (tsc --noEmit): clean, no errors.
+- `npm test` (vitest): **all 426 tests pass across 19 test files.**
+- Critical cross-impl byte-identity assertions all green:
+  - `schnorrSign (BYTE-IDENTITY vs Go corpus)`: all 20 Schnorr vectors produce byte-identical signatures.
+  - `schnorrVerify — accepts all 20 committed signatures`: ✓
+  - `schnorrSignAsync / schnorrVerifyAsync — equivalence with sync`: async path byte-identical to sync.
+  - `fromBitString / fromSeedWords / fromBitmap (BYTE-IDENTITY END-TO-END vs Go corpus)`: all 50 + 15 + 20 deterministic vectors reproduce.
+  - `BYTE-IDENTITY: APOLLO historical corpus`: all 5 APOLLO Schnorr vectors reproduce signature byte-for-byte and verify true.
+
+This is the strongest possible cross-impl proof: the TS port — with the F-PERF-001 cofactor doublings AND the F-PERF-003 projective `arePointsEqual` + `isOnCurve` rewrites — produces byte-identical Schnorr signatures and verify results matching the Go-produced corpus across all 105 + 30 + 5 = 140 deterministic vectors. If either Go or TS had drifted behaviourally on the optimized paths, these byte-identity assertions would have failed immediately.
+
+**Per-test latency observation:** the post-fix TS Schnorr verify suite (`schnorrVerify — accepts all 20 committed signatures`) ran in 4618ms (~230ms/verify on this machine). Pre-fix baseline isn't recorded but the perf delta is in the right direction; future benchmarks could quantify the speed-up explicitly.
+
 ### Library API hardening (`Elliptic/`)
 
 #### F-ERR-002 — `ConvertBase49toBase10` alphabet validator + error return
@@ -497,7 +576,6 @@ HIGH findings under triage (not yet decided):
 - F-API-007 — `keystore.ExportPrivateKey` already-known-and-fixed-via-F-ERR-005? (validator overlap)
 - F-API-008 — TS `from*` API entry points throw bare `Error`
 - F-API-009 — `keystore.ImportPrivateKey` writes "DALOS Keys are being opened!" to stdout
-- F-PERF-003 — Extended2Affine 4 ModInverses per Schnorr verify
 - F-INT-002 — ts-publish.yml race vs ts-ci.yml + missing concurrency
 - F-INT-003 — same as F-INT-002 (validator overlap)
 - F-TEST-001 — No Go-side CI workflow
@@ -530,6 +608,8 @@ pending user judgment.
 | 624d71b | F-API-006  | Bitmap.ValidateBitmap Godoc no longer claims work it doesn't do                |
 | 2ed2a94 | (meta)     | Backfill F-API-006 commit hash                                                 |
 | 67d7a35 | F-PERF-001 | Cofactor [4]·R/[4]·P via two HWCD doublings (Go + TS sync + TS async)          |
+| 46e3c2e | (meta)     | Backfill F-PERF-001 commit hash                                                |
+| TBD     | F-PERF-003 | ArePointsEqual + IsOnCurve via projective coords (Go + TS) — proof-tested      |
 
 ---
 

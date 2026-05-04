@@ -151,10 +151,27 @@ export function isInfinityPoint(p: CoordExtended): boolean {
 /**
  * Check whether a point lies on the DALOS curve.
  *
- * Tests:  a·x² + y²  ≡  1 + d·x²·y²   (mod P)
+ * Affine equation:  a·x² + y²  ≡  1 + d·x²·y²   (mod P)
  *
- * Infinity point always reports on-curve (by convention).
- * Returns a tuple `[onCurve, isInfinity]` matching Go's signature.
+ * F-PERF-003 / F-PERF-004 (audit cycle 2026-05-04, v4.0.1): homogenized
+ * to extended HWCD coordinates with x = X/Z, y = Y/Z, T = XY/Z. Multiplying
+ * by Z² and using x²·y² = T²/Z² (since T² = X²Y²/Z²) gives:
+ *
+ *   a·X² + Y²  ≡  Z² + d·T²   (mod P)
+ *
+ * Old path projected to affine via extended2Affine first, paying 2
+ * `Modular.div` calls (each a modular inverse) purely for the representation
+ * change. New path computes the homogenized equation directly: 0 inverses.
+ *
+ * Equivalence is pinned by the Go-side TestIsOnCurve_OldVsNew_Equivalence
+ * + the Genesis 105-vector + 30-vector historical + 5-vector adversarial
+ * corpus byte-identity SHA-256 regression guard. The TS suite cross-checks
+ * every deterministic vector against the Go-produced corpus on each
+ * `npm test` run; behavioural divergence between Go and TS would fail
+ * those byte-identity assertions.
+ *
+ * Infinity point always reports on-curve (by convention). Returns a tuple
+ * `[onCurve, isInfinity]` matching Go's signature.
  */
 export function isOnCurve(
   p: CoordExtended,
@@ -162,21 +179,40 @@ export function isOnCurve(
 ): readonly [onCurve: boolean, isInfinity: boolean] {
   const m = e.field;
   const infinity = isInfinityPoint(p);
-  const aff = extended2Affine(p, m);
-  // Left:  a·x² + y²
-  const x2 = m.mul(aff.ax, aff.ax);
-  const y2 = m.mul(aff.ay, aff.ay);
+  // Extended-coords curve equation: a·X² + Y² ≡ Z² + d·T² (mod P).
+  const x2 = m.mul(p.ex, p.ex);
+  const y2 = m.mul(p.ey, p.ey);
+  const z2 = m.mul(p.ez, p.ez);
+  const t2 = m.mul(p.et, p.et);
   const left = m.add(m.mul(e.a, x2), y2);
-  // Right:  1 + d·x²·y²
-  const right = m.add(1n, m.mul(m.mul(e.d, x2), y2));
+  const right = m.add(z2, m.mul(e.d, t2));
   return [left === right, infinity];
 }
 
 /**
  * Compare two Extended points for equality (as affine points).
  *
- * Matches Go's `(*Ellipse).ArePointsEqual`: converts both to affine
- * and compares AX and AY.
+ * F-PERF-003 / F-PERF-004 (audit cycle 2026-05-04, v4.0.1): two HWCD
+ * extended points represent the same affine point iff
+ *
+ *   X1·Z2  ≡  X2·Z1   (mod P)   AND   Y1·Z2  ≡  Y2·Z1   (mod P)
+ *
+ * (Derivation: P1 == P2 in affine iff X1/Z1 == X2/Z2 and Y1/Z1 == Y2/Z2;
+ * cross-multiply by Z1·Z2 to clear denominators.)
+ *
+ * Old path called extended2Affine on BOTH points, paying 4 `Modular.div`
+ * calls (each a modular inverse) before the comparison. New path: 4
+ * multiplications and 2 comparisons, 0 inverses. Modular inverses are
+ * the most expensive single operation in this codebase; eliminating 4
+ * per Schnorr verify is a meaningful hot-path win.
+ *
+ * Equivalence is pinned by the Go-side TestArePointsEqual_OldVsNew_Equivalence
+ * (covers same-self, same-projective-different-extended across many scale
+ * factors, and full N×N cross-pair consistency on 12 distinct points)
+ * + the Genesis + historical + adversarial corpus byte-identity SHA-256
+ * regression guards. The TS suite cross-checks the Go-produced corpus.
+ *
+ * Matches Go's `(*Ellipse).ArePointsEqual` post-v4.0.1.
  */
 export function arePointsEqual(
   p1: CoordExtended,
@@ -184,9 +220,12 @@ export function arePointsEqual(
   e: Ellipse = DALOS_ELLIPSE,
 ): boolean {
   const m = e.field;
-  const a1 = extended2Affine(p1, m);
-  const a2 = extended2Affine(p2, m);
-  return a1.ax === a2.ax && a1.ay === a2.ay;
+  const x1z2 = m.mul(p1.ex, p2.ez);
+  const x2z1 = m.mul(p2.ex, p1.ez);
+  if (x1z2 !== x2z1) return false;
+  const y1z2 = m.mul(p1.ey, p2.ez);
+  const y2z1 = m.mul(p2.ey, p1.ez);
+  return y1z2 === y2z1;
 }
 
 /**

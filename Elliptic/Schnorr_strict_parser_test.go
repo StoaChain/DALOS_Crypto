@@ -152,3 +152,104 @@ func TestConvertPublicKeyToAffineCoords_RejectsExtraDot(t *testing.T) {
 		t.Errorf("expected message to contain 'expected exactly 1', got: %s", err.Error())
 	}
 }
+
+// =============================================================================
+// F-ERR-002 (audit cycle 2026-05-04, v4.0.1): ConvertBase49toBase10 contract
+// =============================================================================
+//
+// Pre-v4.0.1 the helper discarded big.Int.SetString's `ok` return — invalid
+// input produced an undefined big.Int that flowed unchecked into SchnorrSign,
+// AESDecrypt, and the signature parser. Tests below pin the new
+// (*big.Int, error) contract + alphabet validator. Mirrors the TS port's
+// `parseBigIntInBase` (REQ-21) which throws on invalid base-49 chars.
+
+// TestIsValidBase49Char pins the alphabet definition (matches the TS
+// `isValidBase49Char` at ts/src/gen1/scalar-mult.ts).
+func TestIsValidBase49Char(t *testing.T) {
+	cases := []struct {
+		c    byte
+		want bool
+	}{
+		// Valid: '0'..'9'
+		{'0', true}, {'5', true}, {'9', true},
+		// Valid: 'a'..'z'
+		{'a', true}, {'m', true}, {'z', true},
+		// Valid: 'A'..'M'
+		{'A', true}, {'G', true}, {'M', true},
+		// Invalid: 'N'..'Z' (deliberately above 'M' — base-49 only uses 'A'..'M')
+		{'N', false}, {'Z', false},
+		// Invalid: punctuation, separators, whitespace
+		{'.', false}, {'|', false}, {'-', false}, {' ', false}, {'\n', false}, {'\t', false},
+		// Invalid: high-bit / non-ASCII
+		{0x00, false}, {0x7F, false}, {0x80, false}, {0xFF, false},
+	}
+	for _, c := range cases {
+		got := IsValidBase49Char(c.c)
+		if got != c.want {
+			t.Errorf("IsValidBase49Char(%q) = %v, want %v", c.c, got, c.want)
+		}
+	}
+}
+
+// TestConvertBase49toBase10_AcceptsValidInput confirms valid base-49 input
+// still parses correctly (no regression on the happy path).
+func TestConvertBase49toBase10_AcceptsValidInput(t *testing.T) {
+	cases := []struct{ input, expectedDecimal string }{
+		{"0", "0"},
+		{"a", "10"},
+		{"M", "48"},
+		{"10", "49"},
+		{"100", "2401"}, // 49^2
+	}
+	for _, c := range cases {
+		result, err := ConvertBase49toBase10(c.input)
+		if err != nil {
+			t.Errorf("ConvertBase49toBase10(%q) returned unexpected error: %v", c.input, err)
+			continue
+		}
+		if result.String() != c.expectedDecimal {
+			t.Errorf("ConvertBase49toBase10(%q) = %s, want %s", c.input, result.String(), c.expectedDecimal)
+		}
+	}
+}
+
+// TestConvertBase49toBase10_RejectsEmpty pins the empty-input rejection.
+func TestConvertBase49toBase10_RejectsEmpty(t *testing.T) {
+	result, err := ConvertBase49toBase10("")
+	if err == nil {
+		t.Fatalf("expected error for empty input, got nil; result=%v", result)
+	}
+	if result != nil {
+		t.Errorf("expected nil result on error, got %v", result)
+	}
+	if !strings.Contains(err.Error(), "empty input") {
+		t.Errorf("expected error to mention 'empty input', got: %s", err.Error())
+	}
+}
+
+// TestConvertBase49toBase10_RejectsInvalidChars pins the alphabet-validator
+// rejection. Drives the same parity path as the TS port's
+// `parseBigIntInBase` (REQ-21).
+func TestConvertBase49toBase10_RejectsInvalidChars(t *testing.T) {
+	cases := []string{
+		"abcN",      // 'N' is above 'M' (the highest valid uppercase digit)
+		"hello.",    // '.' is a separator, not a digit
+		"foo|bar",   // '|' is the Schnorr-signature separator
+		"a b",       // space
+		"\nabc",     // leading newline
+		"abcÿ", // high-bit byte
+	}
+	for _, input := range cases {
+		result, err := ConvertBase49toBase10(input)
+		if err == nil {
+			t.Errorf("ConvertBase49toBase10(%q) returned nil error; expected rejection. result=%v", input, result)
+			continue
+		}
+		if result != nil {
+			t.Errorf("ConvertBase49toBase10(%q) returned non-nil result %v on error", input, result)
+		}
+		if !strings.Contains(err.Error(), "invalid base-49 character") {
+			t.Errorf("ConvertBase49toBase10(%q) error message missing 'invalid base-49 character': %s", input, err.Error())
+		}
+	}
+}

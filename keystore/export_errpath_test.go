@@ -55,8 +55,14 @@ func TestExportPrivateKey_NoLogFatal(t *testing.T) {
 }
 
 // TestExportPrivateKey_OsCreateErrorBlock_Shape pins the exact 4-line shape
-// of the os.Create error block to the sibling pattern used in the same
-// function. Drift in shape is a regression.
+// of the wallet-file-create error block to the sibling pattern used in the
+// same function. Drift in shape is a regression.
+//
+// v4.0.1 (audit cycle 2026-05-04, F-SEC-002): the create call switched
+// from `os.Create(FileName)` (mode 0644, world-readable on POSIX) to
+// `os.OpenFile(FileName, O_CREATE|O_WRONLY|O_TRUNC, 0600)` (owner-only).
+// The pattern below matches the new form while preserving the sibling-
+// pattern intent (print-then-return, no log.Fatal).
 func TestExportPrivateKey_OsCreateErrorBlock_Shape(t *testing.T) {
     src, err := os.ReadFile("export.go")
     if err != nil {
@@ -64,17 +70,18 @@ func TestExportPrivateKey_OsCreateErrorBlock_Shape(t *testing.T) {
     }
     body := string(src)
 
-    // Sibling-shape: os.Create followed by an if-err block that prints to
-    // stdout with the "Error: " prefix and returns. The pattern uses
-    // arbitrary whitespace for indentation tolerance.
+    // Sibling-shape: os.OpenFile with explicit mode bits, followed by an
+    // if-err block that prints to stdout with the "Error: " prefix and
+    // returns. Pattern uses arbitrary whitespace for indentation tolerance
+    // and accepts either `0o600` (Go 1.13+ literal) or `0600` (legacy).
     pattern := regexp.MustCompile(
-        `OutputFile,\s*err\s*:=\s*os\.Create\(FileName\)\s*` +
+        `OutputFile,\s*err\s*:=\s*os\.OpenFile\(FileName,\s*os\.O_CREATE\|os\.O_WRONLY\|os\.O_TRUNC,\s*0o?600\)\s*` +
             `\n\s*if\s+err\s*!=\s*nil\s*\{\s*` +
             `\n\s*fmt\.Println\("Error:\s+failed to create export file:",\s*err\)\s*` +
             `\n\s*return\s*` +
             `\n\s*\}`,
     )
     if !pattern.MatchString(body) {
-        t.Errorf("ExportPrivateKey os.Create error block does not match the KG-2 sibling pattern shape (print-then-return)")
+        t.Errorf("ExportPrivateKey wallet-file-create error block does not match the KG-2 sibling pattern shape (print-then-return) with the F-SEC-002 owner-only OpenFile form")
     }
 }

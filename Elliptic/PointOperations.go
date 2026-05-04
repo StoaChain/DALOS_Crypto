@@ -536,6 +536,27 @@ func digitValueBase49(c byte) int {
     return 0
 }
 
+// IsValidBase49Char reports whether c is a valid base-49 digit
+// (i.e., digitValueBase49(c) would return a real digit value, not the
+// silent-0 sentinel for unknown characters).
+//
+// Mirrors the TypeScript port's `isValidBase49Char` (REQ-20 / REQ-21,
+// `ts/src/gen1/scalar-mult.ts`). Used by callers that need to reject
+// mixed-validity inputs at parse time instead of silently accumulating
+// invalid digits as zeros — the cross-impl parity gap closed in v4.0.1
+// (audit cycle 2026-05-04, F-ERR-002).
+func IsValidBase49Char(c byte) bool {
+    switch {
+    case c >= '0' && c <= '9':
+        return true
+    case c >= 'a' && c <= 'z':
+        return true
+    case c >= 'A' && c <= 'M':
+        return true
+    }
+    return false
+}
+
 // ScalarMultiplier computes Scalar * P using the 48-element precompute
 // matrix and base-49 Horner evaluation.
 //

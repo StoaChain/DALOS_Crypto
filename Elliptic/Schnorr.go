@@ -100,7 +100,12 @@ func ConvertSchnorrSignatureAsStringToStructure(SchnorrSignatureString string) (
 	}
 
 	// Step 3: Convert Base 49 string to base 10 big.Int
-	SValue := ConvertBase49toBase10(Parts[1])
+	// F-ERR-002 (v4.0.1): ConvertBase49toBase10 now returns an error on
+	// malformed input instead of silently producing an undefined big.Int.
+	SValue, err := ConvertBase49toBase10(Parts[1])
+	if err != nil {
+		return signature, fmt.Errorf("error parsing s component (base-49): %w", err)
+	}
 
 	// Step 4: Assign Coords and SValue to Schnorr Signature Structure
 	signature.R = Coords
@@ -108,10 +113,39 @@ func ConvertSchnorrSignatureAsStringToStructure(SchnorrSignatureString string) (
 	return signature, nil
 }
 
-func ConvertBase49toBase10(NumberBase49 string) *big.Int {
-	var result = new(big.Int)
-	result.SetString(NumberBase49, 49)
-	return result
+// ConvertBase49toBase10 parses a base-49 string into a non-negative big.Int.
+//
+// HARDENING (v4.0.1, audit cycle 2026-05-04, F-ERR-002): the pre-v4.0.1
+// helper discarded the (*big.Int).SetString `ok` return — per Go docs,
+// the result value is undefined on parse failure but the pointer was
+// still returned, producing garbage that flowed unchecked into SchnorrSign,
+// AESDecrypt, and the Schnorr signature parser. This was a Go ↔ TS parity
+// gap: the TS port's `parseBigIntInBase` (`ts/src/gen1/hashing.ts`) was
+// hardened in REQ-21 to throw on invalid base-49 chars; the Go side
+// never received the matching fix until now.
+//
+// Post-v4.0.1 contract:
+//   - Empty input → error.
+//   - Any byte outside the base-49 alphabet (`IsValidBase49Char` false)
+//     → error, naming the offending byte. Matches TS `parseBigIntInBase`
+//     all-or-nothing semantics.
+//   - SetString failure (defense-in-depth; should never trigger after the
+//     alphabet validator passes) → error.
+//   - Otherwise: returns the parsed big.Int and nil error.
+func ConvertBase49toBase10(NumberBase49 string) (*big.Int, error) {
+	if len(NumberBase49) == 0 {
+		return nil, fmt.Errorf("ConvertBase49toBase10: empty input")
+	}
+	for i := 0; i < len(NumberBase49); i++ {
+		if !IsValidBase49Char(NumberBase49[i]) {
+			return nil, fmt.Errorf("ConvertBase49toBase10: invalid base-49 character %q at index %d", NumberBase49[i], i)
+		}
+	}
+	result := new(big.Int)
+	if _, ok := result.SetString(NumberBase49, 49); !ok {
+		return nil, fmt.Errorf("ConvertBase49toBase10: big.Int.SetString rejected %q (alphabet check passed; this should not happen)", NumberBase49)
+	}
+	return result, nil
 }
 
 // ConvertPublicKeyToAffineCoords converts a public key in the described format into CoordAffine.
@@ -139,12 +173,21 @@ func ConvertPublicKeyToAffineCoords(publicKey string) (CoordAffine, error) {
 	}
 
 	// Step 2: Convert the entire key body after the dot from base 49 to a big.Int
+	// F-ERR-002 (v4.0.1): propagate the new error return from
+	// ConvertBase49toBase10 so malformed bodies are rejected explicitly
+	// instead of producing a downstream-propagated garbage big.Int.
 	keyBody := parts[1]
-	totalValue := ConvertBase49toBase10(keyBody)
+	totalValue, err := ConvertBase49toBase10(keyBody)
+	if err != nil {
+		return CoordAffine{}, fmt.Errorf("invalid public key body: %w", err)
+	}
 
 	// Step 3: Extract the length prefix from the first part (base 49)
 	xLengthBase49 := parts[0]
-	xLengthInt := ConvertBase49toBase10(xLengthBase49)
+	xLengthInt, err := ConvertBase49toBase10(xLengthBase49)
+	if err != nil {
+		return CoordAffine{}, fmt.Errorf("invalid public key xLength prefix: %w", err)
+	}
 
 	// Convert the length to an int
 	xLength := int(xLengthInt.Int64())
@@ -295,7 +338,16 @@ func (e *Ellipse) SchnorrSign(KeyPair DalosKeyPair, Message string) string {
 	var Signature SchnorrSignature
 
 	// Parse private key
-	k := ConvertBase49toBase10(KeyPair.PRIV)
+	// F-ERR-002 (v4.0.1): on malformed PRIV (corrupt wallet, serialization
+	// bug, etc.) match the existing internal-failure sentinel — this
+	// function returns "" on the same class of failure at line 315-317
+	// (nil challenge from unparseable PUBL). The empty-string sentinel is
+	// the documented (if regrettable) contract until F-API-005 refactors
+	// SchnorrSign to (string, error).
+	k, err := ConvertBase49toBase10(KeyPair.PRIV)
+	if err != nil {
+		return ""
+	}
 
 	// Hash the message (separately from the Fiat–Shamir challenge) for
 	// nonce derivation. Tagged, Blake3, fixed-width output.

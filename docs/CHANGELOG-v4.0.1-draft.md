@@ -252,6 +252,42 @@ make it real) were considered and rejected: removal would break any
 external consumer using the symbol; making it real would require
 curve-specific dimension parameters that don't belong at this layer.
 
+### Test infrastructure
+
+#### F-TEST-001 — Add Go-side CI workflow + add "adding new primitives" playbook
+
+Commit `<TBD>`. **CI infrastructure addition + new contributor documentation. No code changes. No byte-identity risk.**
+
+Pre-v4.0.1 the Go reference (the canonical implementation per `CLAUDE.md`) had **no CI automation at all**. The TS port has had `ts-ci.yml` since v3.x; the Go side relied entirely on developers remembering to run `go test` and diff the corpus locally before pushing. A Go-side regression that broke Genesis byte-identity wouldn't be caught until the next manual regen — or, worse, until the TypeScript port's byte-identity tests later failed with a misleading "TS broken" error when actually Go had drifted.
+
+Fix has two pieces:
+
+**(1) NEW workflow `.github/workflows/go-ci.yml`** with 4 gates running on every push to `main` and every PR touching Go code or `testvectors/`:
+1. `go build ./...` — compile check
+2. `go vet ./...` — static analysis
+3. `go test -timeout 120s ./...` — full unit suite
+4. **Corpus byte-identity check** — regenerates the three frozen v1_*.json files and asserts their elided SHA-256 matches the canonical baseline:
+   - `v1_genesis.json`     `082f7a40405d4c075f1975af0a6075bb0228bbccae60a53b05b350a09ce223ae`
+   - `v1_historical.json`  `80c93f4d4956e01236808f81f518d17eeaad431f4fedb7c26233d2508f06e68b`
+   - `v1_adversarial.json` `b9f228943106e1293c52a7e3d741520e58940b78816a2eeed7aa7332314b9d93`
+
+The byte-identity check is structured so that adding a new primitive's frozen baseline is a one-line edit to a bash associative array — see the playbook below for the procedure. On gate failure, the workflow prints the offending file, expected vs actual SHA, and the first 60 lines of the diff between committed and regenerated content (so a human can debug from the CI log alone).
+
+**(2) NEW document `docs/ADDING_NEW_PRIMITIVES.md`** — the canonical playbook for adding new cryptographic primitives without tripping the byte-identity gate. Sections:
+
+- TL;DR: the 5 rules in one place.
+- What the frozen contract actually is (which SHAs, what they cover, what the elision recipe is).
+- Invariants you must NOT break (Schnorr v2 wire format, `a=1`, base-49 alphabet, AES KDF, seven-fold Blake3, scalar sizes per curve).
+- How CI enforces the contract.
+- The 8-step playbook for adding a new primitive: implement Go → add separate generator path → verify Gen-1 still matches → implement TS mirror → cross-validate → freeze + add CI pin → document → register.
+- Naming convention for new corpus files.
+- "What to do if the SHA gate fires red" — 4-step diagnosis covering the common failure modes (intentional Gen-1 change, shared-helper drift, mixed generator paths, other).
+- Related-documents pointers + an "AI agents" section with discipline notes.
+
+**(3) `CLAUDE.md` updated** with a new top-level section pointing to the playbook, so any AI agent loading project context on a future session sees the rules immediately.
+
+**Forward-compat design:** the workflow's `BASELINES` array is the only thing that needs updating when a new primitive is frozen. Adding a future post-quantum primitive (e.g., Dilithium) is one new line in the array + one new file in `testvectors/`. The existing v1 pins stay forever.
+
 ### Release pipeline (`.github/workflows/`)
 
 #### F-INT-002 — `ts-publish.yml` race conditions hardened
@@ -609,6 +645,7 @@ HIGH findings under triage (not yet decided):
 - F-API-009 — `keystore.ImportPrivateKey` writes "DALOS Keys are being opened!" to stdout
 - F-INT-002 — `ts-publish.yml` race + concurrency (FIXED, see below)
 - F-INT-004 — Backfill list missing `ts-v4.0.0` (FIXED as side effect of F-INT-002)
+- F-TEST-001 — No Go-side CI workflow (FIXED, see below)
 - F-INT-002 — ts-publish.yml race vs ts-ci.yml + missing concurrency
 - F-INT-003 — same as F-INT-002 (validator overlap)
 - F-TEST-001 — No Go-side CI workflow
@@ -645,6 +682,8 @@ pending user judgment.
 | d8a76d8 | F-PERF-003/004 | ArePointsEqual + IsOnCurve via projective coords (Go + TS) — proof-tested  |
 | 8ea2c82 | (meta)     | Backfill F-PERF-003 commit hash                                                |
 | a4739d4 | F-INT-002+004 | ts-publish.yml: concurrency guard + Node 20/22/24 matrix gates + ts-v4.0.0 backfill |
+| 46c318e | (meta)     | Backfill F-INT-002 commit hash                                                 |
+| TBD     | F-TEST-001 | Add Go-side CI workflow + ADDING_NEW_PRIMITIVES.md playbook + CLAUDE.md pointer  |
 
 ---
 

@@ -1,0 +1,157 @@
+name: Go CI
+
+# F-TEST-001 (audit cycle 2026-05-04, v4.0.1): the Go reference is the
+# CANONICAL implementation per CLAUDE.md, but pre-v4.0.1 it had no CI
+# automation. The TypeScript port has had ts-ci.yml since v3.x; the Go
+# side relied entirely on developers remembering to run `go test` and
+# diff the corpus locally before pushing.
+#
+# This workflow closes the gap. It runs on every push to main and every
+# PR that touches Go code or the test-vector pipeline. The four gates:
+#
+#   1. `go build ./...`  — compile check.
+#   2. `go vet ./...`    — static analysis.
+#   3. `go test ./...`   — full unit suite (~30 tests, <2s).
+#   4. Corpus byte-identity — regenerate the three v1_*.json files and
+#      assert their elided SHA-256 matches the frozen baseline. THIS IS
+#      THE CRYPTOGRAPHIC CONTRACT GATE: any change that perturbs the
+#      Genesis output for ANY existing test vector fails this gate.
+#
+# Adding a NEW primitive: the gate enforces ONLY the v1_* baselines.
+# New primitives go in NEW corpus files (e.g. v2_dilithium.json) and
+# get pinned here only when their author explicitly freezes them. See
+# docs/ADDING_NEW_PRIMITIVES.md for the playbook.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'testvectors/**'
+      - '.github/workflows/go-ci.yml'
+  pull_request:
+    paths:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'testvectors/**'
+      - '.github/workflows/go-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  go-ci:
+    name: Go build + vet + test + corpus byte-identity
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          # 1.19 is the documented minimum (CLAUDE.md "Common commands"
+          # → "go1.19, no external deps"). Bumping forward intentionally
+          # so that any new Go feature this version adds is allowed
+          # while older versions still build (anything we add must
+          # compile against 1.19+; CI on 1.22 catches forward-only usage
+          # so we know to add a backward-compat note).
+          go-version: '1.22'
+          cache: true
+
+      - name: Compile (go build)
+        run: go build ./...
+
+      - name: Static analysis (go vet)
+        run: go vet ./...
+
+      - name: Unit tests (go test)
+        # 120s timeout matches the local-dev convention; the actual
+        # suite runs in ~2 seconds. Buffer is for cold cache + Schnorr
+        # adversarial vectors which are the slowest pieces.
+        run: go test -timeout 120s ./...
+
+      - name: Corpus byte-identity (Gen-1 frozen baselines)
+        # The cryptographic contract gate. Regenerates the three frozen
+        # v1_*.json corpus files and confirms their extended-elided
+        # SHA-256 matches the canonical baseline.
+        #
+        # The elision recipe (timestamp + generator_version + host) is
+        # documented in testvectors/VALIDATION_LOG.md. It's necessary
+        # because those three fields legitimately drift on every run
+        # without affecting the cryptographic content.
+        #
+        # Adding a new primitive's corpus file?
+        # See docs/ADDING_NEW_PRIMITIVES.md → "Step 6: Freeze + add CI
+        # gate". Add a new entry to the BASELINES associative array
+        # below. That's it; the loop logic auto-handles the new pin.
+        run: |
+          set -euo pipefail
+
+          # Snapshot the committed corpus before regen so we can show
+          # a diff if SHA gate fails. (The actual gate doesn't compare
+          # files — it compares elided SHA-256s — but a per-line diff
+          # is what a human needs to debug a failure.)
+          mkdir -p /tmp/corpus-snapshot
+          for F in testvectors/v1_genesis.json testvectors/v1_historical.json testvectors/v1_adversarial.json; do
+            cp "$F" "/tmp/corpus-snapshot/$(basename $F).committed"
+          done
+
+          # Regenerate the corpus. Discards stdout (chatty); a non-zero
+          # exit from the generator itself fails the step.
+          go run testvectors/generator/main.go > /dev/null
+
+          # Frozen baselines. Each pair is "filename:expected-sha-256".
+          # ADDING A NEW PRIMITIVE? Add a new line here AFTER you've
+          # frozen the new corpus file. See docs/ADDING_NEW_PRIMITIVES.md.
+          declare -A BASELINES=(
+            ["testvectors/v1_genesis.json"]="082f7a40405d4c075f1975af0a6075bb0228bbccae60a53b05b350a09ce223ae"
+            ["testvectors/v1_historical.json"]="80c93f4d4956e01236808f81f518d17eeaad431f4fedb7c26233d2508f06e68b"
+            ["testvectors/v1_adversarial.json"]="b9f228943106e1293c52a7e3d741520e58940b78816a2eeed7aa7332314b9d93"
+          )
+
+          FAILED=0
+          for FILE in "${!BASELINES[@]}"; do
+            EXPECTED="${BASELINES[$FILE]}"
+            ACTUAL=$(sed \
+              -e 's/"generated_at_utc": "[^"]*"/"generated_at_utc": "ELIDED"/' \
+              -e 's/"generator_version": "[^"]*"/"generator_version": "ELIDED"/' \
+              -e 's/"host": "[^"]*"/"host": "ELIDED"/' \
+              "$FILE" | sha256sum | awk '{print $1}')
+
+            if [ "$EXPECTED" != "$ACTUAL" ]; then
+              echo "::error file=$FILE::Corpus byte-identity drift detected"
+              echo "::error::File:      $FILE"
+              echo "::error::Expected:  $EXPECTED"
+              echo "::error::Actual:    $ACTUAL"
+              echo ""
+              echo "First 60 lines of diff (committed vs regenerated, after eliding metadata):"
+              diff \
+                <(sed -e 's/"generated_at_utc": "[^"]*"/"generated_at_utc": "ELIDED"/' \
+                      -e 's/"generator_version": "[^"]*"/"generator_version": "ELIDED"/' \
+                      -e 's/"host": "[^"]*"/"host": "ELIDED"/' \
+                      "/tmp/corpus-snapshot/$(basename $FILE).committed") \
+                <(sed -e 's/"generated_at_utc": "[^"]*"/"generated_at_utc": "ELIDED"/' \
+                      -e 's/"generator_version": "[^"]*"/"generator_version": "ELIDED"/' \
+                      -e 's/"host": "[^"]*"/"host": "ELIDED"/' \
+                      "$FILE") | head -60
+              echo ""
+              FAILED=1
+            else
+              echo "OK: $FILE matches frozen baseline ($EXPECTED)"
+            fi
+          done
+
+          if [ "$FAILED" = "1" ]; then
+            echo ""
+            echo "::error::One or more frozen corpus files drifted."
+            echo "::error::See docs/ADDING_NEW_PRIMITIVES.md → 'What to do if the SHA gate fires red'."
+            exit 1
+          fi
+
+          echo ""
+          echo "All frozen corpus baselines match. Gen-1 cryptographic contract preserved."

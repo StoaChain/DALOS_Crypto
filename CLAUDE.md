@@ -126,13 +126,20 @@ Per-release canonical corpus hashes and validation logs live in `testvectors/VAL
 
 ---
 
+## Adding a new cryptographic primitive
+
+**Read [`docs/ADDING_NEW_PRIMITIVES.md`](docs/ADDING_NEW_PRIMITIVES.md) before touching any code that generates test vectors.** That document is the canonical playbook — TL;DR at the top + step-by-step + troubleshooting. Skipping it almost guarantees you trip the CI byte-identity gate.
+
+The 5 rules in one sentence: never change byte outputs of existing v1 corpus files; new primitives go in NEW corpus files; implement Go AND TypeScript before merging; pin the new corpus's SHA-256 in `.github/workflows/go-ci.yml` when frozen; use the registry pattern for cross-language symmetry.
+
+CI gate added in v4.0.1 (audit cycle 2026-05-04, F-TEST-001): `.github/workflows/go-ci.yml` runs `go build`, `go vet`, `go test`, and the corpus byte-identity check on every push to `main` and every PR touching Go code or test vectors. The byte-identity step regenerates `v1_genesis.json` / `v1_historical.json` / `v1_adversarial.json` and asserts their elided SHA-256 matches the frozen baseline. **Any change that perturbs any existing test vector's output fails this gate.** The playbook explains how to add new primitives without tripping it.
+
+---
+
 # BeeDev
 Stacks: dalos-go (root, Go reference), dalos-ts (`ts/`, TypeScript port).
 Use /bee:new-spec to start a new feature.
 Use /bee:progress to see current state.
 Always use Context7 MCP for framework documentation lookups.
 
-**Audit-spec lifecycle (this project uses Bee's audit pipeline):**
-- Pending audit findings live in `.bee/audit-specs/` (created by `/bee:audit-to-spec`).
-- Completed audit findings move to `.bee/audit-specs-done/` (created lazily) with a `YYYY-MM-DD-` completion-date prefix.
-- After `/bee:archive-spec` finishes, invoke the user-global `audit-specs-lifecycle` skill at `C:\Users\bicam\.claude\skills\audit-specs-lifecycle\SKILL.md` to file the source audit-spec under `audit-specs-done/`. The skill reads `requirements.md` from the just-archived spec to find the source filename, computes today's date, and moves the file idempotently.
+**Audit-specs lifecycle:** disabled. Do not invoke the user-global `audit-specs-lifecycle` skill in this project. The user manages audit-spec source files manually — do NOT auto-file completed sources to `.bee/audit-specs-done/` after `/bee:archive-spec`.

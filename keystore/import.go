@@ -61,10 +61,12 @@ const (
 func ImportPrivateKey(e *el.Ellipse, PathWithName, Password string) (el.DalosKeyPair, error) {
 	var Output el.DalosKeyPair
 
-	// Read the file content using os.ReadFile
+	// File-read failure — wrap with %w + path context (F-MED-005).
+	// Useful for ops debugging "wrong filename / wrong cwd / file
+	// missing" classes; not an authentication concern.
 	fileContent, err := os.ReadFile(PathWithName)
 	if err != nil {
-		return Output, err
+		return Output, fmt.Errorf("ImportPrivateKey: cannot read wallet file %q: %w", PathWithName, err)
 	}
 
 	// Extract + normalise the lines. Strip \r per-line so CRLF-saved
@@ -88,9 +90,26 @@ func ImportPrivateKey(e *el.Ellipse, PathWithName, Password string) (el.DalosKey
 		return Output, fmt.Errorf("invalid wallet file format (public key section): %w", err)
 	}
 
-	// Decrypt the private key using the AESDecrypt function (same package)
+	// Decrypt the private key using the AESDecrypt function (same package).
+	//
+	// AUTH-TAG MISMATCH boundary (F-NEEDS-001 + F-MED-005, v4.0.2): we
+	// deliberately FLATTEN the AES error here. AESDecrypt's auth-tag
+	// failure path returns a generic `"AES DecryptBitString:
+	// authentication failed"` (no %w wrap on the inner GCM error per
+	// AES.go's F-NEEDS-001 hardening); we further flatten to a
+	// user-friendly message, dropping all unwrap chains. Wrong-password
+	// and tampered-ciphertext are intentionally indistinguishable here
+	// to prevent building a decrypt-oracle. Other AES failure modes
+	// (NewCipher / NewGCM / nonce-too-short) ARE structural and unrelated
+	// to authentication; they are NOT reachable through this path in
+	// practice (constant 32-byte key, fixed-format wallet) but if they
+	// were, the policy would still be "flatten at this user-facing
+	// boundary" — operators debugging genuinely-internal failures should
+	// drop down to AESDecrypt directly, where the structural %w wraps
+	// are preserved.
 	decryptedBitString, err2 := AESDecrypt(encryptedPrivateKey, Password)
 	if err2 != nil {
+		_ = err2 // intentionally not wrapped — see F-NEEDS-001 docstring above.
 		return Output, errors.New("incorrect password or decryption failed")
 	}
 
@@ -103,21 +122,28 @@ func ImportPrivateKey(e *el.Ellipse, PathWithName, Password string) (el.DalosKey
 		decryptedBitString = strings.Repeat("0", zerosToAdd) + decryptedBitString
 	}
 
-	// Generate the scalar from the decrypted bit string
+	// POST-DECRYPT failures from this point on indicate either a
+	// successful-decrypt-but-corrupt-payload condition or an internal
+	// math/library error. Password was correct, ciphertext was authentic.
+	// Wrap with %w to preserve diagnostics (F-MED-005); these errors
+	// don't reveal anything about the password.
 	scalar, err3 := e.GenerateScalarFromBitString(decryptedBitString)
 	if err3 != nil {
-		return Output, errors.New("failed to generate scalar from bit string")
+		return Output, fmt.Errorf("ImportPrivateKey: decrypted bitstring rejected by scalar generator (wallet-file corruption?): %w", err3)
 	}
 
-	// Generate the DalosKeyPair from the scalar
 	GeneratedDalosKeyPair, err4 := e.ScalarToKeys(scalar)
 	if err4 != nil {
-		return Output, errors.New("failed to generate keys from scalar")
+		return Output, fmt.Errorf("ImportPrivateKey: scalar rejected by key derivation (wallet-file corruption or version skew?): %w", err4)
 	}
 
-	// Verify the public key
+	// PUBL mismatch — astronomically improbable given a successful AEAD
+	// decrypt + scalar generation. Indicates either deliberate file
+	// tampering of just the PUBL line OR cross-curve confusion (wallet
+	// produced under one curve, opened with another). No underlying err
+	// to wrap; the message itself names both common causes.
 	if GeneratedDalosKeyPair.PUBL != publicKeyFromFile {
-		return Output, errors.New("computed public key does not match the public key in the file")
+		return Output, errors.New("ImportPrivateKey: computed public key does not match the public key in the file (file tampering or cross-curve mismatch)")
 	}
 
 	// F-MED-009 (v4.0.2): "Public Key verification successful!" stdout

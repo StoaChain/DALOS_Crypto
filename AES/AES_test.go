@@ -2,6 +2,7 @@ package AES
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -158,6 +159,11 @@ func TestEncryptDecrypt_RoundTrip(t *testing.T) {
 // password MUST return a non-nil error from DecryptBitString. Pre-v2.1.0
 // this printed an error and returned garbage; that produced silent
 // corruption further down the pipeline.
+//
+// Also locks the F-NEEDS-001 / F-MED-005 (v4.0.2) oracle-prevention
+// contract: the auth-tag-mismatch path returns a FLAT error with NO
+// %w-wrap on the inner GCM error. Wrong-password and tampered-ciphertext
+// callers MUST be cryptographically indistinguishable through this API.
 func TestDecrypt_WrongPassword(t *testing.T) {
 	const correctPassword = "correct-password-1234"
 	const wrongPassword = "wrong-password-12345678"
@@ -176,11 +182,32 @@ func TestDecrypt_WrongPassword(t *testing.T) {
 		t.Fatalf("DecryptBitString with wrong password returned non-empty plaintext alongside error — should return ('', err) per the v2.1.0 short-circuit contract. Got plain=%q", plain[:min(80, len(plain))])
 	}
 
-	// Sanity: error message should mention the failure mode (the v2.1.0
-	// fix wrapped the GCM Open error with explicit context). Don't lock
-	// the exact wording — just confirm the wrapper is in place.
+	// Sanity: error message should mention the failure surface (function
+	// prefix preserved post-F-NEEDS-001 for log identifiability) but NOT
+	// reveal the specific failure cause — that would build an oracle.
 	if !strings.Contains(err.Error(), "AES DecryptBitString") {
-		t.Errorf("DecryptBitString error missing context wrapper: %q (expected substring 'AES DecryptBitString' from the v2.1.0 fmt.Errorf wrap)", err.Error())
+		t.Errorf("DecryptBitString error missing function prefix: %q (expected substring 'AES DecryptBitString')", err.Error())
+	}
+
+	// F-NEEDS-001 (v4.0.2): NO unwrap path. Pre-v4.0.2 the auth-tag
+	// failure was wrapped with `fmt.Errorf("...: %w", err)` exposing the
+	// inner GCM error string ("cipher: message authentication failed")
+	// to any consumer that called errors.Unwrap. Post-v4.0.2 the wrap is
+	// removed; consumers cannot distinguish wrong-password from
+	// tampered-ciphertext from any other auth-tag-mismatch cause.
+	if inner := errors.Unwrap(err); inner != nil {
+		t.Errorf("F-NEEDS-001 violation: auth-tag mismatch error has an unwrap chain — leaks oracle bits to consumers. errors.Unwrap returned: %v", inner)
+	}
+
+	// F-NEEDS-001 (v4.0.2): the inner GCM error string ("cipher: message
+	// authentication failed") MUST NOT appear in the surfaced message.
+	// Catches a regression where someone re-adds `%v` formatting (which
+	// embeds the inner string without an unwrap chain — same oracle leak
+	// through a different mechanism).
+	for _, leaked := range []string{"cipher:", "message authentication failed", "AEAD"} {
+		if strings.Contains(err.Error(), leaked) {
+			t.Errorf("F-NEEDS-001 violation: surfaced message contains GCM-internal token %q — oracle leak. Full message: %q", leaked, err.Error())
+		}
 	}
 }
 

@@ -143,6 +143,40 @@ func EncryptBitString(BitString, Password string) (BitStringOutput string) {
 //
 // v2.1.0: returns a non-nil error on any AES primitive failure or
 // malformed ciphertext. Pre-v2.1.0 this printed and returned garbage.
+//
+// HARDENING (v4.0.2, audit cycle 2026-05-04, F-NEEDS-001 + F-MED-005):
+// the error-message policy has been audited and aligned with OWASP
+// guidance on cryptographic-failure disclosure. The two distinct error
+// classes returned by this function are now treated differently:
+//
+//   1. Authentication failure (AesGcm.Open returning err) — caused by
+//      EITHER a wrong password OR tampered ciphertext. These two cases
+//      are CRYPTOGRAPHICALLY INDISTINGUISHABLE on the verifier side
+//      (that is the entire point of authenticated encryption — GCM's
+//      tag check is a single boolean), and DELIBERATELY KEPT
+//      INDISTINGUISHABLE in the API surface to avoid building a
+//      decrypt-oracle on the boundary. Pre-v4.0.2 the wrap was
+//      `%w` + parenthetical "(likely wrong password or corrupt
+//      ciphertext)" — both leak the inner GCM error string to any
+//      consumer that calls `errors.Unwrap`. Post-v4.0.2 the auth
+//      failure returns a flat generic error with NO unwrap path; the
+//      consumer cannot distinguish bad-password from tampered-blob
+//      from version-skew. This is the F-NEEDS-001 resolution.
+//
+//   2. Structural / internal failures (NewCipher / NewGCM / nonce-too-
+//      short) — these are NOT password-dependent and NOT user-input-
+//      authentication failures. They indicate either an environment
+//      problem (NewCipher/NewGCM should never fail with a valid 32-byte
+//      key) or a malformed wallet file (nonce-too-short). These KEEP
+//      `%w`-wrap so operators debugging "why does this wallet refuse to
+//      open" can drill into the underlying cause. This is the F-MED-005
+//      resolution.
+//
+// Net effect: the auth-tag-mismatch oracle is closed at the primitive
+// boundary; the diagnostic uplift for genuinely-internal failures is
+// preserved. Callers (keystore.ImportPrivateKey + AESDecrypt) should
+// further flatten the auth-tag error to a user-friendly message
+// without changing the wrap policy on the structural errors.
 func DecryptBitString(BitString, Password string) (BitStringOutput string, Error error) {
 	var DecryptedDataDec = new(big.Int)
 
@@ -150,16 +184,20 @@ func DecryptBitString(BitString, Password string) (BitStringOutput string, Error
 	Key := MakeKeyFromPassword(Password)
 	defer ZeroBytes(Key) // KG-3
 
+	// Internal failure — wrap with %w (F-MED-005).
 	Block, err := aes.NewCipher(Key)
 	if err != nil {
 		return "", fmt.Errorf("AES DecryptBitString NewCipher: %w", err)
 	}
 
+	// Internal failure — wrap with %w (F-MED-005).
 	AesGcm, err := cipher.NewGCM(Block)
 	if err != nil {
 		return "", fmt.Errorf("AES DecryptBitString NewGCM: %w", err)
 	}
 
+	// Structural pre-check — malformed ciphertext, not auth failure.
+	// No underlying error to wrap; the message itself is the diagnostic.
 	NonceSize := AesGcm.NonceSize()
 	if len(BitStringToDecrypt) < NonceSize {
 		return "", errors.New("AES DecryptBitString: ciphertext too short for nonce")
@@ -167,9 +205,17 @@ func DecryptBitString(BitString, Password string) (BitStringOutput string, Error
 
 	Nonce, CipherText := BitStringToDecrypt[:NonceSize], BitStringToDecrypt[NonceSize:]
 
+	// AUTH-TAG MISMATCH — F-NEEDS-001 resolution. Pre-v4.0.2 wrapped the
+	// inner GCM error with `%w` + a parenthetical hint identifying the
+	// likely cause; both leaked oracle bits to any consumer that called
+	// errors.Unwrap. Post-v4.0.2: flat generic error, no unwrap path.
+	// Wrong-password and tampered-ciphertext are now indistinguishable
+	// at every layer above this primitive. The inner err is deliberately
+	// discarded.
 	DecryptedData, err := AesGcm.Open(nil, Nonce, CipherText, nil)
 	if err != nil {
-		return "", fmt.Errorf("AES DecryptBitString Open (likely wrong password or corrupt ciphertext): %w", err)
+		_ = err // intentionally not wrapped — see F-NEEDS-001 docstring above.
+		return "", errors.New("AES DecryptBitString: authentication failed")
 	}
 
 	DecryptedDataHex := hex.EncodeToString(DecryptedData)

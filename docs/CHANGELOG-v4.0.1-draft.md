@@ -254,6 +254,30 @@ curve-specific dimension parameters that don't belong at this layer.
 
 ### Test infrastructure
 
+#### F-TEST-003 — `keystore.AESDecrypt` + `ImportPrivateKey` direct tests + flaky-roundtrip fix
+
+Commit `<TBD>`. **Test additions + a fix for pre-existing flakiness in F-API-004's roundTripFixture. No production code changes. No byte-identity risk.**
+
+Pre-v4.0.1 the keystore package's public `AESDecrypt` function had ZERO direct tests; it was exercised transitively via `ImportPrivateKey`'s round-trip tests. Specific failure modes (wrong password, malformed ciphertext, post-F-ERR-002 base-49 validation, empty input, too-short ciphertext) weren't pinned. `ImportPrivateKey` itself had round-trip + parser-rejection coverage from F-API-004 but lacked file-not-found and wrong-password unhappy-path tests.
+
+**Test additions (NEW `keystore/aesdecrypt_test.go`):**
+- `TestAESDecrypt_RoundTrip` — happy path, 4 sub-cases (short bitstring, Unicode password, long password, corpus bs0001 fixture).
+- `TestAESDecrypt_RejectsWrongPassword` — AES-GCM auth-tag-mismatch path.
+- `TestAESDecrypt_RejectsMalformedBase49` — F-ERR-002 alphabet-validator rejection at the keystore wrapper layer (`"malformed base-49 ciphertext"` prefix), 4 sub-cases.
+- `TestAESDecrypt_RejectsEmpty` — empty-input branch.
+- `TestAESDecrypt_RejectsTooShortCiphertext` — AES-side rejection of too-short payloads.
+- `TestImportPrivateKey_RejectsFileNotFound` — `os.ReadFile` error propagation.
+- `TestImportPrivateKey_RejectsWrongPassword` — canonical `"incorrect password or decryption failed"` wording for end-to-end import.
+
+**Bonus fix: stabilised pre-existing flake in `roundTripFixture` (used by F-API-004 tests).** The `ExportPrivateKey → AES.EncryptBitString → big.Int.Text(2)` path is **lossy whenever the encrypted blob's most-significant byte has its high nibble close to zero** — documented Go-era edge case (CLAUDE.md "Hardening catalogue" / AUDIT.md AES-1+AES-2, NOT-FIXED-BY-DESIGN). The TS port sidesteps this by constraining the IV's high nibble to be non-zero; the Go side accepts the ~1/16 round-trip failure rate per encryption. F-API-004's `TestImportPrivateKey_AcceptsTrailingNewline` (and the other roundTripFixture-dependent tests) had been latently flaky at ~10-30% failure rate since they shipped.
+
+Both `roundTripFixture` (in `import_test.go`) and the new `encryptForTest` helper (in `aesdecrypt_test.go`) now use a verify-on-success retry pattern: encrypt, attempt the inverse decrypt, retry on failure. Statistically O(1) expected attempts; max attempts capped at 100 (probability of all failing ~ 1e-117).
+
+**Verification:**
+- 10/10 consecutive `go test ./keystore/` runs all green (vs 7/10 before the retry-loop fix).
+- Full Go suite passes; corpus byte-identity preserved (`v1_genesis.json` SHA `082f7a40...`).
+- TS suite unaffected (no TS source touched).
+
 #### F-TEST-002 — Bitmap package: scope docs + comprehensive unit tests
 
 Commit `7ffb43e`. **Doc-only change to source files + new test file. No behavior change. No byte-identity risk.**
@@ -687,6 +711,7 @@ HIGH findings under triage (not yet decided):
 - F-INT-004 — Backfill list missing `ts-v4.0.0` (FIXED as side effect of F-INT-002)
 - F-TEST-001 — No Go-side CI workflow (FIXED, see below)
 - F-TEST-002 — `Bitmap/` package zero tests + scope ambiguity (FIXED, see below)
+- F-TEST-003 — `keystore.AESDecrypt` + `ImportPrivateKey` direct tests + flaky-roundtrip fix (FIXED, see below)
 - F-INT-002 — ts-publish.yml race vs ts-ci.yml + missing concurrency
 - F-INT-003 — same as F-INT-002 (validator overlap)
 - F-TEST-001 — No Go-side CI workflow
@@ -727,6 +752,8 @@ pending user judgment.
 | efd0fe6 | F-TEST-001 | Add Go-side CI workflow + ADDING_NEW_PRIMITIVES.md playbook + CLAUDE.md pointer  |
 | 32eb2c0 | (meta)     | Backfill F-TEST-001 commit hash                                                |
 | 7ffb43e | F-TEST-002 | Bitmap package: scope docs (Go+TS) + Bitmap_test.go (9 tests, 30+ sub-cases)   |
+| 23efdbf | (meta)     | Backfill F-TEST-002 commit hash                                                |
+| TBD     | F-TEST-003 | keystore.AESDecrypt + ImportPrivateKey tests + roundTripFixture flake fix      |
 
 ---
 

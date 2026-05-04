@@ -329,7 +329,7 @@ Verification:
 
 #### F-PERF-003 / F-PERF-004 — `ArePointsEqual` + `IsOnCurve` rewritten on extended coords (Go + TS)
 
-Commit `<TBD>`. **Real perf win in the Schnorr verify hot path. No behavior change. End-to-end byte-identity preserved across the genesis + historical + adversarial corpora.**
+Commit `d8a76d8`. **Real perf win in the Schnorr verify hot path. No behavior change. End-to-end byte-identity preserved across the genesis + historical + adversarial corpora; cross-impl byte-identity confirmed by 426/426 TS tests.**
 
 `SchnorrVerify` was paying **8 modular inverses per verify**:
 - `IsOnCurve(R)` → `Extended2Affine` → 2 `ModInverse` calls (one for AX = EX/EZ, one for AY = EY/EZ on the same denominator).
@@ -609,7 +609,7 @@ pending user judgment.
 | 2ed2a94 | (meta)     | Backfill F-API-006 commit hash                                                 |
 | 67d7a35 | F-PERF-001 | Cofactor [4]·R/[4]·P via two HWCD doublings (Go + TS sync + TS async)          |
 | 46e3c2e | (meta)     | Backfill F-PERF-001 commit hash                                                |
-| TBD     | F-PERF-003 | ArePointsEqual + IsOnCurve via projective coords (Go + TS) — proof-tested      |
+| d8a76d8 | F-PERF-003/004 | ArePointsEqual + IsOnCurve via projective coords (Go + TS) — proof-tested  |
 
 ---
 

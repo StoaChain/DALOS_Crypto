@@ -145,10 +145,14 @@ func main() {
                 fmt.Printf("Error: Expected %d words, but got %d.\n", seedCount, len(seedWords))
                 os.Exit(1)
             }
-            // Ensure seed words meet length requirements and character restrictions
+            // Ensure seed words meet length requirements and character restrictions.
+            // F-API-002 (audit cycle 2026-05-04, v4.0.1): the prior error message
+            // claimed "between 3 and 256" while the check was `< 1 || > 256` — the
+            // function lied about its own contract. The correct contract (also
+            // documented in README.md:71) is: 4-256 words, each 1-256 characters.
             for _, word := range seedWords {
                 if len(word) < 1 || len(word) > 256 {
-                    fmt.Printf("Error: Seed word '%s' must be between 3 and 256 characters long.\n", word)
+                    fmt.Printf("Error: Seed word '%s' must be between 1 and 256 characters long.\n", word)
                     os.Exit(1) // Move exit here to stop execution
                 }
                 

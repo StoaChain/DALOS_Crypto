@@ -244,7 +244,7 @@ CLI driver, not cryptographic code. Findings recorded for completeness but not "
 | # | Finding | Severity |
 |---|---------|----------|
 | CLI-1 | ~~Flag-validation logic bug on line 118: `... && *intaFlag != "" && *intbFlag != ""` should be `== ""`. Currently the "required-method" check never fires.~~ **FIXED** in v4.0.1 (audit cycle 2026-05-04, F-CRIT-002). Operators inverted at `Dalos.go:119`; smoke test added at `dalos_smoke_test.go::TestCLI_GenerateWithoutInputMethod_ExitsWithError`. | ✅ Fixed |
-| CLI-2 | Error message mismatch: says "word must be between 3 and 256 characters" but check is `< 1` | ⚠️ Low (UX) |
+| CLI-2 | ~~Error message mismatch: says "word must be between 3 and 256 characters" but check is `< 1`~~ **FIXED** in v4.0.1 (audit cycle 2026-05-04, F-API-002). Message corrected to "between 1 and 256 characters", matching the actual contract documented in README.md:71 (4-256 words, each 1-256 chars). Smoke test added in `dalos_smoke_test.go::TestCLI_SeedWord_TooLong_ExitsWithError`. | ✅ Fixed |
 | CLI-3 | `os.Exit(1)` scattered everywhere; makes this non-importable as a library | ⚠️ Low (design) |
 | CLI-4 | `fmt.Scan` echoes seed words to terminal — no masked input | ⚠️ Low (UX) |
 
@@ -379,7 +379,7 @@ This is consistent with how every production blockchain cryptosystem handles the
 
 - **AES-1, AES-2** (password KDF is single-pass Blake3 without salt). Genesis-frozen in the Go reference and mirrored in the TS port. CLI-only path; OuronetUI doesn't use it. Treated as "user responsibility to pick a strong password". See `docs/FUTURE.md` §4.
 - **PO-2 full** (per-Addition on-curve check) — prohibitive runtime cost (~10×+ slowdown on key-gen for marginal benefit). Internal `Addition` is never called with attacker-controlled input — all external points enter through Schnorr's SC-5 boundary check first. Defense-in-depth not needed at this layer.
-- **CLI-2..CLI-4** (Dalos.go CLI driver UX bugs — wrong message bound, scattered `os.Exit`, unmasked seed input). Not ported to TS (library-only, no CLI). CLI-1 was fixed in v4.0.1 (audit cycle 2026-05-04) since the inverted condition was actively misleading.
+- **CLI-3..CLI-4** (Dalos.go CLI driver UX bugs — scattered `os.Exit`, unmasked seed input). Not ported to TS (library-only, no CLI). CLI-1 + CLI-2 were fixed in v4.0.1 (audit cycle 2026-05-04) since they were actively misleading the user (CLI-1: silent no-op; CLI-2: wrong contract documented in error message).
 - **Go `math/big` CPU-instruction-level timing** — closing it requires replacing math/big with a custom limb-oriented implementation. Out-of-scope for the Go reference. TypeScript port will use constant-time bigints where available.
 
 ### In progress (TypeScript port — see [`docs/TS_PORT_PLAN.md`](docs/TS_PORT_PLAN.md))

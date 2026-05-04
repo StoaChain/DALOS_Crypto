@@ -4,18 +4,90 @@ name: Publish @stoachain/dalos-crypto to npmjs
 # must match the version in ts/package.json. Publishing uses the
 # NPMPUSHER secret (mirrors the pattern established in
 # StoaChain/OuronetCore's publish workflow).
+#
+# F-INT-002 (audit cycle 2026-05-04, v4.0.1): hardened against two
+# real CI race conditions observed during prior releases:
+#
+#   1. Tag-and-merge race — pushing a commit to main starts ts-ci
+#      across Node 20/22/24; pushing a release tag immediately after
+#      starts ts-publish on Node 24 only. Pre-fix, ts-publish could
+#      finish before ts-ci's Node-20 build, shipping a broken-on-Node-20
+#      version. Post-fix, ts-publish runs its OWN Node-20/22/24 matrix
+#      `gates` job and the `publish` job has `needs: gates`, so a
+#      Node-20-only failure on the tagged SHA blocks publish.
+#
+#   2. Rapid-fire tag re-push — pre-fix, force-pushing a tag could
+#      spawn parallel ts-publish runs that race on `npm publish`
+#      (npm rejects the duplicate but CI minutes are wasted and the
+#      Release page can end up half-formed). Post-fix, the
+#      `concurrency:` block at workflow level serialises runs per
+#      tag ref: a second push waits for the first to complete.
+#
+# `cancel-in-progress: false` is intentional — never cancel a publish
+# mid-flight. Half-published packages are worse than a delayed second
+# attempt.
 
 on:
   push:
     tags:
       - 'ts-v*.*.*'
 
+# F-INT-002 mitigation: serialise per-tag runs.
+concurrency:
+  group: ts-publish-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
 jobs:
+  # F-INT-002 mitigation: re-run the full ts-ci gate matrix on the
+  # tagged SHA before allowing publish. Mirrors ts-ci.yml exactly so
+  # any test that would fail in CI also fails here. The publish job
+  # below has `needs: gates`, so a single matrix-cell failure blocks
+  # the npm publish + Release creation entirely.
+  gates:
+    name: Pre-publish gates (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ts
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['20', '22', '24']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: ts/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Check README code blocks
+        run: npm run docs:check
+
   publish:
     name: Build + publish ts/ package to npmjs
+    needs: gates
     runs-on: ubuntu-latest
     # Job-level permissions override the workflow-level read-only default.
     # `contents: write` is required for `gh release create` to succeed.
@@ -80,17 +152,11 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-fund --no-audit
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Typecheck
-        run: npm run typecheck
-
       - name: Build
+        # Lint, typecheck, test already covered by the `gates` matrix
+        # job (Node 20/22/24). Only build is needed here to produce
+        # the artifact that gets published.
         run: npm run build
-
-      - name: Test
-        run: npm test
 
       - name: Write .npmrc with auth token
         run: |
@@ -150,11 +216,14 @@ jobs:
         # /bee:pollinate's backfill step (called from main user invocation) is
         # the canonical front-door; this workflow step is a safety net for
         # scenarios where pollinate hasn't run yet.
+        # F-INT-004 (audit cycle 2026-05-04): list updated to include
+        # ts-v4.0.0 (which the prior list was missing — backfill silently
+        # didn't cover it because the entry wasn't there).
         working-directory: ${{ github.workspace }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          for PRIOR_TAG in ts-v1.0.0 ts-v1.1.0 ts-v1.2.0 ts-v3.0.0 ts-v3.0.1 ts-v3.0.2 ts-v3.0.3 ts-v3.1.0; do
+          for PRIOR_TAG in ts-v1.0.0 ts-v1.1.0 ts-v1.2.0 ts-v3.0.0 ts-v3.0.1 ts-v3.0.2 ts-v3.0.3 ts-v3.1.0 ts-v4.0.0; do
             PRIOR_TITLE="${PRIOR_TAG#ts-}"
             if gh release view "$PRIOR_TAG" >/dev/null 2>&1; then
               echo "Backfill: $PRIOR_TAG Release already exists — skipping."

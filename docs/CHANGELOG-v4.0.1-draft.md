@@ -252,6 +252,37 @@ make it real) were considered and rejected: removal would break any
 external consumer using the symbol; making it real would require
 curve-specific dimension parameters that don't belong at this layer.
 
+### Release pipeline (`.github/workflows/`)
+
+#### F-INT-002 — `ts-publish.yml` race conditions hardened
+
+Commit `<TBD>`. **CI/release-pipeline change. No code changes. No byte-identity risk.**
+
+The TS release pipeline had two real race conditions, one of which you observed during the v4.0.0 release:
+
+1. **Tag-and-merge race.** Pushing a commit to `main` started `ts-ci` across Node 20/22/24 (~2-3 minutes). Pushing the release tag immediately after started `ts-publish` on Node 24 only. If `ts-publish` finished first AND the Node-20 CI build later failed, **a broken-on-Node-20 version was already on npm** with no rollback. Pre-fix `ts-publish` had no dependency on `ts-ci` and only tested Node 24.
+
+2. **Rapid-fire tag re-push.** Force-pushing a tag could spawn parallel `ts-publish` runs that raced on `npm publish` — npm rejected the duplicate but CI minutes were wasted and the GitHub Release page could end up half-formed. Pre-fix `ts-publish` had no `concurrency:` block.
+
+Fix (in `ts-publish.yml`):
+
+1. **Workflow-level `concurrency:` block** — `group: ts-publish-${{ github.ref }}` + `cancel-in-progress: false`. Serialises per-tag runs: a second push waits for the first to complete. `cancel-in-progress: false` is intentional — never cancel a publish mid-flight (half-published packages are worse than a delayed second attempt).
+
+2. **NEW `gates` job with Node 20/22/24 matrix.** Mirrors `ts-ci.yml` exactly: lint + typecheck + build + test + docs:check on each Node version. Runs ON THE TAGGED SHA before the publish job is allowed to start. The `publish` job has `needs: gates`, so a single matrix-cell failure on Node 20 (or 22, or 24) blocks the npm publish + Release creation entirely.
+
+3. **`publish` job de-duplicated.** Since `gates` already runs lint/typecheck/test on all 3 Node versions, the publish job's redundant copies of those steps were removed; only `npm run build` is kept (to produce the artifact for `npm publish`). Net change: faster publish job + same correctness guarantee.
+
+**Bonus fix (closes F-INT-004 as a side effect):** the backfill list at the bottom of the workflow was missing `ts-v4.0.0`. Now includes it. Future tags should be added to the list each release (the audit's F-INT-004 finding noted this drift; addressed inline here rather than as a separate change).
+
+**Verification:**
+- YAML structure verified via indent-anchored grep: top-level `name`, `on`, `concurrency`, `permissions`, `jobs` at column 0; `gates` and `publish` at column 2 inside `jobs`; `needs: gates` at column 4 inside `publish`. No tabs, consistent 2-space indent.
+- `actionlint` not run (not installed in this environment); the GitHub Actions parser will validate on next push. If it rejects the YAML, fix is mechanical and obvious.
+
+**Real-world impact:** the next release will:
+- Block on a Node-20-only test failure before publishing (closes F-INT-002 #1).
+- Queue rather than race when re-pushing a tag (closes F-INT-002 #2).
+- Backfill `ts-v4.0.0` to GitHub Releases on the next publish run (closes F-INT-004).
+
 ### Performance — Schnorr verify hot path
 
 #### F-PERF-001 — Cofactor `[4]·R` and `[4]·P` via two HWCD doublings instead of `ScalarMultiplier(4, _)`
@@ -576,6 +607,8 @@ HIGH findings under triage (not yet decided):
 - F-API-007 — `keystore.ExportPrivateKey` already-known-and-fixed-via-F-ERR-005? (validator overlap)
 - F-API-008 — TS `from*` API entry points throw bare `Error`
 - F-API-009 — `keystore.ImportPrivateKey` writes "DALOS Keys are being opened!" to stdout
+- F-INT-002 — `ts-publish.yml` race + concurrency (FIXED, see below)
+- F-INT-004 — Backfill list missing `ts-v4.0.0` (FIXED as side effect of F-INT-002)
 - F-INT-002 — ts-publish.yml race vs ts-ci.yml + missing concurrency
 - F-INT-003 — same as F-INT-002 (validator overlap)
 - F-TEST-001 — No Go-side CI workflow
@@ -610,6 +643,8 @@ pending user judgment.
 | 67d7a35 | F-PERF-001 | Cofactor [4]·R/[4]·P via two HWCD doublings (Go + TS sync + TS async)          |
 | 46e3c2e | (meta)     | Backfill F-PERF-001 commit hash                                                |
 | d8a76d8 | F-PERF-003/004 | ArePointsEqual + IsOnCurve via projective coords (Go + TS) — proof-tested  |
+| 8ea2c82 | (meta)     | Backfill F-PERF-003 commit hash                                                |
+| TBD     | F-INT-002+004 | ts-publish.yml: concurrency guard + Node 20/22/24 matrix gates + ts-v4.0.0 backfill |
 
 ---
 

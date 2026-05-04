@@ -92,12 +92,43 @@ func BitStringToBitmapReveal(bitsReveal string) (Bitmap, error) {
 	return b, nil
 }
 
-// ValidateBitmap performs structural validation of a Bitmap.
+// ValidateBitmap is a NO-OP that always returns nil. It exists as a
+// reserved hook for future structural validation but currently performs
+// no checks.
 //
-// Since a Go [40][40]bool is always structurally valid, this function
-// currently always returns nil. It exists for API symmetry with the
-// other DALOS key-generation input types (bitstring, integer, seed words)
-// and as a hook for future conventions (e.g. minimum entropy checks).
+// HARDENING (v4.0.1, audit cycle 2026-05-04, F-API-006): the pre-v4.0.1
+// Godoc summary line read "performs structural validation of a Bitmap"
+// — misleading, since the function body is `return nil`. A consumer
+// reading the Godoc would believe the bitmap was being inspected and
+// might skip their own checks. The summary line is now explicit about
+// the no-op nature.
+//
+// Why no real validation today:
+//   - The Go type system already enforces structural validity:
+//     `[40][40]bool` cannot hold non-bool values, cannot have wrong
+//     dimensions at the type level, and cannot be a nil reference
+//     (it's a value type).
+//   - A meaningful "is this a valid DALOS bitmap" check would have to
+//     be CURVE-SPECIFIC: DALOS Genesis uses 40×40=1600 bits, but
+//     APOLLO uses 32×32=1024 bits, LETO uses different again. This
+//     function takes a single Bitmap type that's already typed for the
+//     Genesis grid; per-curve dimension checks would belong on the
+//     receiving Ellipse, not on the Bitmap helper itself.
+//   - Entropy / "is this all zeros" checks are arguable — the
+//     downstream key-gen pipeline produces a valid scalar from any
+//     1600-bit input, including all-zeros (the resulting scalar would
+//     be 0 → rejected by F-ERR-007's range check in SchnorrSign at the
+//     point of use). Catching it here would be earlier-error but not
+//     fundamentally different.
+//
+// Cross-impl note: TS port's `validateBitmap`
+// (`ts/src/gen1/bitmap.ts:91`) returns `{ valid: boolean; reason?: string }`
+// and DOES perform structural checks. The Go side intentionally diverges
+// here because the Go type system covers the structural cases the TS
+// runtime check has to do dynamically.
+//
+// If you need real bitmap validation, do it explicitly at the call site
+// rather than relying on this function to grow checks later.
 func ValidateBitmap(_ Bitmap) error {
 	return nil
 }

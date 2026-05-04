@@ -382,6 +382,12 @@ func (e *Ellipse) ScalarToPublicKey(Scalar *big.Int) string {
 // fails validation (which cannot happen for a structurally valid Bitmap).
 func (e *Ellipse) GenerateFromBitmap(b Bitmap.Bitmap) (DalosKeyPair, error) {
     var zero DalosKeyPair
+    // Bitmap.ValidateBitmap is a documented no-op (F-API-006, v4.0.1) —
+    // reserved hook for future structural validation. The Go type system
+    // already enforces the structural-validity invariants this function
+    // could otherwise check. Kept here as a forward-compat anchor: any
+    // future real check added to ValidateBitmap will fire automatically
+    // at this call site without a downstream API change.
     if err := Bitmap.ValidateBitmap(b); err != nil {
         return zero, fmt.Errorf("invalid bitmap: %w", err)
     }

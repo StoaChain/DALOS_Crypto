@@ -212,6 +212,46 @@ trailing-newline tolerance, non-wallet rejection (with explicit
 forbid-list assertion catching the AES-fallthrough oracle vector if
 ever re-introduced), missing-second-header rejection.
 
+### Library API honesty (`Bitmap/`)
+
+#### F-API-006 — `Bitmap.ValidateBitmap` Godoc no longer claims work it doesn't do
+
+Commit `<TBD>`. **Documentation-only fix, no behavior change.**
+
+Pre-v4.0.1 the Godoc summary line read "performs structural validation
+of a Bitmap" — misleading, since the function body is `return nil`. A
+consumer reading the Godoc would believe the bitmap was being inspected
+and might skip their own checks.
+
+The honest body comment was already there ("currently always returns
+nil. It exists for API symmetry … and as a hook for future conventions"),
+but only Godoc summary lines surface in IDE tooltips and the
+`go doc` listing — readers don't see the body.
+
+Fix: rewrite the summary line to make the no-op nature explicit
+("ValidateBitmap is a NO-OP that always returns nil"). Expand the body
+documentation to explain *why* it's a no-op and stays a no-op:
+- The Go type system already enforces the structural invariants
+  (`[40][40]bool` cannot be wrong-shape or nil).
+- Real "is this a valid DALOS bitmap" checks would have to be
+  CURVE-SPECIFIC (DALOS=40×40=1600 bits, APOLLO=32×32=1024 bits,
+  LETO=different again). Per-curve dimension checks belong on the
+  receiving Ellipse, not on the Bitmap helper.
+- Cross-impl note added: TS port's `validateBitmap` returns
+  `{ valid: boolean; reason?: string }` and DOES perform structural
+  checks because TS lacks Go's compile-time type guarantees. The Go
+  side intentionally diverges here.
+
+The single in-repo caller (`GenerateFromBitmap` in
+`Elliptic/KeyGeneration.go`) gets a comment noting the call is kept as
+a forward-compat anchor — any future real check added to ValidateBitmap
+will fire automatically without a downstream API change.
+
+Option A (remove the function entirely) and Option B (mirror TS and
+make it real) were considered and rejected: removal would break any
+external consumer using the symbol; making it real would require
+curve-specific dimension parameters that don't belong at this layer.
+
 ### Library API hardening (`Elliptic/`)
 
 #### F-ERR-002 — `ConvertBase49toBase10` alphabet validator + error return
@@ -376,11 +416,9 @@ public surface changed in v4.0.1.
 
 ### Outstanding from audit-cycle 2026-05-04
 
-This draft covers fixes 1-12 of the audit triage session (10 already
-landed + F-API-005 about to land). Remaining HIGH findings under
-triage (not yet decided):
+This draft covers fixes 1-13 of the audit triage session. Remaining
+HIGH findings under triage (not yet decided):
 
-- F-API-006 — `Bitmap.ValidateBitmap` is no-op
 - F-API-007 — `keystore.ExportPrivateKey` already-known-and-fixed-via-F-ERR-005? (validator overlap)
 - F-API-008 — TS `from*` API entry points throw bare `Error`
 - F-API-009 — `keystore.ImportPrivateKey` writes "DALOS Keys are being opened!" to stdout
@@ -414,6 +452,8 @@ pending user judgment.
 | 9ed4751 | F-API-004  | Header-anchored wallet parser, CRLF-tolerant, no oracle                        |
 | 3dfc186 | F-API-005  | SchnorrSign returns (string, error) + add v4.0.1 draft changelog               |
 | 1af9394 | (meta)     | Backfill F-API-005 commit hash in this draft                                   |
+| 12f7918 | (meta)     | Backfill cumulative table for F-API-005 + meta entry                           |
+| TBD     | F-API-006  | Bitmap.ValidateBitmap Godoc no longer claims work it doesn't do (about to commit) |
 
 ---
 

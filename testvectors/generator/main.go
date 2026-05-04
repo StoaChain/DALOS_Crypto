@@ -604,7 +604,8 @@ func generateGenesis() {
 			msg = fmt.Sprintf("%s (iteration %d)", msg, i)
 		}
 
-		sig := ellipse.SchnorrSign(keyPair, msg)
+		sig, err := ellipse.SchnorrSign(keyPair, msg)
+		must(err, fmt.Sprintf("schnorr %d: SchnorrSign", i))
 		verifyResult := ellipse.SchnorrVerify(sig, msg, keyPair.PUBL)
 
 		corpus.SchnorrVectors = append(corpus.SchnorrVectors, SchnorrVector{
@@ -699,7 +700,8 @@ func generateAdversarial() {
 	must(err, "adversarial: ScalarToKeys")
 
 	legitMsg := "T6.7-cofactor-adversarial-vector"
-	legitSig := ellipse.SchnorrSign(keyPair, legitMsg)
+	legitSig, err := ellipse.SchnorrSign(keyPair, legitMsg)
+	must(err, "adversarial: SchnorrSign(legit)")
 	if !ellipse.SchnorrVerify(legitSig, legitMsg, keyPair.PUBL) {
 		panic("adversarial generator: legit signature failed self-verify (cannot proceed)")
 	}
@@ -943,7 +945,8 @@ func generateHistorical() {
 			kp, err := ellipse.ScalarToKeys(scalar)
 			must(err, fmt.Sprintf("%s schnorr %d: ScalarToKeys", c.name, i))
 
-			sig := ellipse.SchnorrSign(kp, msg)
+			sig, err := ellipse.SchnorrSign(kp, msg)
+			must(err, fmt.Sprintf("%s schnorr %d: SchnorrSign", c.name, i))
 			verifyResult := ellipse.SchnorrVerify(sig, msg, kp.PUBL)
 
 			block.SchnorrVectors = append(block.SchnorrVectors, SchnorrVector{

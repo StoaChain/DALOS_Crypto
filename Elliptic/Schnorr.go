@@ -334,35 +334,38 @@ func (e *Ellipse) deterministicNonce(k *big.Int, messageHash []byte) *big.Int {
 // Output format: "R-in-public-key-form | s-in-base49" — encoding
 //                itself is unchanged; only the byte values of R and s
 //                differ from pre-v2.0.0.
-func (e *Ellipse) SchnorrSign(KeyPair DalosKeyPair, Message string) string {
+//
+// HARDENING (v4.0.1, audit cycle 2026-05-04, F-API-005): the pre-v4.0.1
+// signature was `string`; three internal failure modes (parse-base49
+// failure, k out of [1, Q-1], nil Fiat-Shamir challenge) all silently
+// returned "" — a magic-empty-string sentinel that consumers had no
+// principled way to distinguish from a real signature. The CLI driver
+// at Dalos.go would print "Signature: <blank>" with no failure detection
+// and downstream pipe consumers wrote literal empty signatures to disk.
+//
+// The TS port's schnorrSign (ts/src/gen1/schnorr.ts) throws SchnorrSignError
+// on the same conditions. Post-v4.0.1 this function returns
+// (string, error) so cross-language consumers get symmetric failure
+// contracts and the empty-string sentinel class is removed permanently.
+func (e *Ellipse) SchnorrSign(KeyPair DalosKeyPair, Message string) (string, error) {
 	var Signature SchnorrSignature
 
-	// Parse private key
-	// F-ERR-002 (v4.0.1): on malformed PRIV (corrupt wallet, serialization
-	// bug, etc.) match the existing internal-failure sentinel — this
-	// function returns "" on the same class of failure at line 315-317
-	// (nil challenge from unparseable PUBL). The empty-string sentinel is
-	// the documented (if regrettable) contract until F-API-005 refactors
-	// SchnorrSign to (string, error).
+	// Parse private key. Malformed PRIV (corrupt wallet, serialization
+	// bug, etc.) is rejected loudly via F-ERR-002's alphabet-validated
+	// helper.
 	k, err := ConvertBase49toBase10(KeyPair.PRIV)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("SchnorrSign: malformed private key: %w", err)
 	}
 
 	// F-ERR-007 (v4.0.1): range-check the parsed private key. The math
 	// in s = (z + e·k) mod Q produces a structurally-valid signature for
 	// any k, but k = 0 yields R = 0·G = O (infinity) and s = z + 0 = z —
 	// the signer's nonce is now public, embedded in s. k outside [1, Q-1]
-	// is meaningless cryptography (k > Q reduces silently mod Q so the
-	// signature would still verify against the corresponding "true" k,
-	// but accepting it conceals the corruption). The TS port's
-	// schnorrSign at ts/src/gen1/schnorr.ts:317-360 has equivalent
-	// guards via parseBigIntInBase + range validation (REQ-21/REQ-22);
-	// this brings Go ↔ TS parity. Returns the same empty-string sentinel
-	// as the F-ERR-002 parse-failure branch above (and F-API-005 will
-	// refactor both to (string, error) together).
+	// is meaningless cryptography. Mirrors the TS port's REQ-21/REQ-22
+	// range validation in parseBigIntInBase.
 	if k.Sign() <= 0 || k.Cmp(&e.Q) >= 0 {
-		return ""
+		return "", fmt.Errorf("SchnorrSign: private key scalar out of range [1, Q-1]")
 	}
 
 	// Hash the message (separately from the Fiat–Shamir challenge) for
@@ -378,10 +381,14 @@ func (e *Ellipse) SchnorrSign(KeyPair DalosKeyPair, Message string) string {
 	RAffine := e.Extended2Affine(RExtended)
 	r := RAffine.AX
 
-	// Fiat–Shamir challenge e = H(domain || r || P || message) mod Q
+	// Fiat–Shamir challenge e = H(domain || r || P || message) mod Q.
+	// SchnorrHash returns nil when the public key cannot be parsed
+	// (an internal-consistency violation: a well-formed KeyPair has
+	// a parseable PUBL). Mirrors TS schnorr.ts:349-353 which throws
+	// SchnorrSignError on the same condition.
 	challenge := e.SchnorrHash(r, KeyPair.PUBL, Message)
 	if challenge == nil {
-		return ""
+		return "", fmt.Errorf("SchnorrSign: Fiat-Shamir challenge produced nil — likely caused by an unparseable public key in KeyPair.PUBL")
 	}
 
 	// s = (z + e * k) mod Q  — canonically reduced.
@@ -391,7 +398,7 @@ func (e *Ellipse) SchnorrSign(KeyPair DalosKeyPair, Message string) string {
 
 	Signature.R = RAffine
 	Signature.S = s
-	return ConvertSchnorrSignatureToString(Signature)
+	return ConvertSchnorrSignatureToString(Signature), nil
 }
 
 //SchnorrVerify  Schnorr Signature Verification

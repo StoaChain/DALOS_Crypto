@@ -281,7 +281,15 @@ func main() {
         }
         
         //Print the Signature on screen
-        Signature := DalosEllipse.SchnorrSign(ReadKeyPair, *messageFlag)
+        // F-API-005 (v4.0.1): SchnorrSign returns (string, error) instead
+        // of silently returning "" on internal failure. CLI behaviour:
+        // print to stderr + os.Exit(1) so a pipe consumer doesn't get an
+        // empty signature blob with no diagnostic.
+        Signature, err := DalosEllipse.SchnorrSign(ReadKeyPair, *messageFlag)
+        if err != nil {
+            fmt.Fprintln(os.Stderr, "Error: signing failed:", err)
+            os.Exit(1)
+        }
         fmt.Println("Your Signature is:")
         fmt.Println("")
         fmt.Println(Signature)

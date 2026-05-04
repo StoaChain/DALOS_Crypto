@@ -245,15 +245,24 @@ func TestConvertBase49toBase10_RejectsEmpty(t *testing.T) {
 // k = 0 is reachable today by hand-constructing a DalosKeyPair with
 // PRIV = "0" (base-49 zero). Pre-v4.0.1 SchnorrSign would return a
 // signature where s = z (the deterministic nonce, leaked).
+//
+// v4.0.1 (F-API-005): SchnorrSign now returns (string, error); rejection
+// surfaces as a non-nil error rather than the empty-string sentinel.
 func TestSchnorrSign_RejectsZeroPrivateKey(t *testing.T) {
 	e := DalosEllipse()
 	kp := DalosKeyPair{
 		PRIV: "0", // base-49 representation of zero
 		PUBL: "1.0",
 	}
-	sig := e.SchnorrSign(kp, "any message")
+	sig, err := e.SchnorrSign(kp, "any message")
+	if err == nil {
+		t.Errorf("expected error for k=0 (would leak nonce), got nil; sig=%q", sig)
+	}
 	if sig != "" {
-		t.Errorf("expected empty-string sentinel for k=0 (would leak nonce), got: %q", sig)
+		t.Errorf("expected empty signature on error path, got: %q", sig)
+	}
+	if err != nil && !strings.Contains(err.Error(), "out of range") {
+		t.Errorf("expected error to mention range; got: %v", err)
 	}
 }
 
@@ -271,24 +280,30 @@ func TestSchnorrSign_RejectsOutOfRangePrivateKey(t *testing.T) {
 		PRIV: privAtQ,
 		PUBL: "1.0",
 	}
-	sig := e.SchnorrSign(kp, "any message")
+	sig, err := e.SchnorrSign(kp, "any message")
+	if err == nil {
+		t.Errorf("expected error for k=Q (out of range), got nil; sig=%q", sig)
+	}
 	if sig != "" {
-		t.Errorf("expected empty-string sentinel for k=Q (out of range), got: %q", sig)
+		t.Errorf("expected empty signature on error path, got: %q", sig)
 	}
 
 	// Also check k > Q (some larger value): use Q + 1.
 	qPlusOne := new(big.Int).Add(&e.Q, big.NewInt(1))
 	kp.PRIV = qPlusOne.Text(49)
-	sig = e.SchnorrSign(kp, "any message")
+	sig, err = e.SchnorrSign(kp, "any message")
+	if err == nil {
+		t.Errorf("expected error for k=Q+1 (out of range), got nil; sig=%q", sig)
+	}
 	if sig != "" {
-		t.Errorf("expected empty-string sentinel for k=Q+1 (out of range), got: %q", sig)
+		t.Errorf("expected empty signature on error path, got: %q", sig)
 	}
 }
 
 // TestSchnorrSign_AcceptsValidPrivateKey is the positive-control: a
 // known-good keypair (derived from the bs-0001 corpus fixture) must
-// still produce a non-empty signature. Confirms the F-ERR-007 guard
-// did not regress the happy path.
+// still produce a non-empty signature. Confirms the F-ERR-007 + F-API-005
+// guards did not regress the happy path.
 func TestSchnorrSign_AcceptsValidPrivateKey(t *testing.T) {
 	e := DalosEllipse()
 	scalar, err := e.GenerateScalarFromBitString(bs0001InputBitstring)
@@ -299,9 +314,33 @@ func TestSchnorrSign_AcceptsValidPrivateKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ScalarToKeys rejected the derived scalar: %v", err)
 	}
-	sig := e.SchnorrSign(kp, "any message")
+	sig, err := e.SchnorrSign(kp, "any message")
+	if err != nil {
+		t.Errorf("expected nil error for well-formed keypair, got: %v", err)
+	}
 	if sig == "" {
 		t.Errorf("expected non-empty signature for well-formed keypair, got empty string (regression)")
+	}
+}
+
+// TestSchnorrSign_RejectsMalformedPRIV pins the F-ERR-002 base-49 parser
+// failure — an invalid character in PRIV must surface as an error, not
+// the legacy empty-string sentinel.
+func TestSchnorrSign_RejectsMalformedPRIV(t *testing.T) {
+	e := DalosEllipse()
+	kp := DalosKeyPair{
+		PRIV: "abcZZZ", // 'Z' is above 'M' in the base-49 alphabet
+		PUBL: "1.0",
+	}
+	sig, err := e.SchnorrSign(kp, "any message")
+	if err == nil {
+		t.Errorf("expected error for malformed PRIV, got nil; sig=%q", sig)
+	}
+	if sig != "" {
+		t.Errorf("expected empty signature on error path, got: %q", sig)
+	}
+	if err != nil && !strings.Contains(err.Error(), "malformed private key") {
+		t.Errorf("expected error to mention malformed PRIV; got: %v", err)
 	}
 }
 

@@ -147,9 +147,9 @@ func TestSchnorrVerify_RejectsCofactor4R(t *testing.T) {
 	e := DalosEllipse()
 	kp := buildLegitKeyPair(t, e)
 
-	legitSigStr := e.SchnorrSign(kp, adversarialMessage)
-	if legitSigStr == "" {
-		t.Fatalf("SchnorrSign returned empty string for legit input — sign-side failure, cannot proceed")
+	legitSigStr, err := e.SchnorrSign(kp, adversarialMessage)
+	if err != nil {
+		t.Fatalf("SchnorrSign returned error for legit input — sign-side failure, cannot proceed: %v", err)
 	}
 
 	parsed, err := ConvertSchnorrSignatureAsStringToStructure(legitSigStr)
@@ -179,9 +179,9 @@ func TestSchnorrVerify_RejectsCofactor4P(t *testing.T) {
 	e := DalosEllipse()
 	kp := buildLegitKeyPair(t, e)
 
-	legitSigStr := e.SchnorrSign(kp, adversarialMessage)
-	if legitSigStr == "" {
-		t.Fatalf("SchnorrSign returned empty string for legit input — sign-side failure, cannot proceed")
+	legitSigStr, err := e.SchnorrSign(kp, adversarialMessage)
+	if err != nil {
+		t.Fatalf("SchnorrSign returned error for legit input — sign-side failure, cannot proceed: %v", err)
 	}
 
 	// Mutation under test: substitute the legit public key with the canonical
@@ -210,9 +210,9 @@ func TestSchnorrVerify_AcceptsLegitimateSig(t *testing.T) {
 	e := DalosEllipse()
 	kp := buildLegitKeyPair(t, e)
 
-	legitSigStr := e.SchnorrSign(kp, adversarialMessage)
-	if legitSigStr == "" {
-		t.Fatalf("SchnorrSign returned empty string for legit input — sign-side failure, cannot proceed")
+	legitSigStr, err := e.SchnorrSign(kp, adversarialMessage)
+	if err != nil {
+		t.Fatalf("SchnorrSign returned error for legit input — sign-side failure, cannot proceed: %v", err)
 	}
 
 	if !e.SchnorrVerify(legitSigStr, adversarialMessage, kp.PUBL) {
@@ -270,9 +270,9 @@ func TestSchnorrVerify_OffCurveR_Rejected(t *testing.T) {
 	}
 
 	const message = "off-curve-R-adversarial-test"
-	sigStr := e.SchnorrSign(keyPair, message)
-	if sigStr == "" {
-		t.Fatalf("SchnorrSign returned empty string for the corpus fixture")
+	sigStr, err := e.SchnorrSign(keyPair, message)
+	if err != nil {
+		t.Fatalf("SchnorrSign returned error for the corpus fixture: %v", err)
 	}
 
 	// Sanity: the unmodified signature verifies. If this fails the
@@ -321,9 +321,9 @@ func TestSchnorrVerify_OffCurveP_Rejected(t *testing.T) {
 	}
 
 	const message = "off-curve-P-adversarial-test"
-	sigStr := e.SchnorrSign(keyPair, message)
-	if sigStr == "" {
-		t.Fatalf("SchnorrSign returned empty string for the corpus fixture")
+	sigStr, err := e.SchnorrSign(keyPair, message)
+	if err != nil {
+		t.Fatalf("SchnorrSign returned error for the corpus fixture: %v", err)
 	}
 
 	// Sanity: baseline verifies under the honest public key.

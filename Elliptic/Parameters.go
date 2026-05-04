@@ -201,6 +201,17 @@ func E521Ellipse() Ellipse {
     e.D.SetInt64(-376014)
     
     //Generator Coordinates
+    // F-MED-014 (v4.0.2): the AX/AY *big.Int pointers are nil after the
+    // zero-value Ellipse declaration; calling SetString on a nil
+    // *big.Int panics. The other four curve factories (Dalos, Leto,
+    // Artemis, Apollo) all allocate them explicitly before assigning.
+    // E521Ellipse was missing these two allocations since v1.0.0 and
+    // panicked the moment a caller invoked it — but no production or
+    // test code did, so the latent bug went undetected for the entire
+    // codebase lifetime. Surfaced when F-MED-014's cross-curve test
+    // sweep added the first real caller.
+    e.G.AX = new(big.Int)
+    e.G.AY = new(big.Int)
     e.G.AX.SetString("1571054894184995387535939749894317568645297350402905821437625181152304994381188529632591196067604100772673927915114267193389905003276673749012051148356041324", 10)
     e.G.AY.SetInt64(12)
 

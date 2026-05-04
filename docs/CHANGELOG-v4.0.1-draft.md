@@ -299,7 +299,7 @@ The `return ""` was later refactored to a proper error in F-API-005.
 
 #### F-API-005 — `SchnorrSign` returns `(string, error)`
 
-Commit `<TBD — about to commit>`. **Go-side breaking change.**
+Commit `3dfc186`. **Go-side breaking change.**
 
 Pre-v4.0.1 `SchnorrSign` returned `string`. Three internal-failure
 conditions silently returned `""`:

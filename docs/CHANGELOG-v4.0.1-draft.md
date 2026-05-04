@@ -216,7 +216,7 @@ ever re-introduced), missing-second-header rejection.
 
 #### F-API-006 — `Bitmap.ValidateBitmap` Godoc no longer claims work it doesn't do
 
-Commit `<TBD>`. **Documentation-only fix, no behavior change.**
+Commit `624d71b`. **Documentation-only fix, no behavior change.**
 
 Pre-v4.0.1 the Godoc summary line read "performs structural validation
 of a Bitmap" — misleading, since the function body is `return nil`. A
@@ -453,7 +453,7 @@ pending user judgment.
 | 3dfc186 | F-API-005  | SchnorrSign returns (string, error) + add v4.0.1 draft changelog               |
 | 1af9394 | (meta)     | Backfill F-API-005 commit hash in this draft                                   |
 | 12f7918 | (meta)     | Backfill cumulative table for F-API-005 + meta entry                           |
-| TBD     | F-API-006  | Bitmap.ValidateBitmap Godoc no longer claims work it doesn't do (about to commit) |
+| 624d71b | F-API-006  | Bitmap.ValidateBitmap Godoc no longer claims work it doesn't do                |
 
 ---
 

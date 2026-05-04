@@ -259,12 +259,40 @@ export function schnorrHash(
     return null;
   }
   if (pkAffine.ax === undefined || pkAffine.ay === undefined) return null;
+  return schnorrHashFromAffine(R, pkAffine, message, e);
+}
 
+/**
+ * F-MED-011 (audit cycle 2026-05-04, v4.0.2): pre-parsed-coords variant
+ * of `schnorrHash`. Identical math; skips the public-key string parse.
+ *
+ * Used by `schnorrVerify` / `schnorrVerifyAsync` which already parse
+ * the public-key string into affine coords for the on-curve and
+ * cofactor checks. Pre-v4.0.2 the verifiers called `schnorrHash(R,
+ * publicKey, ...)` which re-ran `publicKeyToAffineCoords` — a ~700-char
+ * base-49 → bigint parse, which is O(n²) inside the BigInt parse path.
+ *
+ * Caller-owned invariants (these are programming errors if violated;
+ * exported callers `schnorrHash` enforce them before delegating):
+ *   - `pkAffine.ax !== undefined`
+ *   - `pkAffine.ay !== undefined`
+ *
+ * Mirrors Go's `(*Ellipse).schnorrHashFromAffine` (Elliptic/Schnorr.go).
+ * Exported (rather than module-private) so test suites can spy / pin
+ * the transcript-construction code path; the public `schnorrHash`
+ * remains the canonical entry point for normal consumers.
+ */
+export function schnorrHashFromAffine(
+  R: bigint,
+  pkAffine: CoordAffine,
+  message: string | Uint8Array,
+  e: Ellipse = DALOS_ELLIPSE,
+): bigint {
   const transcript = lenPrefixedConcat([
     utf8.encode(SCHNORR_HASH_DOMAIN_TAG),
     bigIntBytesCanon(R),
-    bigIntBytesCanon(pkAffine.ax),
-    bigIntBytesCanon(pkAffine.ay),
+    bigIntBytesCanon(pkAffine.ax!),
+    bigIntBytesCanon(pkAffine.ay!),
     encodeMessage(message),
   ]);
 
@@ -481,9 +509,13 @@ export function schnorrVerify(
   // F-MED-017 (v4.0.2): generalised via cofactorCheckRejects dispatch.
   if (cofactorCheckRejects(pExtended, e)) return false;
 
-  // Fiat–Shamir challenge
-  const challenge = schnorrHash(sig.r.ax, publicKey, message, e);
-  if (challenge === null) return false;
+  // Fiat–Shamir challenge.
+  // F-MED-011 (v4.0.2): use the pre-parsed-coords helper. Pre-v4.0.2
+  // this called `schnorrHash(sig.r.ax, publicKey, ...)` which re-ran
+  // `publicKeyToAffineCoords` (a ~700-char base-49 → bigint parse,
+  // O(n²) inside the BigInt path) — wasted work since `pkAffine` is
+  // already in scope from the on-curve check above.
+  const challenge = schnorrHashFromAffine(sig.r.ax, pkAffine, message, e);
 
   // Compute right term: R + e·P
   const ePExt = scalarMultiplier(challenge, pExtended, e);
@@ -631,8 +663,9 @@ export async function schnorrVerifyAsync(
   // F-MED-017 (v4.0.2): generalised via cofactorCheckRejects dispatch.
   if (cofactorCheckRejects(pExtended, e)) return false;
 
-  const challenge = schnorrHash(sig.r.ax, publicKey, message, e);
-  if (challenge === null) return false;
+  // F-MED-011 (v4.0.2): pre-parsed-coords helper — see the sync
+  // schnorrVerify above for the redundant-parse rationale.
+  const challenge = schnorrHashFromAffine(sig.r.ax, pkAffine, message, e);
 
   // e·P — async, no PM cache reuse (P varies per call).
   const ePExt = await scalarMultiplierAsync(challenge, pExtended, e);

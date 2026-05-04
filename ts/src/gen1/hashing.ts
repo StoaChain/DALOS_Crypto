@@ -124,10 +124,20 @@ export function convertHashToBitString(hash: Uint8Array, bitLength: number): str
   // produces identical output to the old `n.toString(2) + leftPad` path
   // for DALOS (where `hash.length * 8 === bitLength` exactly), so
   // byte-identity against the Go reference is preserved.
-  let full = '';
-  for (const b of hash) {
-    full += b.toString(2).padStart(8, '0');
+  //
+  // F-MED-010 (v4.0.2): pre-v4.0.2 the loop body was `full += b.to-
+  // String(2).padStart(8, '0')`. JS strings are immutable; `+=` in a
+  // loop builds an O(n²) chain of intermediate concatenations under
+  // most engines (V8 ropes some, but the optimisation is fragile).
+  // The TS port already follows the `Array.push + join` pattern in
+  // `bigIntToBase49` (REQ-29) for the same reason; mirrored here for
+  // consistency. Output is byte-identical to the old `+=` path —
+  // `parts.join('')` produces the same string, just in O(n).
+  const parts: string[] = new Array(hash.length);
+  for (let i = 0; i < hash.length; i++) {
+    parts[i] = hash[i].toString(2).padStart(8, '0');
   }
+  const full = parts.join('');
   if (full.length === bitLength) return full;
   if (full.length > bitLength) {
     // Take the high-order `bitLength` bits — conventional when

@@ -145,6 +145,7 @@ export {
   serializeSignature,
   parseSignature,
   schnorrHash,
+  schnorrHashFromAffine,
   schnorrMessageDigest,
   deterministicNonce,
   schnorrSign,

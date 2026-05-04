@@ -212,11 +212,34 @@ func (e *Ellipse) SeedWordsToBitString(SeedWords []string) string {
 // ConvertHashToBitString renders Hash as a big-endian bitstring of e.S bits, mirroring
 // the TypeScript canonical at ts/src/gen1/hashing.ts:108-129 (convertHashToBitString).
 // XCURVE-4: replaces the prior hex->big.Int->Text(2) pipeline that elided leading zeros.
+//
+// HARDENING (v4.0.2, audit cycle 2026-05-04, F-MED-010): the pre-v4.0.2
+// loop body was `full += fmt.Sprintf("%08b", b)` — Go strings are
+// immutable, so this allocated a new backing array and copied the
+// running result on EVERY byte. For DALOS (200-byte hash → 1600-char
+// bitstring) that's 200 allocs of 8/16/24/.../1600 bytes ≈ 160KB total
+// for what should be a 1600-byte output. The same file already
+// demonstrates the correct pattern in `GenerateRandomBitsOnCurve`
+// (line 168 area) using `strings.Builder.Grow` — adopted here for
+// consistency. Genesis byte-identity preserved (same bytes written in
+// the same order, just to a pre-grown buffer instead of via repeated
+// re-allocations).
 func (e *Ellipse) ConvertHashToBitString(Hash []byte) string {
-    var full string
-    for _, b := range Hash {
-        full += fmt.Sprintf("%08b", b)
+    var b strings.Builder
+    b.Grow(len(Hash) * 8)
+    for _, by := range Hash {
+        // Inline the 8-bit big-endian render. Faster than fmt.Sprintf
+        // ("%08b") which allocates a temporary string per call; the
+        // bit-shift loop writes directly into the builder.
+        for bit := 7; bit >= 0; bit-- {
+            if (by>>bit)&1 == 1 {
+                b.WriteByte('1')
+            } else {
+                b.WriteByte('0')
+            }
+        }
     }
+    full := b.String()
     bitLength := int(e.S)
     if len(full) == bitLength {
         return full

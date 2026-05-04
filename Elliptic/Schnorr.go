@@ -331,6 +331,15 @@ func ConvertPublicKeyToAffineCoords(publicKey string) (CoordAffine, error) {
 //
 // Returns nil only on catastrophic internal failure (pubkey parse);
 // callers treat nil as a verification rejection.
+//
+// HARDENING (v4.0.2, audit cycle 2026-05-04, F-MED-011): the public
+// signature still takes a public-key STRING (preserved for the public
+// API contract — SchnorrSign callers pass `KeyPair.PUBL`), but the
+// body now delegates to `schnorrHashFromAffine` after a single parse.
+// The verifier path (SchnorrVerify) skips this parse entirely by
+// calling `schnorrHashFromAffine` directly with its already-parsed
+// PAffine — eliminating ~700-char base-49→big.Int re-parse per verify
+// (O(n²) inside math/big).
 func (e *Ellipse) SchnorrHash(R *big.Int, PublicKey string, Message string) *big.Int {
 	PublicKeyAffine, err := ConvertPublicKeyToAffineCoords(PublicKey)
 	if err != nil {
@@ -339,7 +348,24 @@ func (e *Ellipse) SchnorrHash(R *big.Int, PublicKey string, Message string) *big
 	if PublicKeyAffine.AX == nil || PublicKeyAffine.AY == nil {
 		return nil
 	}
+	return e.schnorrHashFromAffine(R, PublicKeyAffine, Message)
+}
 
+// schnorrHashFromAffine computes the Fiat–Shamir challenge from a
+// PRE-PARSED public-key affine point. Identical math to SchnorrHash but
+// skips the public-key string parse — used by SchnorrVerify which has
+// already parsed PublicKey into PAffine for its on-curve / cofactor
+// checks. F-MED-011 (v4.0.2) elimination of the redundant parse.
+//
+// Caller-owned invariants (panics on violation are programming errors,
+// not user-input issues):
+//   - PublicKeyAffine.AX != nil
+//   - PublicKeyAffine.AY != nil
+//
+// SchnorrHash enforces both before delegating; SchnorrVerify enforces
+// both at lines 560-562 before reaching this site. No public callers
+// exist outside this file.
+func (e *Ellipse) schnorrHashFromAffine(R *big.Int, PublicKeyAffine CoordAffine, Message string) *big.Int {
 	var buf bytes.Buffer
 	writeLenPrefixed(&buf, []byte(schnorrHashDomainTag))
 	writeLenPrefixed(&buf, bigIntBytesCanon(R))
@@ -580,8 +606,14 @@ func (e *Ellipse) SchnorrVerify(Signature, Message, PublicKey string) bool {
 	}
 
 	// Step 3 — Compute the Fiat–Shamir challenge m = H(r || P || m).
+	// F-MED-011 (v4.0.2): route through `schnorrHashFromAffine` with the
+	// already-parsed PAffine. Pre-v4.0.2 this called the public
+	// `SchnorrHash(r, PublicKey, ...)` which re-ran ConvertPublicKey-
+	// ToAffineCoords (a base-49 → big.Int parse on the ~700-char body,
+	// O(n²) inside math/big) — wasted work since PAffine is already in
+	// scope from the on-curve check above.
 	r := R.AX
-	m := e.SchnorrHash(r, PublicKey, Message)
+	m := e.schnorrHashFromAffine(r, PAffine, Message)
 	if m == nil {
 		return false
 	}

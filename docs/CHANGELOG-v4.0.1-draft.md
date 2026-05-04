@@ -252,6 +252,81 @@ make it real) were considered and rejected: removal would break any
 external consumer using the symbol; making it real would require
 curve-specific dimension parameters that don't belong at this layer.
 
+### Performance — Schnorr verify hot path
+
+#### F-PERF-001 — Cofactor `[4]·R` and `[4]·P` via two HWCD doublings instead of `ScalarMultiplier(4, _)`
+
+Commit `<TBD>`. **Real perf win, no behavior change, byte-identity preserved.**
+
+Inside `SchnorrVerify` (and its TS twin in both sync + async forms),
+the cofactor security check multiplies `R` and `P` by 4 to confirm
+they're not in the small (order-4) subgroup. Pre-v4.0.1 this used
+`ScalarMultiplier(big.NewInt(4), X)` (Go) / `scalarMultiplier(e.r, X, e)`
+(TS), which builds a 48-element PrecomputeMatrix (24 doublings + 24
+additions of internal work) and walks the base-49 digits of the
+scalar — way over-engineered for the trivial scalar 4.
+
+Mathematical equivalence: `[4]·X = [2·2]·X = doubling(doubling(X))`
+holds for any abelian group, including this Twisted Edwards curve.
+Both paths produce the same projective point; the `IsInfinityPoint`
+boolean fires on the same condition.
+
+Fix: replace at 6 sites total.
+- Go (`Elliptic/Schnorr.go`):
+  - Line 459 (cofactor check on R): `e.ScalarMultiplier(cofactor4, RExtend)` →
+    `e.noErrDoubling(e.noErrDoubling(RExtend))`.
+  - Line 486 (cofactor check on P): same pattern on `PExtend`.
+  - The package-level `var cofactor4 = big.NewInt(4)` becomes dead
+    code and is removed; the explanatory doc-comment block is rewritten
+    in-place to document the new doubling-based approach + reference
+    the equivalence test.
+- TypeScript (`ts/src/gen1/schnorr.ts`):
+  - Line 45 (imports): add `doubling` to the existing `point-ops.js`
+    import.
+  - Line 410 (sync verify, cofactor on R): `scalarMultiplier(e.r, rExtended, e)` →
+    `doubling(doubling(rExtended, e), e)`.
+  - Line 430 (sync verify, cofactor on P): same pattern.
+  - Line 567 (async verify, cofactor on R): same pattern. Note:
+    `doubling` is fast and synchronous — no `await` needed even on
+    the async path.
+  - Line 586 (async verify, cofactor on P): same pattern.
+
+Perf impact: roughly 16× less big-int work per cofactor step. With R
++ P combined, ~96 wasted big-int ops eliminated per Schnorr verify.
+Stacks with F-PERF-003 (8 wasted ModInverses) for ~30-50% expected
+reduction in Schnorr verify wall-clock once both land.
+
+Tests added (Go-side, `Elliptic/Schnorr_strict_parser_test.go`):
+- `TestCofactor4_DoublingEquivalence` — table-driven, asserts the
+  AFFINE projection of `ScalarMultiplier(4, X)` and
+  `noErrDoubling(noErrDoubling(X))` matches for 3 distinct on-curve
+  points: the generator G, [2]·G, and a corpus-derived public key
+  point. Affine equivalence is the canonical check (extended HWCD
+  has multiple representations of the same projective point).
+- `TestCofactor4_InfinityPreserved` — confirms `IsInfinityPoint` is
+  invariant across both paths on a non-infinity input. The
+  infinity-side of the check (small-subgroup attack vectors) is
+  exercised end-to-end by the corpus generator's adversarial vectors;
+  Genesis SHA-256 byte-identity preservation IS the regression guard
+  for that direction.
+
+TS-side: no new tests; the TS suite already cross-checks every
+deterministic vector against the Go-produced corpus. If the TS
+cofactor change diverged behaviorally from Go, the existing byte-identity
+assertions in `ts/tests/` would catch it on the next `npm test` run.
+
+Verification:
+- `go build ./...` + `go vet ./...` clean.
+- Full Go test suite passes (5 packages green).
+- Genesis 105-vector corpus byte-identity preserved (the adversarial
+  cofactor vectors in `v1_genesis.json` exercise the infinity branch
+  end-to-end):
+    `v1_genesis.json`     `082f7a40405d4c075f1975af0a6075bb0228bbccae60a53b05b350a09ce223ae`
+    `v1_historical.json`  `80c93f4d4956e01236808f81f518d17eeaad431f4fedb7c26233d2508f06e68b`
+- TS-side typecheck not run in this environment (npm not on shell
+  PATH); user should run `npm run typecheck && npm test` from `ts/`
+  before pollinate.
+
 ### Library API hardening (`Elliptic/`)
 
 #### F-ERR-002 — `ConvertBase49toBase10` alphabet validator + error return
@@ -422,7 +497,6 @@ HIGH findings under triage (not yet decided):
 - F-API-007 — `keystore.ExportPrivateKey` already-known-and-fixed-via-F-ERR-005? (validator overlap)
 - F-API-008 — TS `from*` API entry points throw bare `Error`
 - F-API-009 — `keystore.ImportPrivateKey` writes "DALOS Keys are being opened!" to stdout
-- F-PERF-001 — Cofactor [4]·R / [4]·P rebuilds 48-element PrecomputeMatrix
 - F-PERF-003 — Extended2Affine 4 ModInverses per Schnorr verify
 - F-INT-002 — ts-publish.yml race vs ts-ci.yml + missing concurrency
 - F-INT-003 — same as F-INT-002 (validator overlap)
@@ -454,6 +528,8 @@ pending user judgment.
 | 1af9394 | (meta)     | Backfill F-API-005 commit hash in this draft                                   |
 | 12f7918 | (meta)     | Backfill cumulative table for F-API-005 + meta entry                           |
 | 624d71b | F-API-006  | Bitmap.ValidateBitmap Godoc no longer claims work it doesn't do                |
+| 2ed2a94 | (meta)     | Backfill F-API-006 commit hash                                                 |
+| TBD     | F-PERF-001 | Cofactor [4]·R/[4]·P via two HWCD doublings (Go + TS sync + TS async)          |
 
 ---
 

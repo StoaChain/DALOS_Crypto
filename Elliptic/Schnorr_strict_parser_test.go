@@ -323,6 +323,108 @@ func TestSchnorrSign_AcceptsValidPrivateKey(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// F-PERF-001 (audit cycle 2026-05-04, v4.0.1): cofactor check via two doublings
+// =============================================================================
+//
+// SchnorrVerify multiplies R and P by the cofactor (4) to detect small-
+// subgroup attack points. Pre-v4.0.1 this used `ScalarMultiplier(cofactor4, X)`,
+// which builds a 48-element PrecomputeMatrix (24 doublings + 24 additions
+// of internal work) and walks the base-49 digits of the scalar — way
+// over-engineered for the trivial scalar 4. Two HWCD doublings produce
+// the same result with ~16x less work per side (R + P → ~96 wasted
+// big-int ops eliminated per verify).
+//
+// This test pins the mathematical equivalence: for any on-curve point P,
+//
+//     ScalarMultiplier(big.NewInt(4), P)  ≡  noErrDoubling(noErrDoubling(P))
+//
+// in projective sense — i.e., both produce the same affine point under
+// Extended2Affine. The extended-coords representations may differ
+// (HWCD has multiple representations of the same projective point), so
+// the canonical equivalence check is to compare the affine projection.
+
+// TestCofactor4_DoublingEquivalence confirms that two HWCD doublings
+// produce the same affine point as a general scalar-multiply by 4 for
+// several on-curve test points. Drives F-PERF-001's mathematical
+// foundation: the cofactor check at SchnorrVerify lines 459/486 can
+// safely switch from ScalarMultiplier to two doublings.
+func TestCofactor4_DoublingEquivalence(t *testing.T) {
+	e := DalosEllipse()
+	four := big.NewInt(4)
+
+	// Build the test fixtures: the generator G, [2]·G, and a corpus-derived
+	// public key point. Each represents a distinct on-curve point so the
+	// equivalence check exercises different extended-coord values.
+	gExt := e.Affine2Extended(e.G)
+
+	twoExt := e.noErrDoubling(gExt) // [2]·G as a second test point
+
+	scalar, err := e.GenerateScalarFromBitString(bs0001InputBitstring)
+	if err != nil {
+		t.Fatalf("GenerateScalarFromBitString rejected the corpus bs-0001 fixture: %v", err)
+	}
+	kp, err := e.ScalarToKeys(scalar)
+	if err != nil {
+		t.Fatalf("ScalarToKeys rejected the derived scalar: %v", err)
+	}
+	pkAffine, err := ConvertPublicKeyToAffineCoords(kp.PUBL)
+	if err != nil {
+		t.Fatalf("ConvertPublicKeyToAffineCoords rejected the derived PUBL: %v", err)
+	}
+	pkExt := e.Affine2Extended(pkAffine)
+
+	cases := []struct {
+		name string
+		p    CoordExtended
+	}{
+		{"generator_G", gExt},
+		{"two_G", twoExt},
+		{"public_key_from_bs0001", pkExt},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			oldPath := e.ScalarMultiplier(four, c.p)
+			newPath := e.noErrDoubling(e.noErrDoubling(c.p))
+
+			oldAffine := e.Extended2Affine(oldPath)
+			newAffine := e.Extended2Affine(newPath)
+
+			if oldAffine.AX.Cmp(newAffine.AX) != 0 {
+				t.Errorf("affine X mismatch: ScalarMultiplier(4, %s).X = %s, noErrDoubling² = %s",
+					c.name, oldAffine.AX.String(), newAffine.AX.String())
+			}
+			if oldAffine.AY.Cmp(newAffine.AY) != 0 {
+				t.Errorf("affine Y mismatch: ScalarMultiplier(4, %s).Y = %s, noErrDoubling² = %s",
+					c.name, oldAffine.AY.String(), newAffine.AY.String())
+			}
+		})
+	}
+}
+
+// TestCofactor4_InfinityPreserved confirms that the IsInfinityPoint
+// boolean is the same for both paths on a non-infinity input. (We can't
+// easily synthesise an order-4 point in a unit test without committing
+// to specific curve internals; the corpus generator's adversarial vectors
+// cover the [4]·X == infinity branch end-to-end, and corpus byte-identity
+// SHA-256 preservation is the regression guard for that direction.)
+func TestCofactor4_InfinityPreserved(t *testing.T) {
+	e := DalosEllipse()
+	four := big.NewInt(4)
+	gExt := e.Affine2Extended(e.G)
+
+	oldPath := e.ScalarMultiplier(four, gExt)
+	newPath := e.noErrDoubling(e.noErrDoubling(gExt))
+
+	if e.IsInfinityPoint(oldPath) {
+		t.Fatalf("legitimate generator [4]·G must not be infinity (would mean cofactor check would falsely reject the generator)")
+	}
+	if e.IsInfinityPoint(newPath) != e.IsInfinityPoint(oldPath) {
+		t.Errorf("IsInfinityPoint divergence: old=%v, new=%v", e.IsInfinityPoint(oldPath), e.IsInfinityPoint(newPath))
+	}
+}
+
 // TestSchnorrSign_RejectsMalformedPRIV pins the F-ERR-002 base-49 parser
 // failure — an invalid character in PRIV must surface as an error, not
 // the legacy empty-string sentinel.

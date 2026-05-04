@@ -36,20 +36,22 @@ const (
 	schnorrNonceDomainTag = "DALOS-gen1/SchnorrNonce/v1"
 )
 
-// cofactor4 is the DALOS curve cofactor h = 4 (see Parameters.go,
-// Twisted Edwards family). Used by SchnorrVerify's small-subgroup
-// rejection (F-SEC-001, REQ-16): legitimate R = [k]·G and P = [k']·G
-// satisfy [4]·R ≠ O and [4]·P ≠ O because gcd(4, Q) = 1 and the
-// scalars lie in [1, Q-1]. Order-4 small-subgroup attack points
-// (the 4-torsion subgroup of E(F_p)) collapse to the infinity point
-// under [4]·_ and are caught here.
+// F-PERF-001 (audit cycle 2026-05-04, v4.0.1): the cofactor check
+// (small-subgroup rejection, F-SEC-001 / REQ-16) is now performed via
+// two HWCD doublings (`noErrDoubling(noErrDoubling(X))` ≡ [4]·X)
+// instead of the previous `ScalarMultiplier(big.NewInt(4), X)` call.
 //
-// Declared as a package-level *big.Int (rather than passing &e.R
-// directly) so the cofactor scalar is decoupled from any future
-// optimisation inside ScalarMultiplier that might reduce the scalar
-// modulo Q — a reduction that would silently corrupt this check if
-// it ever applied to e.R.
-var cofactor4 = big.NewInt(4)
+// Old path built a 48-element PrecomputeMatrix (24 doublings + 24
+// additions of internal work) and walked the base-49 digits of the
+// scalar — way over-engineered for the trivial scalar 4. Two HWCD
+// doublings produce the same projective point with ~16x less work;
+// equivalence pinned by TestCofactor4_DoublingEquivalence and
+// TestCofactor4_InfinityPreserved in Schnorr_strict_parser_test.go.
+//
+// Math: legitimate R = [k]·G and P = [k']·G satisfy [4]·R ≠ O and
+// [4]·P ≠ O because gcd(4, Q) = 1 and the scalars lie in [1, Q-1].
+// Order-4 small-subgroup attack points (the 4-torsion subgroup of
+// E(F_p)) collapse to infinity under [4]·_ and are caught here.
 
 // writeLenPrefixed appends a 4-byte big-endian length followed by data.
 // Fixed width length prefix eliminates the leading-zero ambiguity that
@@ -456,7 +458,8 @@ func (e *Ellipse) SchnorrVerify(Signature, Message, PublicKey string) bool {
 	// F-SEC-001: cofactor subgroup-membership check on R.
 	// Legitimate R = [k]·G has [4]·R = [4k]·G ≠ O since gcd(4, Q)=1
 	// and k ∈ [1, Q-1]. Order-4 small-subgroup attack points yield [4]·R = O.
-	RCofactor := e.ScalarMultiplier(cofactor4, RExtend)
+	// F-PERF-001 (v4.0.1): two doublings instead of ScalarMultiplier(4, _).
+	RCofactor := e.noErrDoubling(e.noErrDoubling(RExtend))
 	if e.IsInfinityPoint(RCofactor) {
 		return false
 	}
@@ -483,7 +486,8 @@ func (e *Ellipse) SchnorrVerify(Signature, Message, PublicKey string) bool {
 
 	// F-SEC-001: cofactor subgroup-membership check on P (public key).
 	// Same rationale as R — rejects order-4 small-subgroup attack public keys.
-	PCofactor := e.ScalarMultiplier(cofactor4, PExtend)
+	// F-PERF-001 (v4.0.1): two doublings instead of ScalarMultiplier(4, _).
+	PCofactor := e.noErrDoubling(e.noErrDoubling(PExtend))
 	if e.IsInfinityPoint(PCofactor) {
 		return false
 	}

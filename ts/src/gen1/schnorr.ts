@@ -42,7 +42,7 @@ import { SchnorrSignError } from './errors.js';
 import { affineToPublicKey, parseBigIntInBase, publicKeyToAffineCoords } from './hashing.js';
 import type { DalosKeyPair } from './key-gen.js';
 import { bigIntToBytesBE, bytesToBigIntBE } from './math.js';
-import { addition } from './point-ops.js';
+import { addition, doubling } from './point-ops.js';
 import {
   bigIntToBase49,
   getOrBuildGeneratorPM,
@@ -401,7 +401,13 @@ export function schnorrVerify(
   // F-SEC-001: cofactor subgroup-membership check on R.
   // Legitimate R = [k]·G has [4]·R = [4k]·G ≠ O (gcd(4, Q)=1, k ∈ [1, Q-1]).
   // Rejects order-4 small-subgroup attack points.
-  const rCofactor = scalarMultiplier(e.r, rExtended, e);
+  // F-PERF-001 (v4.0.1): two HWCD doublings instead of scalarMultiplier(e.r, _).
+  // The DALOS curve cofactor is 4 = 2², so [4]·X is exactly two doublings of X.
+  // Old path built a 48-element PrecomputeMatrix for the trivial scalar 4
+  // (~16x more big-int work than necessary). Equivalence pinned by the
+  // Go-side TestCofactor4_DoublingEquivalence and the Go↔TS corpus
+  // byte-identity check on the adversarial cofactor vectors.
+  const rCofactor = doubling(doubling(rExtended, e), e);
   if (isInfinityPoint(rCofactor)) return false;
 
   // Parse public key
@@ -420,7 +426,8 @@ export function schnorrVerify(
 
   // F-SEC-001: cofactor subgroup-membership check on P (public key).
   // Same rationale as R — rejects order-4 small-subgroup attack public keys.
-  const pCofactor = scalarMultiplier(e.r, pExtended, e);
+  // F-PERF-001 (v4.0.1): see comment above on the two-doublings rewrite.
+  const pCofactor = doubling(doubling(pExtended, e), e);
   if (isInfinityPoint(pCofactor)) return false;
 
   // Fiat–Shamir challenge
@@ -553,7 +560,11 @@ export async function schnorrVerifyAsync(
   // verifier would accept order-4 small-subgroup attack signatures the
   // sync verifier rejects. Same construction: legitimate R = [k]·G has
   // [4]·R = [4k]·G ≠ O (gcd(4, Q) = 1, k ∈ [1, Q-1]).
-  const rCofactor = scalarMultiplier(e.r, rExtended, e);
+  // F-PERF-001 (v4.0.1): two HWCD doublings instead of scalarMultiplier(e.r, _).
+  // [4]·X = doubling(doubling(X)). ~16x less big-int work for the cofactor
+  // step. Doubling is fast and synchronous — no `await` needed even on the
+  // async path. Equivalence pinned by Go-side TestCofactor4_*.
+  const rCofactor = doubling(doubling(rExtended, e), e);
   if (isInfinityPoint(rCofactor)) return false;
 
   let pkAffine: CoordAffine;
@@ -571,7 +582,8 @@ export async function schnorrVerifyAsync(
 
   // F-SEC-001 (Phase 6): cofactor subgroup-membership check on P — same
   // rationale as R above; rejects order-4 small-subgroup public keys.
-  const pCofactor = scalarMultiplier(e.r, pExtended, e);
+  // F-PERF-001 (v4.0.1): see comment above on the two-doublings rewrite.
+  const pCofactor = doubling(doubling(pExtended, e), e);
   if (isInfinityPoint(pCofactor)) return false;
 
   const challenge = schnorrHash(sig.r.ax, publicKey, message, e);

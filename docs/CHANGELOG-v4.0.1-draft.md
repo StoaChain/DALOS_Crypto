@@ -412,7 +412,8 @@ pending user judgment.
 | 51aad47 | F-API-002  | Correct seed-word length error message wording                                 |
 | ee92a1b | F-API-003  | GenerateFilenameFromPublicKey returns (string, error)                          |
 | 9ed4751 | F-API-004  | Header-anchored wallet parser, CRLF-tolerant, no oracle                        |
-| TBD     | F-API-005  | SchnorrSign returns (string, error) — about to commit                          |
+| 3dfc186 | F-API-005  | SchnorrSign returns (string, error) + add v4.0.1 draft changelog               |
+| 1af9394 | (meta)     | Backfill F-API-005 commit hash in this draft                                   |
 
 ---
 

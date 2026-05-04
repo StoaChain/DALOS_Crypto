@@ -5,3 +5,7 @@
 # Stray Go build artifacts (transient — regenerated on each `go run`).
 # Most common: generator.exe from `go run testvectors/generator/main.go` on Windows.
 *.exe
+
+# DALOS wallet files — keystore/export.go writes filenames of shape
+# {first7_pubkey}...{last7_pubkey}.txt to the working directory.
+*...*.txt

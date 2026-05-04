@@ -116,7 +116,7 @@ func main() {
     // Ensure that if -g is used, we also have the required flags
     if *generateFlag {
         // Validate the presence of one of the key generation methods (-raw, -bits, -seed, -i10, -i49)
-        if !*rawFlag && *bitFlag == "" && *seedFlag == 0 && *intaFlag != "" && *intbFlag != "" {
+        if !*rawFlag && *bitFlag == "" && *seedFlag == 0 && *intaFlag == "" && *intbFlag == "" {
             fmt.Println("Error: One of -raw, -bits, -seed, -i10, or -i49 must be provided when using -g.")
             os.Exit(1)
         }

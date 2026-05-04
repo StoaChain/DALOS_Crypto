@@ -64,3 +64,39 @@ func TestCLI_InvalidIntegerFlag_ExitsNonZeroWithError(t *testing.T) {
         t.Errorf("subprocess output missing %q\n  got: %s", wantAbort, output)
     }
 }
+
+// TestCLI_GenerateWithoutInputMethod_ExitsWithError is the regression guard
+// for the Dalos.go:119 "one input method required" guard. Audit cycle
+// 2026-05-04 (F-CRIT-002) found the operators on intaFlag/intbFlag were
+// inverted (`!= ""` should be `== ""`), making the guard unreachable for
+// the intended case (user supplies -g + -p but no input flag). The bug
+// caused `dalos -g -p anything` to silently exit 0 with no key generated.
+//
+// Fix: invert the two operators. This test asserts the guard now fires:
+//
+//   1. Subprocess exits non-zero (os.Exit(1) after the diagnostic).
+//   2. Combined output contains the canonical error message.
+func TestCLI_GenerateWithoutInputMethod_ExitsWithError(t *testing.T) {
+    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+    defer cancel()
+
+    cmd := exec.CommandContext(ctx, "go", "run", ".", "-g", "-p", "test")
+    out, err := cmd.CombinedOutput()
+
+    if ctx.Err() == context.DeadlineExceeded {
+        t.Fatalf("subprocess timed out after 30s — guard at Dalos.go:119 may not be firing; flow probably reached an interactive prompt. Output: %s", string(out))
+    }
+
+    if err == nil {
+        t.Fatalf("expected non-zero exit from subprocess (the -g-without-input-method guard should fire), got nil; output: %s", string(out))
+    }
+    if _, isExitErr := err.(*exec.ExitError); !isExitErr {
+        t.Fatalf("expected *exec.ExitError, got %T: %v; output: %s", err, err, string(out))
+    }
+
+    output := string(out)
+    const wantMsg = "Error: One of -raw, -bits, -seed, -i10, or -i49 must be provided when using -g."
+    if !strings.Contains(output, wantMsg) {
+        t.Errorf("subprocess output missing %q\n  got: %s", wantMsg, output)
+    }
+}

@@ -54,7 +54,12 @@ func ExportPrivateKey(e *el.Ellipse, BitString, Password string) {
 	String3 := "Your Smart DALOS Account Address is:"
 	String4 := "Your Standard DALOS Account Address is:"
 
-	OutputFile, err := os.Create(FileName)
+	// F-SEC-002 (audit cycle 2026-05-04, v4.0.1): use 0600 instead of os.Create's
+	// default 0644 so wallet files are owner-only on POSIX systems. The file holds
+	// the AES-256-GCM-encrypted private key plus the matching public key — that's
+	// enough material for an offline brute-force oracle if the password is weak.
+	// Windows ignores the mode bits (NTFS uses ACLs); Linux/macOS honor them.
+	OutputFile, err := os.OpenFile(FileName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		fmt.Println("Error: failed to create export file:", err)
 		return

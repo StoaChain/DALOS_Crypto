@@ -256,7 +256,7 @@ curve-specific dimension parameters that don't belong at this layer.
 
 #### F-TEST-002 — Bitmap package: scope docs + comprehensive unit tests
 
-Commit `<TBD>`. **Doc-only change to source files + new test file. No behavior change. No byte-identity risk.**
+Commit `7ffb43e`. **Doc-only change to source files + new test file. No behavior change. No byte-identity risk.**
 
 Pre-v4.0.1 the Go `Bitmap/` package had ZERO direct unit tests. Correctness rode on the 20 bitmap vectors in `testvectors/v1_genesis.json` end-to-end byte-identity. That catches macroscopic regressions but doesn't cover validators, error-message contracts, roundtrip properties, or the row-major scan-order convention.
 
@@ -726,7 +726,7 @@ pending user judgment.
 | 46c318e | (meta)     | Backfill F-INT-002 commit hash                                                 |
 | efd0fe6 | F-TEST-001 | Add Go-side CI workflow + ADDING_NEW_PRIMITIVES.md playbook + CLAUDE.md pointer  |
 | 32eb2c0 | (meta)     | Backfill F-TEST-001 commit hash                                                |
-| TBD     | F-TEST-002 | Bitmap package: scope docs (Go+TS) + Bitmap_test.go (9 tests, 30+ sub-cases)   |
+| 7ffb43e | F-TEST-002 | Bitmap package: scope docs (Go+TS) + Bitmap_test.go (9 tests, 30+ sub-cases)   |
 
 ---
 

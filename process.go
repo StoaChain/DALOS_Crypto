@@ -4,6 +4,7 @@ import (
 	el "DALOS_Crypto/Elliptic"
 	"DALOS_Crypto/keystore"
 	"fmt"
+	"os"
 )
 
 // ProcessIntegerFlag validates the supplied integer-encoded private key
@@ -151,25 +152,33 @@ func ProcessKeyGeneration(e *el.Ellipse, BitString string, smartFlag *bool, pass
 // the pure-crypto Elliptic/ surface.
 func SaveBitString(e *el.Ellipse, BitString, Password string) {
 	var P2 string
-	var Condition bool
 
 	fmt.Println("")
 	fmt.Println("The BitString representing the Private-Key is being saved!")
 
-	// Confirm password
-	for {
+	// F-ERR-001 (audit cycle 2026-05-04, v4.0.1): cap retries at 3 and exit
+	// hard on stdin EOF. The previous unbounded `for {}` loop discarded the
+	// Scanln error, so on closed stdin (CI run, redirected </dev/null, broken
+	// pipe, daemonised invocation) Scanln returned (0, io.EOF) repeatedly,
+	// P2 stayed empty, the comparison failed forever, and the process spun
+	// burning a CPU core. dalos_smoke_test.go:27-31 already documented this
+	// hang; the test harness mitigated it via a 30s context deadline but
+	// production had no guard.
+	const maxAttempts = 3
+	for attempt := 1; ; attempt++ {
 		fmt.Println("Confirm the entered Password by retyping it:")
-		_, _ = fmt.Scanln(&P2)
-		if Password == P2 {
-			Condition = true
-		} else {
-			fmt.Println("Retyped password doesn't match the previous entered password!")
-			Condition = false
+		n, err := fmt.Scanln(&P2)
+		if err != nil && n == 0 {
+			fmt.Fprintln(os.Stderr, "Error: stdin closed before password confirmation could be read.")
+			os.Exit(1)
 		}
-
-		// If confirmed correctly, break the loop
-		if Condition {
+		if Password == P2 {
 			break
+		}
+		fmt.Println("Retyped password doesn't match the previous entered password!")
+		if attempt >= maxAttempts {
+			fmt.Fprintf(os.Stderr, "Error: password confirmation failed %d times. Aborting.\n", maxAttempts)
+			os.Exit(1)
 		}
 	}
 

@@ -41,14 +41,40 @@ func DalosAddressMaker(PublicKey string, SmartOrStandard bool) string {
     }
 }
 
+// PublicKeyToAddress derives a 160-character DALOS account address from a
+// public key in canonical "{xLength-base49}.{body-base49}" string form.
+//
+// HARDENING (v4.0.1, audit cycle 2026-05-04, F-ERR-003): the pre-v4.0.1
+// implementation had two latent crash/silent-corruption vectors:
+//
+//   1. `SplitString[1]` with no length check → index-out-of-range panic
+//      on any input lacking the dot separator.
+//   2. `(*big.Int).SetString(_, 49)` with the `ok` return discarded →
+//      malformed base-49 input (e.g., a truncated wallet PUBL field, a
+//      misplaced separator) silently produced an undefined big.Int that
+//      flowed through the seven-fold Blake3 chain into a "valid-looking"
+//      160-character address bearing no relation to any real key.
+//
+// Post-v4.0.1 contract: panic on malformed input (matches the FP-001 /
+// PO-3 / KG-3 fail-fast convention — a corrupted PUBL is an
+// internal-consistency violation, not a recoverable user-input error,
+// and silently returning garbage from an address-deriving function is
+// strictly worse than crashing loudly). The TS port's
+// `publicKeyToAddress` (`ts/src/gen1/hashing.ts:255-266`) throws on the
+// same conditions; this brings Go ↔ TS parity.
 func PublicKeyToAddress(PublicKey string) string {
     //From the PublicKey string, the Prefix is removed in order to obtain the PublicKeyInt
     //as in integer in Base49
-    var PublicKeyIntDecimal = new(big.Int)
     SplitString := strings.Split(PublicKey, ".")
+    if len(SplitString) != 2 {
+        panic(fmt.Sprintf("PublicKeyToAddress: malformed public key (expected exactly 1 \".\", got %d): %q", len(SplitString)-1, PublicKey))
+    }
     PublicKeyIntStr := SplitString[1] //Public Key as a Number in Base 49 in the form of a string
-    
-    PublicKeyIntDecimal.SetString(PublicKeyIntStr, 49)
+
+    PublicKeyIntDecimal, err := ConvertBase49toBase10(PublicKeyIntStr)
+    if err != nil {
+        panic(fmt.Sprintf("PublicKeyToAddress: malformed base-49 body: %v", err))
+    }
     Address := DalosAddressComputer(PublicKeyIntDecimal)
     return Address
 }
@@ -88,14 +114,34 @@ func ConvertToLetters(hash []byte) string {
     return strings.Join(SliceStr, "")
 }
 
+// AffineToPublicKey serialises a CoordAffine point to the canonical
+// "{xLength-base49}.{xy-base49}" public-key string format.
+//
+// HARDENING (v4.0.1, audit cycle 2026-05-04, F-ERR-003): added explicit
+// nil-checks on Input.AX and Input.AY at function entry. Pre-v4.0.1, a
+// zero-value CoordAffine (uninitialised struct, or one reaching this
+// function from a buggy caller) would panic obscurely on the first
+// `.String()` call with a generic "runtime error: invalid memory
+// address or nil pointer dereference". The new explicit panic names
+// the function and offending field so the failure mode is debuggable.
+//
+// The `_ = ok` from `SetString(XYString, 10)` is preserved as
+// defense-in-depth: XYString is a concatenation of two big.Int decimal
+// renderings, so SetString cannot fail on a non-nil input. The line is
+// effectively unreachable; if a future refactor breaks the invariant,
+// the resulting nil PublicKeyInteger would crash on `.Text(49)` with a
+// clear stack trace rather than silently produce a wrong address.
 func AffineToPublicKey(Input CoordAffine) string {
+    if Input.AX == nil || Input.AY == nil {
+        panic(fmt.Sprintf("AffineToPublicKey: nil coordinate (AX==nil: %v, AY==nil: %v)", Input.AX == nil, Input.AY == nil))
+    }
     XString := Input.AX.String()                             //X Coordinates as string
     XStringLength := int64(len(XString))                     //Length of the XString
     XStringLengthBig := new(big.Int).SetInt64(XStringLength) //Length of the XString as big.Int
     PublicKeyPrefix := XStringLengthBig.Text(49)             //Converted to Base 49
     //The Public-Key PublicKeyPrefix in Baase 49 is needed to reconstruct
     //The Public Key Affine Coordinates from the PublicKey String
-    
+
     YString := Input.AY.String()
     XYString := XString + YString
     PublicKeyInteger, _ := new(big.Int).SetString(XYString, 10)

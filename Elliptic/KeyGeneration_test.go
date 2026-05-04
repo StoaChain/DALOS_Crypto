@@ -1,6 +1,8 @@
 package Elliptic
 
 import (
+    "math/big"
+    "strings"
     "testing"
 )
 
@@ -44,6 +46,104 @@ func strings1600AllOnes() string {
         out[i] = '1'
     }
     return string(out)
+}
+
+// =============================================================================
+// F-ERR-003 (audit cycle 2026-05-04, v4.0.1):
+// PublicKeyToAddress + AffineToPublicKey panic-on-malformed contract
+// =============================================================================
+//
+// Pre-v4.0.1 these helpers had two latent crash/silent-corruption vectors:
+//   - PublicKeyToAddress: SplitString[1] without length check → obscure
+//     index-out-of-range panic; SetString(_, 49) discarded ok return →
+//     malformed input silently produced a "valid-looking" wrong address.
+//   - AffineToPublicKey: nil AX/AY → obscure nil-pointer-deref panic on
+//     the first .String() call.
+// Post-v4.0.1: explicit panic at function entry naming the offending
+// field/condition. Mirrors the TS port's throws.
+
+// TestPublicKeyToAddress_PanicsOnMissingDot pins the explicit panic for
+// the no-separator case. Pre-v4.0.1 this was an obscure index-out-of-range.
+func TestPublicKeyToAddress_PanicsOnMissingDot(t *testing.T) {
+    defer func() {
+        r := recover()
+        if r == nil {
+            t.Fatalf("expected panic for input with no '.' separator, got none")
+        }
+        msg, ok := r.(string)
+        if !ok {
+            t.Fatalf("expected string panic value, got %T: %v", r, r)
+        }
+        if !strings.Contains(msg, "PublicKeyToAddress") {
+            t.Errorf("panic message should name function; got: %s", msg)
+        }
+        if !strings.Contains(msg, "expected exactly 1") {
+            t.Errorf("panic message should describe expected separator count; got: %s", msg)
+        }
+    }()
+    PublicKeyToAddress("no-dot-separator-anywhere")
+}
+
+// TestPublicKeyToAddress_PanicsOnMultipleDots pins symmetric rejection
+// of inputs with 2+ dots (matches TS port's parts.length !== 2 throw).
+func TestPublicKeyToAddress_PanicsOnMultipleDots(t *testing.T) {
+    defer func() {
+        if recover() == nil {
+            t.Fatalf("expected panic for input with multiple '.' separators, got none")
+        }
+    }()
+    PublicKeyToAddress("a.b.c")
+}
+
+// TestPublicKeyToAddress_PanicsOnInvalidBase49 pins the explicit panic
+// when the body contains chars outside the base-49 alphabet.
+func TestPublicKeyToAddress_PanicsOnInvalidBase49(t *testing.T) {
+    defer func() {
+        r := recover()
+        if r == nil {
+            t.Fatalf("expected panic for input with invalid base-49 body, got none")
+        }
+        msg, ok := r.(string)
+        if !ok {
+            t.Fatalf("expected string panic value, got %T: %v", r, r)
+        }
+        if !strings.Contains(msg, "malformed base-49") {
+            t.Errorf("panic message should mention malformed base-49; got: %s", msg)
+        }
+    }()
+    PublicKeyToAddress("3.abcZZZ") // 'Z' is above 'M' in the base-49 alphabet
+}
+
+// TestAffineToPublicKey_PanicsOnNilCoords pins the explicit panic for
+// uninitialised CoordAffine. Pre-v4.0.1 this was an obscure nil-pointer
+// dereference inside (*big.Int).String().
+func TestAffineToPublicKey_PanicsOnNilCoords(t *testing.T) {
+    cases := []struct {
+        name string
+        in   CoordAffine
+    }{
+        {"both_nil", CoordAffine{}},
+        {"ax_nil", CoordAffine{AY: big.NewInt(1)}},
+        {"ay_nil", CoordAffine{AX: big.NewInt(1)}},
+    }
+    for _, c := range cases {
+        t.Run(c.name, func(t *testing.T) {
+            defer func() {
+                r := recover()
+                if r == nil {
+                    t.Fatalf("expected panic for %s, got none", c.name)
+                }
+                msg, ok := r.(string)
+                if !ok {
+                    t.Fatalf("expected string panic value, got %T: %v", r, r)
+                }
+                if !strings.Contains(msg, "AffineToPublicKey") {
+                    t.Errorf("panic message should name function; got: %s", msg)
+                }
+            }()
+            AffineToPublicKey(c.in)
+        })
+    }
 }
 
 // bs0001InputBitstring is the 1600-bit deterministic-RNG fixture from the

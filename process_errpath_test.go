@@ -53,9 +53,9 @@ func TestProcessIntegerFlag_NoOsExit(t *testing.T) {
 	}
 
 	// Positive assertion: the existing user-facing error message is preserved
-	// verbatim. Drift in wording is a regression for any caller relying on
-	// the message for diagnostics.
-	expectedPrint := `fmt.Println("Error: Invalid private key.")`
+	// (with the v4.0.2 F-MED-016 reason field appended). Drift in wording is
+	// a regression for any caller relying on the message for diagnostics.
+	expectedPrint := `fmt.Println("Error: Invalid private key:", reason)`
 	if !strings.Contains(fnBody, expectedPrint) {
 		t.Errorf("ProcessIntegerFlag must contain the user-facing error print %q", expectedPrint)
 	}
@@ -71,6 +71,11 @@ func TestProcessIntegerFlag_NoOsExit(t *testing.T) {
 // TestProcessIntegerFlag_InvalidBranchShape pins the exact shape of the
 // invalid-input block to the empty-string sentinel pattern. Drift in shape
 // is a regression.
+//
+// v4.0.2 (F-MED-016): the error print now includes the reason returned by
+// ValidatePrivateKey (third return value) — message format:
+//   `fmt.Println("Error: Invalid private key:", reason)`
+// instead of the pre-v4.0.2 generic `fmt.Println("Error: Invalid private key.")`.
 func TestProcessIntegerFlag_InvalidBranchShape(t *testing.T) {
 	src, err := os.ReadFile("process.go")
 	if err != nil {
@@ -79,11 +84,11 @@ func TestProcessIntegerFlag_InvalidBranchShape(t *testing.T) {
 	body := string(src)
 
 	// Sentinel-shape: an `if !isValid` block that prints the canonical error
-	// to stdout and returns "". The pattern uses arbitrary whitespace for
-	// indentation tolerance.
+	// (with reason) to stdout and returns "". The pattern uses arbitrary
+	// whitespace for indentation tolerance.
 	pattern := regexp.MustCompile(
 		`if\s+!isValid\s*\{\s*` +
-			`\n\s*fmt\.Println\("Error:\s+Invalid private key\."\)\s*` +
+			`\n\s*fmt\.Println\("Error:\s+Invalid private key:",\s+reason\)\s*` +
 			`\n\s*return\s+""\s*` +
 			`\n\s*\}`,
 	)

@@ -22,37 +22,45 @@ func isCharInMatrix(char rune, matrix [16][16]rune) bool {
 }
 
 // Function to confirm seed words
-func confirmSeedWords(seedWords []string) {
-    var inputWords []string
-    
+// confirmSeedWords prompts the user to retype the seed words for confirmation.
+// Returns nil on successful match; returns a wrapped error on read failure,
+// count mismatch, or per-word mismatch.
+//
+// F-MED-006 (audit cycle 2026-05-04, v4.0.2): refactored from process-
+// terminating (`os.Exit(1)` from inside the helper) to sentinel-return
+// per the Phase 10 / REQ-31 / v4.0.0 convention. Caller in main() now
+// owns the os.Exit decision. This makes the helper testable in
+// isolation (mock stdin via os.Pipe) and consistent with sibling
+// helpers in process.go that already follow the sentinel pattern.
+func confirmSeedWords(seedWords []string) error {
     fmt.Println("Please retype the seed words to confirm (separated by spaces):")
-    
+
+    inputWords := make([]string, 0, len(seedWords))
+
     // Using fmt.Scan to read all words (space-separated) into inputWords
     for i := 0; i < len(seedWords); i++ {
         var word string
         _, err := fmt.Scan(&word)
         if err != nil {
-            fmt.Println("Error reading input:", err)
-            os.Exit(1)
+            return fmt.Errorf("reading input word %d: %w", i+1, err)
         }
         inputWords = append(inputWords, word)
     }
-    
+
     // Check if the number of input words matches the original
     if len(inputWords) != len(seedWords) {
-        fmt.Println("Error: Number of seed words does not match.")
-        os.Exit(1)
+        return fmt.Errorf("number of seed words does not match (expected %d, got %d)", len(seedWords), len(inputWords))
     }
-    
+
     // Check each seed word
     for i, word := range seedWords {
         if word != inputWords[i] {
-            fmt.Printf("Error: Seed word '%s' does not match '%s'.\n", word, inputWords[i])
-            os.Exit(1)
+            return fmt.Errorf("seed word %d (%q) does not match %q", i+1, word, inputWords[i])
         }
     }
-    
+
     fmt.Println("Seed words confirmed successfully.")
+    return nil
 }
 
 func main() {
@@ -80,8 +88,29 @@ func main() {
     // Sub-options for generating an account
     smartFlag := flag.Bool("smart", false, "Generates a Smart DALOS Account")
     
-    // Password flag for encryption
-    passwordFlag := flag.String("p", "", "Password to encrypt or decrypt the private key (required for key generation)")
+    // Password flag for encryption.
+    //
+    // F-MED-002 (audit cycle 2026-05-04, v4.0.2): the `-p PASSWORD` form
+    // leaks via shell history, /proc/PID/cmdline, `ps -ef`, auditd, and
+    // container logs. The proper fix is interactive `term.ReadPassword`
+    // — but that requires `golang.org/x/term` which would break this
+    // package's "no external deps" invariant (see CLAUDE.md "Common
+    // commands" → "go1.19, no external deps"). The CLI is documented
+    // as a developer convenience, NOT for production wallet management
+    // (production consumers use OuronetUI which has its own secure
+    // input pipeline). Scope-decision: keep `-p` as the only password
+    // input mechanism; document the limitation.
+    //
+    // F-MED-004 (audit cycle 2026-05-04, v4.0.2): added 16-character
+    // minimum length validation. Combined with the documented AES-2
+    // single-pass-Blake3 KDF (no salt, no iterations), passwords below
+    // ~12 chars are GPU-brute-forceable in days. 16 chars at ~70-char
+    // alphabet gives ~3.3e29 combinations → safe against any realistic
+    // attacker even without KDF strengthening. Note: this validation
+    // is only applied when generating new wallets (-g flag); decrypt
+    // operations (-open, -sign) accept any-length password since the
+    // user is recovering an existing wallet that may predate this rule.
+    passwordFlag := flag.String("p", "", "Password to encrypt or decrypt the private key (required for key generation; min 16 chars; visible in shell history — for production keys use OuronetUI)")
     // Message flag containing the Message to be signed or verified
     messageFlag := flag.String("m", "", "Contains the Message to be signed or verified")
     // Public flag containing a Public Key to be used for signature verification
@@ -120,19 +149,59 @@ func main() {
             fmt.Println("Error: One of -raw, -bits, -seed, -i10, or -i49 must be provided when using -g.")
             os.Exit(1)
         }
+        // F-MED-001 (audit cycle 2026-05-04, v4.0.2): reject mutually-exclusive
+        // input-method combinations BEFORE dispatch. Pre-fix, multiple input
+        // flags (e.g. `-g -raw -bits 0101...`) executed both branches as
+        // separate `if` statements, generating + printing + attempting to save
+        // TWO unrelated wallets in a single invocation. Now exactly ONE input
+        // method must be selected; the dispatch below uses else-if for
+        // defense-in-depth.
+        inputMethodCount := 0
+        if *rawFlag {
+            inputMethodCount++
+        }
+        if *bitFlag != "" {
+            inputMethodCount++
+        }
+        if *seedFlag > 0 {
+            inputMethodCount++
+        }
+        if *intaFlag != "" {
+            inputMethodCount++
+        }
+        if *intbFlag != "" {
+            inputMethodCount++
+        }
+        if inputMethodCount > 1 {
+            fmt.Println("Error: -raw, -bits, -seed, -i10, and -i49 are mutually exclusive — pick exactly one input method per invocation.")
+            os.Exit(1)
+        }
         // Validate that the -p (password) flag is provided
         if *passwordFlag == "" {
             fmt.Println("Error: -p (password) flag is required when using -g Flag.")
             os.Exit(1)
         }
+        // F-MED-004 (v4.0.2): minimum password-strength validation. See
+        // the passwordFlag declaration block above for the full rationale
+        // (AES-2 single-pass-Blake3 KDF + GPU-brute-force resistance math).
+        const minPasswordChars = 16
+        if len(*passwordFlag) < minPasswordChars {
+            fmt.Fprintf(os.Stderr,
+                "Error: -p password must be at least %d characters long (got %d). "+
+                    "DALOS uses single-pass Blake3 KDF without salt; weak passwords are GPU-brute-forceable.\n",
+                minPasswordChars, len(*passwordFlag))
+            os.Exit(1)
+        }
+        // F-MED-001 (v4.0.2): converted to else-if dispatch so a future
+        // contributor adding a 6th input method doesn't accidentally
+        // re-introduce the multi-fire bug.
         // Proceed with the key generation logic -raw Flag
         if *rawFlag {
             fmt.Println("Generating Key-Pair from random bits...")
             RandomBits := DalosEllipse.GenerateRandomBitsOnCurve()
             ProcessKeyGeneration(&DalosEllipse, RandomBits, smartFlag, *passwordFlag)
-        }
         // If -seed is used, validate that the correct number of seed words are provided
-        if *seedFlag > 0 {
+        } else if *seedFlag > 0 {
             seedCount := *seedFlag
             seedWords := flag.Args()
             // Validate seed count
@@ -165,18 +234,21 @@ func main() {
                 }
             }
             fmt.Println("Seed Words are valid. Proceeding with Key-Pair generation from Seed Words.")
-            // Seed words confirmation if -safe flag is used
+            // Seed words confirmation if -safe flag is used.
+            // F-MED-006 (v4.0.2): confirmSeedWords now returns error;
+            // CLI driver owns the os.Exit decision.
             if *safeFlag {
-                confirmSeedWords(seedWords)
+                if err := confirmSeedWords(seedWords); err != nil {
+                    fmt.Fprintln(os.Stderr, "Error:", err)
+                    os.Exit(1)
+                }
             }
             // Call the key generation logic using the valid seed words
             BitString := DalosEllipse.SeedWordsToBitString(seedWords)
             ProcessKeyGeneration(&DalosEllipse, BitString, smartFlag, *passwordFlag)
-        }
-        
         // Handle other generation methods (e.g., -bits, -i10, -i49) here...
         // Proceed with the key generation logic -bits Flag
-        if *bitFlag != "" {
+        } else if *bitFlag != "" {
             fmt.Println("Generating Key-Pair from specific bits...")
             // Validate the provided bit string using the ValidateBitString function
             TotalBoolean, LengthBoolean, StructureBoolean := DalosEllipse.ValidateBitString(*bitFlag)
@@ -195,9 +267,7 @@ func main() {
             // Proceed with processing the bit string since validation passed
             BitString := *bitFlag
             ProcessKeyGeneration(&DalosEllipse, BitString, smartFlag, *passwordFlag)
-        }
-        
-        if *intaFlag != "" {
+        } else if *intaFlag != "" {
             fmt.Println("Generating key pair from string representing an integer in base 10...")
             BitString := ProcessIntegerFlag(&DalosEllipse, *intaFlag, true)
             if BitString == "" {
@@ -205,8 +275,7 @@ func main() {
                 os.Exit(1)
             }
             ProcessKeyGeneration(&DalosEllipse, BitString, smartFlag, *passwordFlag)
-        }
-        if *intbFlag != "" {
+        } else if *intbFlag != "" {
             fmt.Println("Generating key pair from string representing an integer in base 49...")
             BitString := ProcessIntegerFlag(&DalosEllipse, *intbFlag, false)
             if BitString == "" {
@@ -215,7 +284,7 @@ func main() {
             }
             ProcessKeyGeneration(&DalosEllipse, BitString, smartFlag, *passwordFlag)
         }
-        
+
     } else if *convertFlag {
         // Handle the key conversion cases
         if *bitConvFlag != "" {

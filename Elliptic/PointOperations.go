@@ -45,7 +45,12 @@ type EllipseMethods interface {
     SeedWordsToBitString(SeedWords []string) string
     ConvertHashToBitString(Hash []byte) string
     ValidateBitString(BitString string) (bool, bool, bool)
-    ValidatePrivateKey(privateKey string, isBase10 bool) (bool, string)
+    // F-MED-016 (v4.0.2): added third return for failure reason. The
+    // pre-v4.0.2 (bool, string) signature had `fmt.Println` calls
+    // inside the implementation that violated the Phase 10 / REQ-31
+    // pure-crypto invariant on this package. Reason now returned to
+    // the caller; callers render diagnostics themselves.
+    ValidatePrivateKey(privateKey string, isBase10 bool) (valid bool, bitString string, reason string)
     GenerateScalarFromBitString(BitString string) (*big.Int, error)
     ScalarToKeys(Scalar *big.Int) (DalosKeyPair, error)
     ScalarToPrivateKey(Scalar *big.Int) (DalosPrivateKey, error)

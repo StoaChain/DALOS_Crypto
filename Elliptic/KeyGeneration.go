@@ -250,11 +250,23 @@ func (e *Ellipse) ValidateBitString(BitString string) (bool, bool, bool) {
 
 // ValidatePrivateKey checks if the given private key as big.Int string meets the specified conditions.
 // The input can be in either base 10 (when isBase10 is true) or base 49 (when isBase10 is false).
-// It returns a boolean indicating validity and its BitString.
-func (e *Ellipse) ValidatePrivateKey(privateKey string, isBase10 bool) (bool, string) {
+// Returns (valid, bitString, reason):
+//   - valid: true if all checks pass
+//   - bitString: the trimmed middle bit-string on success, "" on failure
+//   - reason: empty on success, descriptive failure reason on validation rejection
+//
+// HARDENING (v4.0.2, audit cycle 2026-05-04, F-MED-016): the pre-v4.0.2
+// implementation called `fmt.Println` from inside this method, breaking
+// the Phase 10 / REQ-31 pure-crypto invariant on the Elliptic/ package
+// (library code must not write to stdout — non-CLI consumers cannot
+// suppress those prints). Refactored to surface the failure reason via
+// a third return value; callers (process.go, ScalarToPrivateKey)
+// render the reason themselves. Mirrors the TS port's `validateBitmap`
+// `{ valid, reason? }` shape (per `ts/src/gen1/bitmap.ts`).
+func (e *Ellipse) ValidatePrivateKey(privateKey string, isBase10 bool) (valid bool, bitString string, reason string) {
     var binaryKey string
     PK := new(big.Int)
-    
+
     // Convert the private key to binary string representation
     if isBase10 {
         PK.SetString(privateKey, 10)
@@ -263,32 +275,29 @@ func (e *Ellipse) ValidatePrivateKey(privateKey string, isBase10 bool) (bool, st
         PK.SetString(privateKey, 49)
         binaryKey = PK.Text(2) // Convert the Big.Int to binary string
     }
-    
+
     // Check if the first character is '1'
     if len(binaryKey) == 0 || binaryKey[0] != '1' {
-        fmt.Println("Invalid Private Key: Its Binary Representation does not have 1 as first Digit")
-        return false, ""
+        return false, "", "binary representation does not have '1' as first digit"
     }
-    
+
     // Get the binary representation of the cofactor
     cofactorBinary := e.R.Text(2)
-    
+
     // Check if the last two digits match the last two digits of the cofactor's binary representation
     if len(binaryKey) < 2 || binaryKey[len(binaryKey)-2:] != cofactorBinary[len(cofactorBinary)-2:] {
-        fmt.Println("Invalid Private Key: Its binary representation does not match the Ellipse Cofactor with its last ", len(cofactorBinary)-1, " digits, which must be zero")
-        return false, ""
+        return false, "", fmt.Sprintf("binary representation does not match the Ellipse cofactor with its last %d digits (must be zero)", len(cofactorBinary)-1)
     }
-    
+
     // Check the length of the middle part
     middleLength := len(binaryKey) - len(cofactorBinary) // Exclude first and last digits
     if uint32(middleLength) != e.S {
-        fmt.Println("Invalid Private Key: Its Core Binary representation must be ", e.S, " digits long.")
-        return false, ""
+        return false, "", fmt.Sprintf("core binary representation must be %d digits long (got %d)", e.S, middleLength)
     }
-    
+
     // Extract and return the BitString (the middle part)
-    bitString := binaryKey[1 : len(binaryKey)-(len(cofactorBinary)-1)] // Trim the first and last parts
-    return true, bitString
+    bitString = binaryKey[1 : len(binaryKey)-(len(cofactorBinary)-1)] // Trim the first and last parts
+    return true, bitString, ""
 }
 
 //Private Key can be represented as:
@@ -343,8 +352,11 @@ func (e *Ellipse) ScalarToPrivateKey(Scalar *big.Int) (DalosPrivateKey, error) {
     ScalarAsStringAkaPrivateKeyInDecimal := Scalar.Text(10)
     
     // Validate the private key
-    isValid, BitString := e.ValidatePrivateKey(ScalarAsStringAkaPrivateKeyInDecimal, true)
-    
+    // F-MED-016 (v4.0.2): ValidatePrivateKey now returns reason as the
+    // third value; we wrap it into the error message so callers see
+    // the specific failure cause instead of the pre-fix stdout print.
+    isValid, BitString, reason := e.ValidatePrivateKey(ScalarAsStringAkaPrivateKeyInDecimal, true)
+
     // Only proceed if the key is valid
     if isValid {
         Output.BitString = BitString   // Middle part of the representation
@@ -352,9 +364,9 @@ func (e *Ellipse) ScalarToPrivateKey(Scalar *big.Int) (DalosPrivateKey, error) {
         Output.Int49 = Scalar.Text(49) // Base 49 representation
         return Output, nil             // Success case
     }
-    
-    // Return an error if validation fails
-    return Output, fmt.Errorf("invalid private key: does not meet validation criteria")
+
+    // Return an error if validation fails (reason from ValidatePrivateKey).
+    return Output, fmt.Errorf("invalid private key: %s", reason)
 }
 
 func (e *Ellipse) ScalarToPublicKey(Scalar *big.Int) string {

@@ -16,10 +16,16 @@ import (
 // types). Empty-string sentinel preserved (KG-2 hardening — never
 // terminates the process; no os.Exit).
 func ProcessIntegerFlag(e *el.Ellipse, flagValue string, isBase10 bool) string {
-	// Validate the private key
-	isValid, BitString := e.ValidatePrivateKey(flagValue, isBase10)
+	// Validate the private key.
+	// F-MED-016 (v4.0.2): ValidatePrivateKey now returns reason as
+	// the third value; print it so users see specific failure cause
+	// instead of the pre-fix generic "Error: Invalid private key."
+	// (the diagnostic detail used to be in fmt.Println calls inside
+	// ValidatePrivateKey itself, which violated the Phase 10 pure-
+	// crypto invariant on Elliptic/).
+	isValid, BitString, reason := e.ValidatePrivateKey(flagValue, isBase10)
 	if !isValid {
-		fmt.Println("Error: Invalid private key.")
+		fmt.Println("Error: Invalid private key:", reason)
 		return ""
 	}
 	return BitString

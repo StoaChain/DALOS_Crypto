@@ -40,7 +40,10 @@ func TestCLI_InvalidIntegerFlag_ExitsNonZeroWithError(t *testing.T) {
     ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
     defer cancel()
 
-    cmd := exec.CommandContext(ctx, "go", "run", ".", "-g", "-i10", "not_an_integer", "-p", "test")
+    // F-MED-004 (v4.0.2): password must be >= 16 chars to satisfy the
+    // new strength gate. Use a 20-char placeholder so the gate doesn't
+    // fire BEFORE the -i10 validation we're actually testing here.
+    cmd := exec.CommandContext(ctx, "go", "run", ".", "-g", "-i10", "not_an_integer", "-p", "test-password-1234567")
     out, err := cmd.CombinedOutput()
 
     if ctx.Err() == context.DeadlineExceeded {
@@ -55,7 +58,10 @@ func TestCLI_InvalidIntegerFlag_ExitsNonZeroWithError(t *testing.T) {
     }
 
     output := string(out)
-    const wantInvalidPK = "Error: Invalid private key."
+    // F-MED-016 (v4.0.2): error message now includes the validation reason
+    // returned by ValidatePrivateKey. Pin the prefix portion that's stable
+    // across reasons; reason text varies depending on which check fired.
+    const wantInvalidPK = "Error: Invalid private key:"
     if !strings.Contains(output, wantInvalidPK) {
         t.Errorf("subprocess output missing %q\n  got: %s", wantInvalidPK, output)
     }
@@ -83,9 +89,12 @@ func TestCLI_SeedWord_TooLong_ExitsWithError(t *testing.T) {
 
     // -seed reads positional args via flag.Args() AFTER all flags are
     // parsed, so -p must precede the positional seed words.
+    // F-MED-004 (v4.0.2): password must be >= 16 chars to satisfy the
+    // strength gate. Use 20-char placeholder so we test the seed-word
+    // length validator, not the password length.
     longWord := strings.Repeat("a", 257)
     cmd := exec.CommandContext(ctx, "go", "run", ".", "-g", "-seed", "4",
-        "-p", "test", longWord, "valid", "more", "words")
+        "-p", "test-password-1234567", longWord, "valid", "more", "words")
     out, err := cmd.CombinedOutput()
 
     if ctx.Err() == context.DeadlineExceeded {

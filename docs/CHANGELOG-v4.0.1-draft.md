@@ -256,7 +256,7 @@ curve-specific dimension parameters that don't belong at this layer.
 
 #### F-PERF-001 — Cofactor `[4]·R` and `[4]·P` via two HWCD doublings instead of `ScalarMultiplier(4, _)`
 
-Commit `<TBD>`. **Real perf win, no behavior change, byte-identity preserved.**
+Commit `67d7a35`. **Real perf win, no behavior change, byte-identity preserved.**
 
 Inside `SchnorrVerify` (and its TS twin in both sync + async forms),
 the cofactor security check multiplies `R` and `P` by 4 to confirm
@@ -529,7 +529,7 @@ pending user judgment.
 | 12f7918 | (meta)     | Backfill cumulative table for F-API-005 + meta entry                           |
 | 624d71b | F-API-006  | Bitmap.ValidateBitmap Godoc no longer claims work it doesn't do                |
 | 2ed2a94 | (meta)     | Backfill F-API-006 commit hash                                                 |
-| TBD     | F-PERF-001 | Cofactor [4]·R/[4]·P via two HWCD doublings (Go + TS sync + TS async)          |
+| 67d7a35 | F-PERF-001 | Cofactor [4]·R/[4]·P via two HWCD doublings (Go + TS sync + TS async)          |
 
 ---
 

@@ -47,9 +47,19 @@ const (
 // non-empty line as its body. Decouples parsing from Fprintln's implicit
 // newline behaviour and from incidental trailing whitespace; rejects
 // non-wallet files at the header-presence check before reaching AES.
+//
+// HARDENING (v4.0.2, audit cycle 2026-05-04, F-MED-009): the pre-v4.0.2
+// implementation emitted "DALOS Keys are being opened!" and "Public Key
+// verification successful!" to stdout from inside this library function.
+// After the v4.0.0 carve-out made `keystore` a standalone consumable
+// package, those prints became a contract violation: server / GUI /
+// JSON-pipe consumers couldn't suppress them. Removed both. The CLI
+// driver in Dalos.go now owns these breadcrumb prints around its
+// `keystore.ImportPrivateKey(...)` call sites — the print-then-call
+// and call-then-print pattern matches the broader "library returns
+// data, CLI prints chrome" architectural boundary.
 func ImportPrivateKey(e *el.Ellipse, PathWithName, Password string) (el.DalosKeyPair, error) {
 	var Output el.DalosKeyPair
-	fmt.Println("DALOS Keys are being opened!")
 
 	// Read the file content using os.ReadFile
 	fileContent, err := os.ReadFile(PathWithName)
@@ -110,7 +120,9 @@ func ImportPrivateKey(e *el.Ellipse, PathWithName, Password string) (el.DalosKey
 		return Output, errors.New("computed public key does not match the public key in the file")
 	}
 
-	fmt.Println("Public Key verification successful!")
+	// F-MED-009 (v4.0.2): "Public Key verification successful!" stdout
+	// print removed from this library function. The CLI driver now
+	// emits this breadcrumb around its successful return.
 	Output = GeneratedDalosKeyPair
 	// Return the decrypted bit string
 	return Output, nil

@@ -1,6 +1,7 @@
 package Elliptic
 
 import (
+    "DALOS_Crypto/Bitmap"
     "errors"
     "fmt"
     "math/big"
@@ -55,7 +56,24 @@ type EllipseMethods interface {
     ScalarToKeys(Scalar *big.Int) (DalosKeyPair, error)
     ScalarToPrivateKey(Scalar *big.Int) (DalosPrivateKey, error)
     ScalarToPublicKey(Scalar *big.Int) string
-    
+    // F-MED-020 (v4.0.2): GenerateFromBitmap (the 6th key-generation
+    // input path, added v1.2.0) was missing from EllipseMethods —
+    // Phase 11 compile-time conformance assertion (assertions.go:20)
+    // only enforces *Ellipse ⊇ EllipseMethods, not the inverse, so the
+    // omission was undetected for two minor releases. Consumers
+    // dispatching through the interface type couldn't call
+    // GenerateFromBitmap. Added now to align the interface with the
+    // public surface.
+    //
+    // SCOPE: signature takes a hardcoded 40×40 = 1600-bit DALOS bitmap
+    // (per F-TEST-002, per-curve dimensioning is a consumer-side
+    // concern; see OuronetUI's src/lib/dalos/bitmap-local.ts for the
+    // reshape pattern that lets a single 40×40 visual input feed
+    // curves of varying bit-widths). The Bitmap import is the first
+    // dependency this package takes on Bitmap; previously only the
+    // *Ellipse method body referenced it.
+    GenerateFromBitmap(b Bitmap.Bitmap) (DalosKeyPair, error)
+
     // VII Wallet I/O — moved to ../keystore/ in v4.0.0 (Phase 10, REQ-31).
     //                  See ../keystore/{export,import,decrypt,filename}.go.
 

@@ -152,7 +152,15 @@ export {
   schnorrSignAsync,
   schnorrVerifyAsync,
 } from './schnorr.js';
-export { SchnorrSignError } from './errors.js';
+// F-MED-008 (v4.0.2): typed exception classes for the gen1 surface.
+// Consumers catch by class via `instanceof` checks; see ./errors.ts
+// docstring for the catch-by-class pattern.
+export {
+  InvalidBitStringError,
+  InvalidBitmapError,
+  InvalidPrivateKeyError,
+  SchnorrSignError,
+} from './errors.js';
 
 // Ergonomic plain-string aliases (Phase 12 / v3.0.3+)
 export {

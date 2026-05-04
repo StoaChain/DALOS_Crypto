@@ -319,12 +319,16 @@ func main() {
             os.Exit(1)
         }
         
-        // Call the ImportPrivateKey function
+        // F-MED-009 (v4.0.2): breadcrumb prints relocated from
+        // keystore.ImportPrivateKey (library purity restored). CLI
+        // owns chrome; library returns data.
+        fmt.Println("DALOS Keys are being opened!")
         ReadKeyPair, err := keystore.ImportPrivateKey(&DalosEllipse, *openFlag, *passwordFlag)
         if err != nil {
             log.Fatalf("Error opening wallet: %v", err)
         }
-        
+        fmt.Println("Public Key verification successful!")
+
         //Print the Private Key on Screen
         BitString := ProcessIntegerFlag(&DalosEllipse, ReadKeyPair.PRIV, false)
         if BitString == "" {
@@ -343,12 +347,16 @@ func main() {
             os.Exit(1)
         }
         
-        // Call the ImportPrivateKey function
+        // F-MED-009 (v4.0.2): breadcrumb prints relocated from
+        // keystore.ImportPrivateKey (library purity restored). CLI
+        // owns chrome; library returns data.
+        fmt.Println("DALOS Keys are being opened!")
         ReadKeyPair, err := keystore.ImportPrivateKey(&DalosEllipse, *signFlag, *passwordFlag)
         if err != nil {
             log.Fatalf("Error opening wallet: %v", err)
         }
-        
+        fmt.Println("Public Key verification successful!")
+
         //Print the Signature on screen
         // F-API-005 (v4.0.1): SchnorrSign returns (string, error) instead
         // of silently returning "" on internal failure. CLI behaviour:

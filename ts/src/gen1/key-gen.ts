@@ -70,6 +70,11 @@
 import type { Bitmap } from './bitmap.js';
 import { bitmapToBitString, validateBitmap } from './bitmap.js';
 import { DALOS_ELLIPSE, type Ellipse, extended2Affine } from './curve.js';
+import {
+  InvalidBitStringError,
+  InvalidBitmapError,
+  InvalidPrivateKeyError,
+} from './errors.js';
 import { affineToPublicKey, dalosAddressMaker, seedWordsToBitString } from './hashing.js';
 import {
   bigIntToBase49,
@@ -308,7 +313,10 @@ export function generateScalarFromBitString(bitString: string, e: Ellipse = DALO
   // `${reason ? ` (${reason})` : ''}` placeholder that was always undefined.
   const v = validateBitString(bitString, e);
   if (!v.valid) {
-    throw new Error(
+    // F-MED-008 (v4.0.2): typed error so consumers can `catch (e) { if
+    // (e instanceof InvalidBitStringError) ... }` instead of message-
+    // string sniffing.
+    throw new InvalidBitStringError(
       `generateScalarFromBitString: invalid bitstring (length ${bitString.length}, expected ${e.s}): ${v.reason ?? 'unknown validation failure'}`,
     );
   }
@@ -332,7 +340,10 @@ export function scalarToPrivateKey(scalar: bigint, e: Ellipse = DALOS_ELLIPSE): 
   const int10 = scalar.toString(10);
   const v = validatePrivateKey(int10, 10, e);
   if (!v.valid) {
-    throw new Error(`scalarToPrivateKey: invalid scalar (${v.reason ?? 'unknown'})`);
+    // F-MED-008 (v4.0.2): typed error.
+    throw new InvalidPrivateKeyError(
+      `scalarToPrivateKey: invalid scalar (${v.reason ?? 'unknown'})`,
+    );
   }
   return {
     bitString: v.bitString,
@@ -440,7 +451,10 @@ export function fromBitString(bitString: string, e: Ellipse = DALOS_ELLIPSE): Da
 export function fromIntegerBase10(n: string, e: Ellipse = DALOS_ELLIPSE): DalosFullKey {
   const v = validatePrivateKey(n, 10, e);
   if (!v.valid) {
-    throw new Error(`fromIntegerBase10: invalid private key (${v.reason ?? 'unknown'})`);
+    // F-MED-008 (v4.0.2): typed error.
+    throw new InvalidPrivateKeyError(
+      `fromIntegerBase10: invalid private key (${v.reason ?? 'unknown'})`,
+    );
   }
   return fullKeyFromBitString(v.bitString, e);
 }
@@ -455,7 +469,10 @@ export function fromIntegerBase10(n: string, e: Ellipse = DALOS_ELLIPSE): DalosF
 export function fromIntegerBase49(n: string, e: Ellipse = DALOS_ELLIPSE): DalosFullKey {
   const v = validatePrivateKey(n, 49, e);
   if (!v.valid) {
-    throw new Error(`fromIntegerBase49: invalid private key (${v.reason ?? 'unknown'})`);
+    // F-MED-008 (v4.0.2): typed error.
+    throw new InvalidPrivateKeyError(
+      `fromIntegerBase49: invalid private key (${v.reason ?? 'unknown'})`,
+    );
   }
   return fullKeyFromBitString(v.bitString, e);
 }
@@ -491,7 +508,8 @@ export function fromSeedWords(words: readonly string[], e: Ellipse = DALOS_ELLIP
 export function fromBitmap(b: Bitmap, e: Ellipse = DALOS_ELLIPSE): DalosFullKey {
   const v = validateBitmap(b);
   if (!v.valid) {
-    throw new Error(`fromBitmap: ${v.reason ?? 'invalid bitmap'}`);
+    // F-MED-008 (v4.0.2): typed error.
+    throw new InvalidBitmapError(`fromBitmap: ${v.reason ?? 'invalid bitmap'}`);
   }
   return fullKeyFromBitString(bitmapToBitString(b), e);
 }

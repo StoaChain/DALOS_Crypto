@@ -256,7 +256,7 @@ curve-specific dimension parameters that don't belong at this layer.
 
 #### F-TEST-003 — `keystore.AESDecrypt` + `ImportPrivateKey` direct tests + flaky-roundtrip fix
 
-Commit `<TBD>`. **Test additions + a fix for pre-existing flakiness in F-API-004's roundTripFixture. No production code changes. No byte-identity risk.**
+Commit `f906556`. **Test additions + a fix for pre-existing flakiness in F-API-004's roundTripFixture. No production code changes. No byte-identity risk.**
 
 Pre-v4.0.1 the keystore package's public `AESDecrypt` function had ZERO direct tests; it was exercised transitively via `ImportPrivateKey`'s round-trip tests. Specific failure modes (wrong password, malformed ciphertext, post-F-ERR-002 base-49 validation, empty input, too-short ciphertext) weren't pinned. `ImportPrivateKey` itself had round-trip + parser-rejection coverage from F-API-004 but lacked file-not-found and wrong-password unhappy-path tests.
 
@@ -753,7 +753,7 @@ pending user judgment.
 | 32eb2c0 | (meta)     | Backfill F-TEST-001 commit hash                                                |
 | 7ffb43e | F-TEST-002 | Bitmap package: scope docs (Go+TS) + Bitmap_test.go (9 tests, 30+ sub-cases)   |
 | 23efdbf | (meta)     | Backfill F-TEST-002 commit hash                                                |
-| TBD     | F-TEST-003 | keystore.AESDecrypt + ImportPrivateKey tests + roundTripFixture flake fix      |
+| f906556 | F-TEST-003 | keystore.AESDecrypt + ImportPrivateKey tests + roundTripFixture flake fix      |
 
 ---
 

@@ -256,7 +256,7 @@ curve-specific dimension parameters that don't belong at this layer.
 
 #### F-INT-002 — `ts-publish.yml` race conditions hardened
 
-Commit `<TBD>`. **CI/release-pipeline change. No code changes. No byte-identity risk.**
+Commit `a4739d4`. **CI/release-pipeline change. No code changes. No byte-identity risk.**
 
 The TS release pipeline had two real race conditions, one of which you observed during the v4.0.0 release:
 
@@ -644,7 +644,7 @@ pending user judgment.
 | 46e3c2e | (meta)     | Backfill F-PERF-001 commit hash                                                |
 | d8a76d8 | F-PERF-003/004 | ArePointsEqual + IsOnCurve via projective coords (Go + TS) — proof-tested  |
 | 8ea2c82 | (meta)     | Backfill F-PERF-003 commit hash                                                |
-| TBD     | F-INT-002+004 | ts-publish.yml: concurrency guard + Node 20/22/24 matrix gates + ts-v4.0.0 backfill |
+| a4739d4 | F-INT-002+004 | ts-publish.yml: concurrency guard + Node 20/22/24 matrix gates + ts-v4.0.0 backfill |
 
 ---
 

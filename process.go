@@ -183,5 +183,13 @@ func SaveBitString(e *el.Ellipse, BitString, Password string) {
 	}
 
 	// Export the private key using the confirmed password (cross-package call)
-	keystore.ExportPrivateKey(e, BitString, Password)
+	// F-ERR-005 (audit cycle 2026-05-04, v4.0.1): keystore.ExportPrivateKey
+	// now returns an error on disk-full / partial-write / sync / close
+	// failures. CLI behaviour: print to stderr + os.Exit(1). Without this
+	// guard a wallet write that silently truncates would have left the
+	// user with an unimportable file and no diagnostic.
+	if err := keystore.ExportPrivateKey(e, BitString, Password); err != nil {
+		fmt.Fprintln(os.Stderr, "Error: wallet export failed:", err)
+		os.Exit(1)
+	}
 }

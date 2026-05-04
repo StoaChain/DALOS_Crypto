@@ -8,11 +8,45 @@ import (
 	"strings"
 )
 
+// Canonical wallet-file header strings. These match the lines emitted
+// by ExportPrivateKey verbatim — header-anchored parsing in
+// ImportPrivateKey (F-API-004, v4.0.1) locates the encrypted-PK and
+// public-key bodies by these markers rather than by hard-coded line
+// indices, so the import survives CRLF / trailing-newline / extra-
+// blank-line drift.
+//
+// If you ever change the strings emitted by ExportPrivateKey, update
+// these constants in lockstep — they form the wallet-file contract.
+const (
+	headerEncryptedPrivateKey = "Your DALOS Account PrivateKey in encrypted form is:"
+	headerPublicKey           = "Your DALOS Account PublicKey:"
+)
+
 // ImportPrivateKey decrypts the private key, verifies the public key,
 // and returns a Dalos Key Pair re-derived through the Genesis pipeline.
 //
 // v4.0.0 carve-out (Phase 10, REQ-31): moved verbatim from
 // Elliptic/KeyGeneration.go. Receiver-to-first-parameter rewrite.
+//
+// HARDENING (v4.0.1, audit cycle 2026-05-04, F-API-004): the pre-v4.0.1
+// reader split the file content on "\n" and demanded EXACTLY 12
+// elements, then trusted lines[2] (encrypted PK) and lines[5] (public
+// key) by positional index. This was brittle in two ways:
+//  1. CRLF normalisation (Windows clipboard, email transport, git's
+//     core.autocrlf=true) replaced "\n" with "\r\n", leaving each split
+//     part \r-terminated. Combined with any tool that "ensures final
+//     newline" the count drifted off 12 → import rejected with the
+//     generic "invalid file format" message → user with no recourse
+//     other than manually editing whitespace.
+//  2. No header validation — a malicious 12-line file (no need for valid
+//     headers) could be fed to attempt password decrypt against lines[2],
+//     turning the import surface into a brute-force oracle.
+//
+// Post-v4.0.1: header-anchored parsing. Walk the file lines (after CR
+// trimming), locate each canonical header by content, take the next
+// non-empty line as its body. Decouples parsing from Fprintln's implicit
+// newline behaviour and from incidental trailing whitespace; rejects
+// non-wallet files at the header-presence check before reaching AES.
 func ImportPrivateKey(e *el.Ellipse, PathWithName, Password string) (el.DalosKeyPair, error) {
 	var Output el.DalosKeyPair
 	fmt.Println("DALOS Keys are being opened!")
@@ -23,16 +57,26 @@ func ImportPrivateKey(e *el.Ellipse, PathWithName, Password string) (el.DalosKey
 		return Output, err
 	}
 
-	// Extract the lines from the file content
-	lines := strings.Split(string(fileContent), "\n")
-	if len(lines) != 12 {
-		return Output, errors.New("invalid file format")
+	// Extract + normalise the lines. Strip \r per-line so CRLF-saved
+	// files import correctly. Strip surrounding whitespace so trailing
+	// blanks and indented headers are tolerated.
+	rawLines := strings.Split(string(fileContent), "\n")
+	lines := make([]string, len(rawLines))
+	for i, raw := range rawLines {
+		lines[i] = strings.TrimSpace(strings.TrimRight(raw, "\r"))
 	}
 
-	// Line 2 contains the encrypted private key (index 2 - 3rd line)
-	encryptedPrivateKey := strings.TrimSpace(lines[2])
-	// Line 5 contains the public key (index 5 - 6th line)
-	publicKeyFromFile := strings.TrimSpace(lines[5])
+	// Header-anchored extraction. findValueAfterHeader returns the first
+	// non-empty line following the named header, or an error if the
+	// header is missing or has no body following it.
+	encryptedPrivateKey, err := findValueAfterHeader(lines, headerEncryptedPrivateKey)
+	if err != nil {
+		return Output, fmt.Errorf("invalid wallet file format (encrypted private key section): %w", err)
+	}
+	publicKeyFromFile, err := findValueAfterHeader(lines, headerPublicKey)
+	if err != nil {
+		return Output, fmt.Errorf("invalid wallet file format (public key section): %w", err)
+	}
 
 	// Decrypt the private key using the AESDecrypt function (same package)
 	decryptedBitString, err2 := AESDecrypt(encryptedPrivateKey, Password)
@@ -70,4 +114,31 @@ func ImportPrivateKey(e *el.Ellipse, PathWithName, Password string) (el.DalosKey
 	Output = GeneratedDalosKeyPair
 	// Return the decrypted bit string
 	return Output, nil
+}
+
+// findValueAfterHeader scans lines for the first occurrence of header
+// and returns the first subsequent non-empty line (the header's
+// "value"). Returns an error if the header is absent or has no
+// non-empty line following it.
+//
+// Used by ImportPrivateKey's header-anchored parser (F-API-004).
+// Tolerates extra blank lines between header and value (defensive
+// against editor quirks), but requires the header text to match
+// exactly (catches non-wallet files at the parse stage rather than
+// turning the import into a brute-force oracle).
+func findValueAfterHeader(lines []string, header string) (string, error) {
+	for i, line := range lines {
+		if line != header {
+			continue
+		}
+		// Found the header at index i. Walk forward to the first
+		// non-empty subsequent line.
+		for j := i + 1; j < len(lines); j++ {
+			if lines[j] != "" {
+				return lines[j], nil
+			}
+		}
+		return "", fmt.Errorf("header %q found but no value follows it", header)
+	}
+	return "", fmt.Errorf("header %q not found in file", header)
 }

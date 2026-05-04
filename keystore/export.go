@@ -69,7 +69,15 @@ func ExportPrivateKey(e *el.Ellipse, BitString, Password string) error {
 		return fmt.Errorf("failed to derive key pair in ExportPrivateKey: %w", err)
 	}
 	PublicKey := KeyPair.PUBL
-	FileName := GenerateFilenameFromPublicKey(PublicKey)
+	// F-API-003 (v4.0.1): GenerateFilenameFromPublicKey now returns
+	// (string, error). After F-ERR-003 the upstream PublicKeyToAddress
+	// panics on malformed PUBL, so reaching this branch with a bad PUBL
+	// is unreachable in practice — but the propagation is still correct
+	// defense-in-depth and matches the keystore package's error contract.
+	FileName, err := GenerateFilenameFromPublicKey(PublicKey)
+	if err != nil {
+		return fmt.Errorf("failed to derive wallet filename: %w", err)
+	}
 	SmartAddress := el.DalosAddressMaker(PublicKey, true)
 	StandardAddress := el.DalosAddressMaker(PublicKey, false)
 

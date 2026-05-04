@@ -67,9 +67,12 @@ func TestExportPrivateKey_FileCreateFailure_ReturnsError(t *testing.T) {
     if err != nil {
         t.Fatalf("ScalarToKeys rejected the derived scalar: %v", err)
     }
-    expectedFilename := GenerateFilenameFromPublicKey(keyPair.PUBL)
-    if expectedFilename == "" || expectedFilename == "InvalidPublicKey.txt" {
-        t.Fatalf("unexpected derived filename %q from corpus public key %q", expectedFilename, keyPair.PUBL)
+    expectedFilename, err := GenerateFilenameFromPublicKey(keyPair.PUBL)
+    if err != nil {
+        t.Fatalf("GenerateFilenameFromPublicKey rejected the corpus public key %q: %v", keyPair.PUBL, err)
+    }
+    if expectedFilename == "" {
+        t.Fatalf("unexpected empty filename from corpus public key %q", keyPair.PUBL)
     }
 
     // Failure-trigger: create a directory at the exact path os.Create

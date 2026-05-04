@@ -11,9 +11,11 @@
 //
 // Package surface (4 free functions):
 //
-//   - ExportPrivateKey(e *el.Ellipse, BitString, Password string)
+//   - ExportPrivateKey(e *el.Ellipse, BitString, Password string) error
 //     Serialize a Genesis private key to the canonical wallet file
-//     using AES-256-GCM with a Blake3-derived key.
+//     using AES-256-GCM with a Blake3-derived key. Returns nil on
+//     success or a wrapped error on disk-full / partial-write / sync /
+//     close failure (F-ERR-005, v4.0.1).
 //   - ImportPrivateKey(e *el.Ellipse, PathWithName, Password string) (el.DalosKeyPair, error)
 //     Inverse of ExportPrivateKey. Reads the wallet file, decrypts
 //     the bitstring, and re-derives the keypair through the Genesis
@@ -22,9 +24,10 @@
 //   - AESDecrypt(encryptedPrivateKeyBase49, password string) (string, error)
 //     Decrypt the base-49-encoded ciphertext extracted from a wallet
 //     file. Used internally by ImportPrivateKey; exposed for tooling.
-//   - GenerateFilenameFromPublicKey(publicKey string) string
+//   - GenerateFilenameFromPublicKey(publicKey string) (string, error)
 //     Compute the canonical wallet-file basename from a DALOS public
-//     key (`<prefix>.<first7>...<last7>.txt`).
+//     key (`<prefix>.<first7>...<last7>.txt`). Returns a wrapped error
+//     on malformed input (no `.` separator) — F-API-003, v4.0.1.
 //
 // Dependency direction: keystore -> Elliptic (one-way). Elliptic does
 // NOT import keystore. AES is consumed for the symmetric primitive.

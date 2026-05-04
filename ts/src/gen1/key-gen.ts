@@ -30,6 +30,40 @@
  * `../testvectors/v1_genesis.json` reproduces all fields byte-for-byte
  * when replayed through this module.
  *
+ * SCOPE NOTE (v4.0.2, F-MED-018): the six `from*` entry points in this
+ * module are **DALOS-default** — they accept an optional `Ellipse` curve
+ * parameter for the keypair derivation, but the returned `standardAddress`
+ * and `smartAddress` ALWAYS use DALOS Genesis prefixes (`Ѻ.` / `Σ.`)
+ * regardless of the curve passed in. The keypair (`scalar`, `privateKey`,
+ * `keyPair.publ`) IS correctly per-curve; only the human-readable address
+ * prefix is hardcoded.
+ *
+ * For non-DALOS curves (LETO, ARTEMIS, APOLLO, or any future Gen-N
+ * primitive), use the **registry-mediated path** instead:
+ *
+ * ```typescript
+ * import { CryptographicRegistry } from '@stoachain/dalos-crypto/registry';
+ * import { Apollo } from '@stoachain/dalos-crypto/registry';
+ *
+ * const registry = new CryptographicRegistry();
+ * registry.register(Apollo);
+ * const apollo = registry.get('dalos-apollo');
+ * const fullKey = apollo.generateFromBitString(bitString);
+ * // fullKey.standardAddress now correctly starts with '₱.' (APOLLO),
+ * // not 'Ѻ.' (DALOS).
+ * ```
+ *
+ * The registry adapter at `../registry/gen1-factory.ts:103-104`
+ * re-stamps the addresses with each primitive's correct prefix pair
+ * (defined in `../registry/<primitive>.ts`). This is the canonical
+ * pattern — the only known production consumer (OuronetUI's
+ * `src/lib/dalos/registry.ts`) uses exactly this approach.
+ *
+ * The gen1 entry points stay DALOS-default by design: gen1 = curve-
+ * agnostic crypto math; per-curve display prefixes are a registry-layer
+ * concern. Mirrors the architectural boundary documented for the
+ * Bitmap helpers (F-API-006 / F-TEST-002).
+ *
  * Copyright (C) 2026 AncientHoldings GmbH. All rights reserved.
  */
 
@@ -347,6 +381,14 @@ export function scalarToKeyPair(scalar: bigint, e: Ellipse = DALOS_ELLIPSE): Dal
  * Runs the full pipeline from a validated bitstring to a DalosFullKey.
  * Shared by every `from*` entry point once they've reduced input to
  * a 1600-bit bitstring.
+ *
+ * SCOPE NOTE (v4.0.2, F-MED-018): the returned `standardAddress` and
+ * `smartAddress` use DALOS Genesis prefixes (`Ѻ.` / `Σ.`) regardless
+ * of which curve `e` is passed. The keypair derivation (`scalar`,
+ * `privateKey`, `publ`) IS correctly per-curve; only the human-
+ * readable address prefix character is DALOS-default by design. See
+ * the module docstring above for the registry-mediated workaround for
+ * non-DALOS curves.
  */
 function fullKeyFromBitString(bitString: string, e: Ellipse = DALOS_ELLIPSE): DalosFullKey {
   const scalar = generateScalarFromBitString(bitString, e);
@@ -357,6 +399,8 @@ function fullKeyFromBitString(bitString: string, e: Ellipse = DALOS_ELLIPSE): Da
     privateKey,
     keyPair,
     scalar,
+    // F-MED-018 (v4.0.2): DALOS-prefixed by design. For per-curve
+    // prefix-stamping use the registry — see module docstring.
     standardAddress: dalosAddressMaker(publ, false),
     smartAddress: dalosAddressMaker(publ, true),
   };
@@ -368,6 +412,9 @@ function fullKeyFromBitString(bitString: string, e: Ellipse = DALOS_ELLIPSE): Da
 
 /**
  * Path 1 — cryptographically-random 1600 bits.
+ *
+ * F-MED-018: addresses are DALOS-prefixed regardless of `e`. See module
+ * docstring for the registry-mediated workaround for non-DALOS curves.
  */
 export function fromRandom(e: Ellipse = DALOS_ELLIPSE): DalosFullKey {
   return fullKeyFromBitString(generateRandomBitsOnCurve(e), e);
@@ -375,6 +422,9 @@ export function fromRandom(e: Ellipse = DALOS_ELLIPSE): DalosFullKey {
 
 /**
  * Path 2 — user-provided 1600-bit bitstring ("01…").
+ *
+ * F-MED-018: addresses are DALOS-prefixed regardless of `e`. See module
+ * docstring for the registry-mediated workaround for non-DALOS curves.
  */
 export function fromBitString(bitString: string, e: Ellipse = DALOS_ELLIPSE): DalosFullKey {
   return fullKeyFromBitString(bitString, e);
@@ -383,6 +433,9 @@ export function fromBitString(bitString: string, e: Ellipse = DALOS_ELLIPSE): Da
 /**
  * Path 3 — user-provided base-10 integer representation of the
  * already-clamped scalar (the "int10" private-key form).
+ *
+ * F-MED-018: addresses are DALOS-prefixed regardless of `e`. See module
+ * docstring for the registry-mediated workaround for non-DALOS curves.
  */
 export function fromIntegerBase10(n: string, e: Ellipse = DALOS_ELLIPSE): DalosFullKey {
   const v = validatePrivateKey(n, 10, e);
@@ -395,6 +448,9 @@ export function fromIntegerBase10(n: string, e: Ellipse = DALOS_ELLIPSE): DalosF
 /**
  * Path 4 — user-provided base-49 integer representation of the
  * already-clamped scalar (the "int49" private-key form).
+ *
+ * F-MED-018: addresses are DALOS-prefixed regardless of `e`. See module
+ * docstring for the registry-mediated workaround for non-DALOS curves.
  */
 export function fromIntegerBase49(n: string, e: Ellipse = DALOS_ELLIPSE): DalosFullKey {
   const v = validatePrivateKey(n, 49, e);
@@ -409,6 +465,9 @@ export function fromIntegerBase49(n: string, e: Ellipse = DALOS_ELLIPSE): DalosF
  *
  * The words are joined with single spaces and fed through seven-fold
  * Blake3 to derive the 1600-bit bitstring.
+ *
+ * F-MED-018: addresses are DALOS-prefixed regardless of `e`. See module
+ * docstring for the registry-mediated workaround for non-DALOS curves.
  */
 export function fromSeedWords(words: readonly string[], e: Ellipse = DALOS_ELLIPSE): DalosFullKey {
   const bits = seedWordsToBitString(words, e);
@@ -420,6 +479,14 @@ export function fromSeedWords(words: readonly string[], e: Ellipse = DALOS_ELLIP
  *
  * Black pixels = 1, white = 0, row-major top-to-bottom, left-to-right
  * scan. Equivalent to `fromBitString(bitmapToBitString(b))`.
+ *
+ * F-MED-018: addresses are DALOS-prefixed regardless of `e`. See module
+ * docstring for the registry-mediated workaround for non-DALOS curves.
+ * Note: the bitmap input itself is also DALOS-only (40×40 = 1600 bits);
+ * for non-DALOS curves with perfect-square scalar sizes (e.g. APOLLO
+ * 32×32 = 1024), do consumer-side dimensioning and use `fromBitString`
+ * — see OuronetUI's `src/lib/dalos/bitmap-local.ts` for the reference
+ * pattern (F-TEST-002 scope decision).
  */
 export function fromBitmap(b: Bitmap, e: Ellipse = DALOS_ELLIPSE): DalosFullKey {
   const v = validateBitmap(b);

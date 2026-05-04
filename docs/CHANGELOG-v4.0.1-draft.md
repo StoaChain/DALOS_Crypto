@@ -254,6 +254,46 @@ curve-specific dimension parameters that don't belong at this layer.
 
 ### Test infrastructure
 
+#### F-TEST-002 — Bitmap package: scope docs + comprehensive unit tests
+
+Commit `<TBD>`. **Doc-only change to source files + new test file. No behavior change. No byte-identity risk.**
+
+Pre-v4.0.1 the Go `Bitmap/` package had ZERO direct unit tests. Correctness rode on the 20 bitmap vectors in `testvectors/v1_genesis.json` end-to-end byte-identity. That catches macroscopic regressions but doesn't cover validators, error-message contracts, roundtrip properties, or the row-major scan-order convention.
+
+Initial proposal was to also refactor the package to support per-curve bitmap dimensions (e.g., APOLLO 32×32 → 1024 bits) since the current code is hardcoded 40×40 → 1600 bits (DALOS-only). Investigation revealed OuronetUI v0.30.12 already solved this with consumer-side dimensioning in `OuronetUI/src/lib/dalos/bitmap-local.ts` — explicitly chosen architectural decision per its docstring: *"Rather than split the core's tight DALOS format, we do the dimension-generic conversions here in the UI layer and feed the results to core's `generateFromBitString`."* Centralizing the dimensioning into this package would have:
+- Broken OuronetUI's `import type { Bitmap }` if the type shape changed.
+- Broken OuronetCore's Go-side consumers of `Bitmap.Bitmap` as a value type.
+- Made `bitmap-local.ts` redundant or silently divergent.
+- Forced an npm v4 → v5 major bump for a capability consumers already had at the right layer.
+
+The right boundary is: this package = curve-agnostic crypto math; consumers = curve-aware UX. F-TEST-002 respects that boundary.
+
+**Fix:**
+
+1. **Updated package docstrings on both Go (`Bitmap/Bitmap.go`) and TS (`ts/src/gen1/bitmap.ts`) sides.** New SCOPE NOTE block explicitly documents:
+   - The DALOS-only nature of `Bitmap` / `fromBitmap` / `GenerateFromBitmap`.
+   - That non-square or non-1600 curves return length-validation errors from downstream `fromBitString`.
+   - The reference consumer-side pattern: paint an appropriately-sized grid, convert to a flat row-major bitstring, call `fromBitString` directly. Cross-references `OuronetUI/src/lib/dalos/bitmap-local.ts` as the canonical example.
+   - Maintains the existing Genesis-frozen conventions block (bit convention, scan order, greyscale strictness, OPSEC note).
+
+2. **NEW `Bitmap/Bitmap_test.go`** with 9 test functions covering 30+ sub-cases across the public surface:
+   - **`TestBitmapToBitString_LengthIsAlwaysBits`** — output is always 1600 chars of `0`/`1`. (3 sub-cases: all-zero, all-one, alternating.)
+   - **`TestBitmapToBitString_RowMajorTopLeftFirst`** — single `true` at `[0][1]` produces `"01" + 1598 zeros`. Catches column-major / row-inversion / column-inversion bugs explicitly.
+   - **`TestBitmapToBitString_AllZeroAllOne`** — boundary pin against `strings.Repeat("0", 1600)` and the all-ones equivalent.
+   - **`TestBitmapToBitString_BitStringToBitmapReveal_RoundTrip`** — bitmap → bits → bitmap is identity. (4 sub-cases including corner pixels.)
+   - **`TestBitStringToBitmapReveal_RejectsWrongLength`** — empty / 1599 / 1601 / way-short all rejected with "must be exactly" wording.
+   - **`TestBitStringToBitmapReveal_RejectsBadChars`** — `x`/space/`2`/newline at various positions rejected with "invalid char at position" wording.
+   - **`TestParseAsciiBitmap_HappyPath`** — checkerboard pattern parses correctly.
+   - **`TestParseAsciiBitmap_RejectsMalformedInput`** — table-driven across 7 malformed cases (too-few rows, too-many rows, row-too-short, row-too-long, uppercase invalid char, space invalid char, newline invalid char). Each must mention either "expected 40 rows" or "row N" or "invalid char" in the error.
+   - **`TestBitmapToAscii_RoundTripWithParse`** — `ParseAsciiBitmap(BitmapToAscii(b)) == b` for all-zero, all-one, alternating.
+   - **`TestEqualBitmap_TrueOnSameFalseOnSinglePixelDiff`** — equality semantics including a single-pixel-different counter-case.
+
+   `ParsePngFileToBitmap` is NOT tested here — requires committing PNG fixture binaries which is a separate spec.
+
+**Verification:**
+- `go test ./Bitmap/` clean: 30+ sub-cases all pass in ~10ms.
+- Full Go suite still green; corpus byte-identity preserved (`v1_genesis.json` SHA `082f7a40...` unchanged) since no source-code logic was touched.
+
 #### F-TEST-001 — Add Go-side CI workflow + add "adding new primitives" playbook
 
 Commit `efd0fe6`. **CI infrastructure addition + new contributor documentation. No code changes. No byte-identity risk.**
@@ -646,6 +686,7 @@ HIGH findings under triage (not yet decided):
 - F-INT-002 — `ts-publish.yml` race + concurrency (FIXED, see below)
 - F-INT-004 — Backfill list missing `ts-v4.0.0` (FIXED as side effect of F-INT-002)
 - F-TEST-001 — No Go-side CI workflow (FIXED, see below)
+- F-TEST-002 — `Bitmap/` package zero tests + scope ambiguity (FIXED, see below)
 - F-INT-002 — ts-publish.yml race vs ts-ci.yml + missing concurrency
 - F-INT-003 — same as F-INT-002 (validator overlap)
 - F-TEST-001 — No Go-side CI workflow
@@ -684,6 +725,8 @@ pending user judgment.
 | a4739d4 | F-INT-002+004 | ts-publish.yml: concurrency guard + Node 20/22/24 matrix gates + ts-v4.0.0 backfill |
 | 46c318e | (meta)     | Backfill F-INT-002 commit hash                                                 |
 | efd0fe6 | F-TEST-001 | Add Go-side CI workflow + ADDING_NEW_PRIMITIVES.md playbook + CLAUDE.md pointer  |
+| 32eb2c0 | (meta)     | Backfill F-TEST-001 commit hash                                                |
+| TBD     | F-TEST-002 | Bitmap package: scope docs (Go+TS) + Bitmap_test.go (9 tests, 30+ sub-cases)   |
 
 ---
 

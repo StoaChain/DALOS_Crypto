@@ -4,6 +4,25 @@
 // A Bitmap is exactly 40 x 40 = 1600 pixels, which matches the DALOS
 // safe-scalar size of 1600 bits. Each pixel contributes exactly one bit.
 //
+// SCOPE NOTE (v4.0.1, F-TEST-002): this package is intentionally
+// DALOS-Genesis-only. The Bitmap type is hardcoded to 40x40, and
+// (*Ellipse).GenerateFromBitmap accepts only this type — calling it on
+// APOLLO (1024-bit safe-scalar) or any non-square-scalar curve returns
+// a length-validation error.
+//
+// For other curves with perfect-square safe-scalar sizes (today: APOLLO
+// at 32x32 = 1024 bits; future post-quantum primitives may add more),
+// the per-curve bitmap-to-bitstring conversion is a CONSUMER-SIDE
+// concern: paint the appropriately-sized grid in your UI, convert to a
+// flat row-major bitstring of the correct length, and call this
+// package's `(*Ellipse).GenerateScalarFromBitString` (or its npm
+// equivalent `fromBitString`) directly. The reference consumer-side
+// implementation is `OuronetUI/src/lib/dalos/bitmap-local.ts` — it
+// exposes `bitmapDimensionsFor(curve)` returning per-curve rows/cols
+// and a generic flat-conversion helper. Consumer-side dimensioning
+// keeps this package's bitmap helpers tightly tied to the Genesis
+// 40x40 contract while giving consumers full per-curve flexibility.
+//
 // Genesis conventions (locked at v1.2.0, permanent):
 //
 //   - Bit convention: BLACK pixel = 1, WHITE pixel = 0

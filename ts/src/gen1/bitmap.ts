@@ -7,6 +7,26 @@
  *   - Scan order: row-major, top-to-bottom, left-to-right
  *   - ASCII rendering: '#' = black (1), '.' = white (0)
  *
+ * SCOPE NOTE (v4.0.1, F-TEST-002): this module is intentionally
+ * DALOS-Genesis-only. The `Bitmap` type and `BITMAP_*` constants are
+ * hardcoded to 40×40, and `fromBitmap` accepts only this shape —
+ * calling it for APOLLO (1024-bit safe-scalar) or any non-square-scalar
+ * curve returns a length-validation error from the downstream
+ * `fromBitString`.
+ *
+ * For other curves with perfect-square safe-scalar sizes (today:
+ * APOLLO at 32×32 = 1024 bits; future post-quantum primitives may add
+ * more), the per-curve bitmap-to-bitstring conversion is a
+ * CONSUMER-SIDE concern: render the appropriately-sized grid in your
+ * UI, convert to a flat row-major bitstring of the correct length,
+ * and call `fromBitString(bits, curve)` directly. The reference
+ * consumer-side implementation is `OuronetUI/src/lib/dalos/bitmap-local.ts`
+ * — it exposes `bitmapDimensionsFor(curve)` returning per-curve rows/cols
+ * (40×40 for DALOS, 32×32 for APOLLO) and a generic flat-conversion
+ * helper. Consumer-side dimensioning keeps these helpers tightly tied
+ * to the Genesis 40×40 contract while giving consumers full per-curve
+ * flexibility.
+ *
  * The bitmap is treated as a PRIVATE KEY. Any caller that stores,
  * displays or transmits a bitmap must apply the same operational-
  * security care as a seed phrase.

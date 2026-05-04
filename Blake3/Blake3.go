@@ -2,6 +2,7 @@ package Blake3
 
 import (
     "encoding/binary"
+    "fmt"
     "io"
     "math"
     "math/bits"
@@ -135,7 +136,18 @@ func (h *Hasher) Sum(b []byte) (sum []byte) {
 	wordsToBytes(compressNode(h.rootNode()), &out)
 	copy(dst, out[:])
     } else {
-	_, _ = h.XOF().Read(dst)
+	// F-NEEDS-002 (v4.0.2): OutputReader.Read returns (n, nil) for any
+	// len(p) <= MaxUint64, and io.EOF only after MaxUint64 total bytes
+	// — unreachable for any caller. Bare `_, _ =` discarded the
+	// contractually-nil error; replaced with explicit panic per the
+	// v2.1.0 PO-3 fail-fast convention (see Elliptic/PointOperations.go
+	// noErrAddition / noErrDoubling for the analogous pattern). Any
+	// non-nil err here is a real upstream-library regression we want
+	// to surface immediately rather than silently corrupt the hash
+	// output buffer.
+	if _, err := h.XOF().Read(dst); err != nil {
+	    panic(fmt.Sprintf("Blake3.Hasher.Sum: XOF.Read returned unexpected err: %v", err))
+	}
     }
     return
 }
@@ -213,7 +225,14 @@ func Sum512(b []byte) (out [64]byte) {
 	n.flags |= flagRoot
     } else {
 	h := *defaultHasher
-	_, _ = h.Write(b)
+	// F-NEEDS-002 (v4.0.2): see Hasher.Sum docstring above for the
+	// fail-fast rationale. Hasher.Write is `(n int, err error)` per
+	// io.Writer but contractually returns nil — the panic surfaces
+	// any future upstream-library regression rather than silently
+	// corrupting the digest output.
+	if _, err := h.Write(b); err != nil {
+	    panic(fmt.Sprintf("Blake3.Sum512: Hasher.Write returned unexpected err: %v", err))
+	}
 	n = h.rootNode()
     }
     wordsToBytes(compressNode(n), &out)
@@ -222,7 +241,10 @@ func Sum512(b []byte) (out [64]byte) {
 // Sum1024 returns the unkeyed BLAKE3 hash of b, truncated to 1024 bits(128 bytes).
 func Sum1024(b []byte) (out [128]byte) {
     h := New(128, nil)
-    _, _ = h.Write(b)
+    // F-NEEDS-002 (v4.0.2): fail-fast on contractually-nil Write error.
+    if _, err := h.Write(b); err != nil {
+	panic(fmt.Sprintf("Blake3.Sum1024: Hasher.Write returned unexpected err: %v", err))
+    }
     h.Sum(out[:0])
     return
 }
@@ -231,7 +253,10 @@ func Sum1024(b []byte) (out [128]byte) {
 func SumCustom(b []byte, OutputSizeInBytes int) []byte {
     var Output = make([]byte, OutputSizeInBytes)
     h := New(OutputSizeInBytes, nil)
-    _, _ = h.Write(b)
+    // F-NEEDS-002 (v4.0.2): fail-fast on contractually-nil Write error.
+    if _, err := h.Write(b); err != nil {
+	panic(fmt.Sprintf("Blake3.SumCustom: Hasher.Write returned unexpected err: %v", err))
+    }
     h.Sum(Output[:0])
     return Output
 }

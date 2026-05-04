@@ -563,8 +563,18 @@ func (e *Ellipse) SchnorrVerify(Signature, Message, PublicKey string) bool {
 	// SC-5: on-curve validation of R. Without this, a prepared
 	// off-curve point could interact with the addition formulas in
 	// undefined ways, creating a signature-forgery avenue.
-	onCurveR, _ := e.IsOnCurve(RExtend)
-	if !onCurveR {
+	//
+	// F-NEEDS-003 (v4.0.2): explicitly bind the Infinity flag (pre-
+	// v4.0.2 used `_` discard). Infinity-rejection IS already enforced
+	// by the cofactorCheckRejects call below (the h-torsion check
+	// rejects O via IsInfinityPoint), so the practical attack surface
+	// was unchanged. Binding here makes the rejection layer
+	// self-documenting AND closes the contractual gap: if a future
+	// refactor moves cofactor-check elsewhere or a new code path
+	// reaches Step 4 without it, an infinity R would no longer be
+	// caught implicitly. Defence-in-depth made explicit.
+	onCurveR, isInfR := e.IsOnCurve(RExtend)
+	if !onCurveR || isInfR {
 		return false
 	}
 
@@ -592,8 +602,11 @@ func (e *Ellipse) SchnorrVerify(Signature, Message, PublicKey string) bool {
 	// Defence-in-depth; a correctly-constructed public key is always
 	// on-curve, but an attacker-controlled P should not cause
 	// undefined behaviour.
-	onCurveP, _ := e.IsOnCurve(PExtend)
-	if !onCurveP {
+	//
+	// F-NEEDS-003 (v4.0.2): explicit Infinity-flag binding — see
+	// the symmetric R-side check above for the rationale.
+	onCurveP, isInfP := e.IsOnCurve(PExtend)
+	if !onCurveP || isInfP {
 		return false
 	}
 

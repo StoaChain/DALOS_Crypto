@@ -476,10 +476,17 @@ export function schnorrVerify(
   // SC-4: canonical s range (0, Q)
   if (sig.s <= 0n || sig.s >= e.q) return false;
 
-  // SC-5: R on curve
+  // SC-5: R on curve.
+  // F-NEEDS-003 (v4.0.2): explicitly bind the Infinity flag (pre-v4.0.2
+  // used `[onCurveR]` destructuring that dropped the second element).
+  // Mirror of the Go-side fix in Elliptic/Schnorr.go SchnorrVerify —
+  // see that comment for the defence-in-depth rationale. The cofactor
+  // check below already rejects infinity in practice; binding here
+  // makes the rejection layer self-documenting and closes the
+  // contractual gap.
   const rExtended = affine2Extended(sig.r, m);
-  const [onCurveR] = isOnCurve(rExtended, e);
-  if (!onCurveR) return false;
+  const [onCurveR, isInfR] = isOnCurve(rExtended, e);
+  if (!onCurveR || isInfR) return false;
 
   // F-SEC-001: cofactor subgroup-membership check on R.
   // Legitimate R = [k]·G has [h]·R = [hk]·G ≠ O (gcd(h, Q)=1, k ∈ [1, Q-1]).
@@ -498,10 +505,12 @@ export function schnorrVerify(
   }
   if (pkAffine.ax === undefined || pkAffine.ay === undefined) return false;
 
-  // SC-5: P on curve
+  // SC-5: P on curve.
+  // F-NEEDS-003 (v4.0.2): explicit Infinity-flag binding — see R-side
+  // comment above for the rationale.
   const pExtended = affine2Extended(pkAffine, m);
-  const [onCurveP] = isOnCurve(pExtended, e);
-  if (!onCurveP) return false;
+  const [onCurveP, isInfP] = isOnCurve(pExtended, e);
+  if (!onCurveP || isInfP) return false;
 
   // F-SEC-001: cofactor subgroup-membership check on P (public key).
   // Same rationale as R — rejects h-torsion small-subgroup attack public keys.
@@ -632,10 +641,13 @@ export async function schnorrVerifyAsync(
   // SC-4: canonical s range (0, Q)
   if (sig.s <= 0n || sig.s >= e.q) return false;
 
-  // SC-5: R on curve
+  // SC-5: R on curve.
+  // F-NEEDS-003 (v4.0.2): explicit Infinity-flag binding — see the
+  // sync schnorrVerify above for the rationale. Async path mirrors
+  // the sync path exactly for security parity.
   const rExtended = affine2Extended(sig.r, m);
-  const [onCurveR] = isOnCurve(rExtended, e);
-  if (!onCurveR) return false;
+  const [onCurveR, isInfR] = isOnCurve(rExtended, e);
+  if (!onCurveR || isInfR) return false;
 
   // F-SEC-001 (Phase 6): cofactor subgroup-membership check on R — security
   // parity with the sync `schnorrVerify` path.
@@ -652,10 +664,12 @@ export async function schnorrVerifyAsync(
   }
   if (pkAffine.ax === undefined || pkAffine.ay === undefined) return false;
 
-  // SC-5: P on curve
+  // SC-5: P on curve.
+  // F-NEEDS-003 (v4.0.2): explicit Infinity-flag binding — see the
+  // sync schnorrVerify above for the rationale.
   const pExtended = affine2Extended(pkAffine, m);
-  const [onCurveP] = isOnCurve(pExtended, e);
-  if (!onCurveP) return false;
+  const [onCurveP, isInfP] = isOnCurve(pExtended, e);
+  if (!onCurveP || isInfP) return false;
 
   // F-SEC-001 (Phase 6): cofactor subgroup-membership check on P — same
   // rationale as R above; rejects h-torsion small-subgroup public keys.

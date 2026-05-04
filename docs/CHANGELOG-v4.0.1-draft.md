@@ -256,7 +256,7 @@ curve-specific dimension parameters that don't belong at this layer.
 
 #### F-TEST-001 — Add Go-side CI workflow + add "adding new primitives" playbook
 
-Commit `<TBD>`. **CI infrastructure addition + new contributor documentation. No code changes. No byte-identity risk.**
+Commit `efd0fe6`. **CI infrastructure addition + new contributor documentation. No code changes. No byte-identity risk.**
 
 Pre-v4.0.1 the Go reference (the canonical implementation per `CLAUDE.md`) had **no CI automation at all**. The TS port has had `ts-ci.yml` since v3.x; the Go side relied entirely on developers remembering to run `go test` and diff the corpus locally before pushing. A Go-side regression that broke Genesis byte-identity wouldn't be caught until the next manual regen — or, worse, until the TypeScript port's byte-identity tests later failed with a misleading "TS broken" error when actually Go had drifted.
 
@@ -683,7 +683,7 @@ pending user judgment.
 | 8ea2c82 | (meta)     | Backfill F-PERF-003 commit hash                                                |
 | a4739d4 | F-INT-002+004 | ts-publish.yml: concurrency guard + Node 20/22/24 matrix gates + ts-v4.0.0 backfill |
 | 46c318e | (meta)     | Backfill F-INT-002 commit hash                                                 |
-| TBD     | F-TEST-001 | Add Go-side CI workflow + ADDING_NEW_PRIMITIVES.md playbook + CLAUDE.md pointer  |
+| efd0fe6 | F-TEST-001 | Add Go-side CI workflow + ADDING_NEW_PRIMITIVES.md playbook + CLAUDE.md pointer  |
 
 ---
 

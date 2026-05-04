@@ -1,6 +1,7 @@
 package Elliptic
 
 import (
+	"math/big"
 	"strings"
 	"testing"
 )
@@ -224,6 +225,83 @@ func TestConvertBase49toBase10_RejectsEmpty(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "empty input") {
 		t.Errorf("expected error to mention 'empty input', got: %s", err.Error())
+	}
+}
+
+// =============================================================================
+// F-ERR-007 (audit cycle 2026-05-04, v4.0.1): SchnorrSign private-key range check
+// =============================================================================
+//
+// SchnorrSign computes s = z + e·k mod Q. Pre-v4.0.1 there was no check
+// that the parsed k was in [1, Q-1]. The dangerous case is k = 0 which
+// yields R = 0·G = O (infinity) and s = z + 0 = z — the signer's nonce
+// is now embedded in the signature s. k outside [1, Q-1] is meaningless
+// cryptography. Post-v4.0.1 SchnorrSign returns "" on out-of-range k
+// (matches the same empty-string sentinel from F-ERR-002's parse-failure
+// branch). The TS port has equivalent guards via parseBigIntInBase +
+// range validation (REQ-21/REQ-22).
+
+// TestSchnorrSign_RejectsZeroPrivateKey pins the k = 0 nonce-leak guard.
+// k = 0 is reachable today by hand-constructing a DalosKeyPair with
+// PRIV = "0" (base-49 zero). Pre-v4.0.1 SchnorrSign would return a
+// signature where s = z (the deterministic nonce, leaked).
+func TestSchnorrSign_RejectsZeroPrivateKey(t *testing.T) {
+	e := DalosEllipse()
+	kp := DalosKeyPair{
+		PRIV: "0", // base-49 representation of zero
+		PUBL: "1.0",
+	}
+	sig := e.SchnorrSign(kp, "any message")
+	if sig != "" {
+		t.Errorf("expected empty-string sentinel for k=0 (would leak nonce), got: %q", sig)
+	}
+}
+
+// TestSchnorrSign_RejectsOutOfRangePrivateKey pins the k >= Q guard.
+// k > Q reduces silently mod Q in the signing math, so the signature
+// would still verify against the "true" k mod Q — but accepting it
+// conceals the corruption. Build a PRIV string that decodes to a value
+// >= Q.
+func TestSchnorrSign_RejectsOutOfRangePrivateKey(t *testing.T) {
+	e := DalosEllipse()
+	// Build PRIV that decodes to exactly Q (in [1, Q-1] is valid; Q is
+	// the boundary that must be rejected).
+	privAtQ := e.Q.Text(49)
+	kp := DalosKeyPair{
+		PRIV: privAtQ,
+		PUBL: "1.0",
+	}
+	sig := e.SchnorrSign(kp, "any message")
+	if sig != "" {
+		t.Errorf("expected empty-string sentinel for k=Q (out of range), got: %q", sig)
+	}
+
+	// Also check k > Q (some larger value): use Q + 1.
+	qPlusOne := new(big.Int).Add(&e.Q, big.NewInt(1))
+	kp.PRIV = qPlusOne.Text(49)
+	sig = e.SchnorrSign(kp, "any message")
+	if sig != "" {
+		t.Errorf("expected empty-string sentinel for k=Q+1 (out of range), got: %q", sig)
+	}
+}
+
+// TestSchnorrSign_AcceptsValidPrivateKey is the positive-control: a
+// known-good keypair (derived from the bs-0001 corpus fixture) must
+// still produce a non-empty signature. Confirms the F-ERR-007 guard
+// did not regress the happy path.
+func TestSchnorrSign_AcceptsValidPrivateKey(t *testing.T) {
+	e := DalosEllipse()
+	scalar, err := e.GenerateScalarFromBitString(bs0001InputBitstring)
+	if err != nil {
+		t.Fatalf("GenerateScalarFromBitString rejected the corpus bs-0001 fixture: %v", err)
+	}
+	kp, err := e.ScalarToKeys(scalar)
+	if err != nil {
+		t.Fatalf("ScalarToKeys rejected the derived scalar: %v", err)
+	}
+	sig := e.SchnorrSign(kp, "any message")
+	if sig == "" {
+		t.Errorf("expected non-empty signature for well-formed keypair, got empty string (regression)")
 	}
 }
 

@@ -349,6 +349,22 @@ func (e *Ellipse) SchnorrSign(KeyPair DalosKeyPair, Message string) string {
 		return ""
 	}
 
+	// F-ERR-007 (v4.0.1): range-check the parsed private key. The math
+	// in s = (z + e·k) mod Q produces a structurally-valid signature for
+	// any k, but k = 0 yields R = 0·G = O (infinity) and s = z + 0 = z —
+	// the signer's nonce is now public, embedded in s. k outside [1, Q-1]
+	// is meaningless cryptography (k > Q reduces silently mod Q so the
+	// signature would still verify against the corresponding "true" k,
+	// but accepting it conceals the corruption). The TS port's
+	// schnorrSign at ts/src/gen1/schnorr.ts:317-360 has equivalent
+	// guards via parseBigIntInBase + range validation (REQ-21/REQ-22);
+	// this brings Go ↔ TS parity. Returns the same empty-string sentinel
+	// as the F-ERR-002 parse-failure branch above (and F-API-005 will
+	// refactor both to (string, error) together).
+	if k.Sign() <= 0 || k.Cmp(&e.Q) >= 0 {
+		return ""
+	}
+
 	// Hash the message (separately from the Fiat–Shamir challenge) for
 	// nonce derivation. Tagged, Blake3, fixed-width output.
 	msgHashInput := append([]byte(schnorrNonceDomainTag+"/msg"), []byte(Message)...)

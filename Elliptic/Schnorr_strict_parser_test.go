@@ -425,6 +425,186 @@ func TestCofactor4_InfinityPreserved(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// F-MED-017 (audit cycle 2026-05-04, v4.0.2): cofactorCheckRejects dispatch
+// equivalence tests across power-of-2 and non-power-of-2 cofactors.
+// =============================================================================
+//
+// The cofactor check is mathematically equivalent for any h:
+//   [h]·X == O   iff   X is in the h-torsion subgroup
+//
+// The dispatch helper picks the fastest implementation strategy per h:
+//   h = 1               → trivial (no doubling needed; degenerate case)
+//   h = 2^k for k ≥ 1   → k chained doublings (FAST PATH — used for h=4)
+//   h = non-power-of-2  → general ScalarMultiplier(h, X) fallback
+//
+// These tests verify the DISPATCH LOGIC produces the same boolean answer
+// as the canonical ScalarMultiplier(h, X).IsInfinityPoint() for various h
+// using DALOS curve points (which are themselves not in any small
+// subgroup, so the check should always return false). The tests don't
+// validate the cofactor-check semantics for hypothetical h=8 curves —
+// that would require constructing actual h=8 small-subgroup attack
+// points, which is curve-specific and is the responsibility of any
+// future contributor adding such a curve (see
+// docs/COFACTOR_GENERALIZATION.md).
+
+// TestIsPowerOfTwo pins the helper used by the dispatch.
+func TestIsPowerOfTwo(t *testing.T) {
+	cases := []struct {
+		n      int64
+		k      int
+		isPow2 bool
+	}{
+		{0, 0, false}, // out-of-domain
+		{1, 0, true},  // 2^0 = 1
+		{2, 1, true},
+		{3, 0, false},
+		{4, 2, true}, // FAST PATH
+		{5, 0, false},
+		{6, 0, false},
+		{7, 0, false},
+		{8, 3, true}, // Ed25519/Curve25519 cofactor
+		{12, 0, false},
+		{16, 4, true},
+		{32, 5, true},
+		{64, 6, true},
+		{1024, 10, true},
+		{-4, 0, false}, // out-of-domain
+	}
+	for _, c := range cases {
+		k, isPow2 := isPowerOfTwo(c.n)
+		if k != c.k || isPow2 != c.isPow2 {
+			t.Errorf("isPowerOfTwo(%d) = (%d, %v), want (%d, %v)", c.n, k, isPow2, c.k, c.isPow2)
+		}
+	}
+}
+
+// TestCofactorCheckRejects_DispatchEquivalence_h4 confirms the dispatch
+// path for h=4 produces the SAME boolean answer as the explicit two-
+// doubling formulation we shipped in F-PERF-001. Uses real DALOS curve
+// points (e.R = 4 by construction).
+func TestCofactorCheckRejects_DispatchEquivalence_h4(t *testing.T) {
+	e := DalosEllipse() // e.R = 4 → dispatch picks 2-doubling path
+	gExt := e.Affine2Extended(e.G)
+	scalar, err := e.GenerateScalarFromBitString(bs0001InputBitstring)
+	if err != nil {
+		t.Fatalf("GenerateScalarFromBitString: %v", err)
+	}
+	kp, err := e.ScalarToKeys(scalar)
+	if err != nil {
+		t.Fatalf("ScalarToKeys: %v", err)
+	}
+	pkAffine, err := ConvertPublicKeyToAffineCoords(kp.PUBL)
+	if err != nil {
+		t.Fatalf("ConvertPublicKeyToAffineCoords: %v", err)
+	}
+	pkExt := e.Affine2Extended(pkAffine)
+
+	for name, X := range map[string]CoordExtended{
+		"generator_G": gExt,
+		"two_G":       e.noErrDoubling(gExt),
+		"public_key":  pkExt,
+	} {
+		t.Run(name, func(t *testing.T) {
+			// Both reference paths: explicit two doublings AND general
+			// ScalarMultiplier(4, X). Both must agree with the dispatch
+			// helper on a non-rejection (legitimate point) outcome.
+			explicitTwoDoublings := e.IsInfinityPoint(e.noErrDoubling(e.noErrDoubling(X)))
+			generalScalar := e.IsInfinityPoint(e.ScalarMultiplier(big.NewInt(4), X))
+			dispatch := e.cofactorCheckRejects(X)
+
+			if explicitTwoDoublings != generalScalar {
+				t.Fatalf("internal inconsistency: explicit doublings=%v, general scalar=%v", explicitTwoDoublings, generalScalar)
+			}
+			if dispatch != explicitTwoDoublings {
+				t.Errorf("dispatch=%v differs from explicit-2-doublings=%v", dispatch, explicitTwoDoublings)
+			}
+			if dispatch != generalScalar {
+				t.Errorf("dispatch=%v differs from ScalarMultiplier(4)=%v", dispatch, generalScalar)
+			}
+			if dispatch {
+				t.Errorf("dispatch rejected a legitimate point (false positive)")
+			}
+		})
+	}
+}
+
+// TestCofactorCheckRejects_DispatchEquivalence_h8_synthetic verifies the
+// dispatch produces the right answer for a HYPOTHETICAL h=8 curve.
+// Since we don't have a real h=8 curve, we synthesize one by mutating
+// DALOS's e.R to 8 and verifying the dispatch picks the 3-doubling
+// path correctly. This DOES NOT validate that DALOS-with-faked-h=8 is
+// a real curve (it isn't — gcd(8, Q) check fails on actual DALOS Q),
+// only that the dispatch logic chooses the right strategy.
+func TestCofactorCheckRejects_DispatchEquivalence_h8_synthetic(t *testing.T) {
+	e := DalosEllipse()
+	// Synthetic mutation: pretend this curve has cofactor 8.
+	// SAFE because we only call cofactorCheckRejects, which is purely
+	// algebraic; no real curve construction is changed.
+	e.R = *big.NewInt(8)
+
+	gExt := e.Affine2Extended(e.G)
+
+	// Three explicit doublings = [8]·X.
+	explicitThreeDoublings := e.IsInfinityPoint(e.noErrDoubling(e.noErrDoubling(e.noErrDoubling(gExt))))
+	// General ScalarMultiplier(8, X).
+	generalScalar := e.IsInfinityPoint(e.ScalarMultiplier(big.NewInt(8), gExt))
+	// Dispatch.
+	dispatch := e.cofactorCheckRejects(gExt)
+
+	if explicitThreeDoublings != generalScalar {
+		t.Fatalf("internal inconsistency on synthetic h=8: explicit doublings=%v, general scalar=%v",
+			explicitThreeDoublings, generalScalar)
+	}
+	if dispatch != explicitThreeDoublings {
+		t.Errorf("dispatch (3-doubling path) = %v, explicit 3 doublings = %v", dispatch, explicitThreeDoublings)
+	}
+	if dispatch != generalScalar {
+		t.Errorf("dispatch = %v, ScalarMultiplier(8) = %v", dispatch, generalScalar)
+	}
+}
+
+// TestCofactorCheckRejects_DispatchEquivalence_h2_synthetic verifies the
+// h=2 dispatch path (single doubling).
+func TestCofactorCheckRejects_DispatchEquivalence_h2_synthetic(t *testing.T) {
+	e := DalosEllipse()
+	e.R = *big.NewInt(2)
+
+	gExt := e.Affine2Extended(e.G)
+
+	explicitOneDoubling := e.IsInfinityPoint(e.noErrDoubling(gExt))
+	generalScalar := e.IsInfinityPoint(e.ScalarMultiplier(big.NewInt(2), gExt))
+	dispatch := e.cofactorCheckRejects(gExt)
+
+	if explicitOneDoubling != generalScalar {
+		t.Fatalf("internal inconsistency on synthetic h=2")
+	}
+	if dispatch != explicitOneDoubling {
+		t.Errorf("dispatch = %v, explicit 1 doubling = %v", dispatch, explicitOneDoubling)
+	}
+	if dispatch != generalScalar {
+		t.Errorf("dispatch = %v, ScalarMultiplier(2) = %v", dispatch, generalScalar)
+	}
+}
+
+// TestCofactorCheckRejects_DispatchEquivalence_h12_synthetic_fallback
+// verifies the non-power-of-2 fallback path uses ScalarMultiplier
+// directly. h=12 is not a power of 2 so dispatch must skip the doubling
+// chain entirely.
+func TestCofactorCheckRejects_DispatchEquivalence_h12_synthetic_fallback(t *testing.T) {
+	e := DalosEllipse()
+	e.R = *big.NewInt(12)
+
+	gExt := e.Affine2Extended(e.G)
+
+	generalScalar := e.IsInfinityPoint(e.ScalarMultiplier(big.NewInt(12), gExt))
+	dispatch := e.cofactorCheckRejects(gExt)
+
+	if dispatch != generalScalar {
+		t.Errorf("dispatch (fallback) = %v, ScalarMultiplier(12) = %v — fallback path mismatch", dispatch, generalScalar)
+	}
+}
+
 // TestSchnorrSign_RejectsMalformedPRIV pins the F-ERR-002 base-49 parser
 // failure — an invalid character in PRIV must surface as an error, not
 // the legacy empty-string sentinel.

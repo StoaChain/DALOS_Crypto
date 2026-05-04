@@ -147,6 +147,14 @@ That's the entire CI integration. From this point forward, any change that pertu
 - Update [`testvectors/VALIDATION_LOG.md`](../testvectors/VALIDATION_LOG.md) — add the new file's frozen hash + a one-line note ("v2_dilithium.json frozen at vX.Y.0, audit cycle YYYY-MM-DD").
 - If the primitive has its own wire format spec (e.g., a Schnorr-v2-style spec doc), add it to `docs/`.
 
+### Step 7.5 (CONDITIONAL): If your primitive uses a non-h=4 cofactor
+
+The Schnorr verifier's cofactor check supports any cofactor `h` via the dispatch helper introduced in v4.0.2 (F-MED-017). However, **adding a non-h=4 curve requires more than just the dispatch — there are math-specific steps**: verifying `gcd(h, q) = 1`, hand-constructing h-torsion adversarial test vectors, mirroring the dispatch decision in TS, and updating the per-curve threat-model documentation.
+
+**Read [`docs/COFACTOR_GENERALIZATION.md`](COFACTOR_GENERALIZATION.md) before adding any non-h=4 curve.** It covers the math (small-subgroup attacks, the cofactor-check derivation), the codebase locations that currently assume h=4, and the step-by-step playbook for adding a new-cofactor curve. The document includes a worked Ed25519 (h=8) example.
+
+If your primitive uses `h = 4` (matching DALOS, LETO, ARTEMIS, APOLLO), no extra work — the existing fast path handles it. Skip this section.
+
 ### Step 8: Update the registry adapter (optional but recommended)
 
 For cross-language symmetric usage, the project already has a registry pattern at `ts/src/registry/`. Existing entries: `genesis.ts`, `leto.ts`, `artemis.ts`, `apollo.ts`. Each adapts a primitive to the `CryptographicPrimitive` interface (defined in `ts/src/registry/primitive.ts`).

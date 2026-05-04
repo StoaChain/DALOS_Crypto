@@ -53,6 +53,93 @@ const (
 // Order-4 small-subgroup attack points (the 4-torsion subgroup of
 // E(F_p)) collapse to infinity under [4]·_ and are caught here.
 
+// F-MED-017 (audit cycle 2026-05-04, v4.0.2): the cofactor check is
+// now generalised via a hybrid dispatch helper. The h=4 fast path
+// (two HWCD doublings) is preserved byte-identically for all current
+// curves (DALOS, LETO, ARTEMIS, APOLLO — all h=4). Future curves with
+// other cofactors are supported transparently:
+//
+//   h = 1                  → trivial passthrough (no small-subgroup attack vector)
+//   h = 2                  → 1 doubling
+//   h = 4                  → 2 doublings (FAST PATH, current behavior)
+//   h = 8                  → 3 doublings (Ed25519 / Curve25519 family)
+//   h = 2^k for any k ≥ 1  → k chained doublings
+//   h = non-power-of-2     → fallback to ScalarMultiplier(h, X)
+//
+// CRITICAL: the dispatch helper is necessary BUT NOT SUFFICIENT for
+// adding a non-h=4 curve. See docs/COFACTOR_GENERALIZATION.md for the
+// full procedure (gcd(h, Q) verification, h-torsion adversarial vector
+// construction, corpus byte-identity re-pinning, TS-port mirror,
+// security threat model documentation).
+//
+// cofactorCheckRejects returns true iff [h]·X is the identity point —
+// i.e., X is in the h-torsion subgroup and must be rejected as a
+// small-subgroup attack point. Returns false for legitimate points.
+//
+// log2 helper for power-of-2 cofactors. Returns (k, true) if h = 2^k
+// for some k ≥ 0; (0, false) otherwise. Used by the dispatch to
+// determine the doubling-chain length. Examples:
+//   isPowerOfTwo(1) = (0, true)
+//   isPowerOfTwo(2) = (1, true)
+//   isPowerOfTwo(4) = (2, true)
+//   isPowerOfTwo(8) = (3, true)
+//   isPowerOfTwo(6) = (0, false)
+func isPowerOfTwo(n int64) (int, bool) {
+	if n < 1 {
+		return 0, false
+	}
+	if n&(n-1) != 0 {
+		return 0, false
+	}
+	k := 0
+	for n > 1 {
+		n >>= 1
+		k++
+	}
+	return k, true
+}
+
+// cofactorCheckRejects performs the small-subgroup membership check.
+// Returns true if X is in the h-torsion subgroup (must be rejected),
+// false if X is a legitimate point (passes the check).
+//
+// Dispatch on h (= e.R.Int64()):
+//   h = 1               → trivial: [1]·X = X. Reject only if X is already
+//                         infinity. Upstream IsInfinityPoint already
+//                         handles this; the cofactor check is degenerate
+//                         for h=1 curves (which have no small-subgroup
+//                         attack vector by construction).
+//   h = 2^k for k ≥ 1   → k chained doublings. Includes the h=4 FAST PATH
+//                         which preserves the v4.0.1 byte-identity for
+//                         all current production curves.
+//   h = non-power-of-2  → fallback to general ScalarMultiplier(h, X).
+//                         ~16x slower than the doubling chain but
+//                         mathematically equivalent. See
+//                         docs/COFACTOR_GENERALIZATION.md for the
+//                         performance trade-off discussion.
+func (e *Ellipse) cofactorCheckRejects(X CoordExtended) bool {
+	h := e.R.Int64()
+	k, isPow2 := isPowerOfTwo(h)
+
+	if isPow2 {
+		// k chained doublings produces [2^k]·X = [h]·X.
+		Y := X
+		for i := 0; i < k; i++ {
+			Y = e.noErrDoubling(Y)
+		}
+		return e.IsInfinityPoint(Y)
+	}
+
+	// Non-power-of-2 cofactor — use general scalar multiplication.
+	// This path is documented but never exercised by current curves
+	// (DALOS, LETO, ARTEMIS, APOLLO all have h=4). Adding a non-power-
+	// of-2 cofactor curve requires the procedure in
+	// docs/COFACTOR_GENERALIZATION.md.
+	hScalar := new(big.Int).Set(&e.R)
+	Y := e.ScalarMultiplier(hScalar, X)
+	return e.IsInfinityPoint(Y)
+}
+
 // writeLenPrefixed appends a 4-byte big-endian length followed by data.
 // Fixed width length prefix eliminates the leading-zero ambiguity that
 // plain concatenation of variable-width binary strings has.
@@ -456,11 +543,11 @@ func (e *Ellipse) SchnorrVerify(Signature, Message, PublicKey string) bool {
 	}
 
 	// F-SEC-001: cofactor subgroup-membership check on R.
-	// Legitimate R = [k]·G has [4]·R = [4k]·G ≠ O since gcd(4, Q)=1
-	// and k ∈ [1, Q-1]. Order-4 small-subgroup attack points yield [4]·R = O.
-	// F-PERF-001 (v4.0.1): two doublings instead of ScalarMultiplier(4, _).
-	RCofactor := e.noErrDoubling(e.noErrDoubling(RExtend))
-	if e.IsInfinityPoint(RCofactor) {
+	// Legitimate R = [k]·G has [h]·R = [hk]·G ≠ O since gcd(h, Q)=1
+	// and k ∈ [1, Q-1]. h-torsion small-subgroup attack points yield [h]·R = O.
+	// F-PERF-001 (v4.0.1): two doublings on the h=4 fast path.
+	// F-MED-017 (v4.0.2): generalised via cofactorCheckRejects dispatch.
+	if e.cofactorCheckRejects(RExtend) {
 		return false
 	}
 
@@ -485,10 +572,10 @@ func (e *Ellipse) SchnorrVerify(Signature, Message, PublicKey string) bool {
 	}
 
 	// F-SEC-001: cofactor subgroup-membership check on P (public key).
-	// Same rationale as R — rejects order-4 small-subgroup attack public keys.
-	// F-PERF-001 (v4.0.1): two doublings instead of ScalarMultiplier(4, _).
-	PCofactor := e.noErrDoubling(e.noErrDoubling(PExtend))
-	if e.IsInfinityPoint(PCofactor) {
+	// Same rationale as R — rejects h-torsion small-subgroup attack public keys.
+	// F-PERF-001 (v4.0.1): two doublings on the h=4 fast path.
+	// F-MED-017 (v4.0.2): generalised via cofactorCheckRejects dispatch.
+	if e.cofactorCheckRejects(PExtend) {
 		return false
 	}
 

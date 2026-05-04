@@ -134,6 +134,8 @@ The 5 rules in one sentence: never change byte outputs of existing v1 corpus fil
 
 CI gate added in v4.0.1 (audit cycle 2026-05-04, F-TEST-001): `.github/workflows/go-ci.yml` runs `go build`, `go vet`, `go test`, and the corpus byte-identity check on every push to `main` and every PR touching Go code or test vectors. The byte-identity step regenerates `v1_genesis.json` / `v1_historical.json` / `v1_adversarial.json` and asserts their elided SHA-256 matches the frozen baseline. **Any change that perturbs any existing test vector's output fails this gate.** The playbook explains how to add new primitives without tripping it.
 
+**Adding a primitive with cofactor `h ≠ 4`?** See [`docs/COFACTOR_GENERALIZATION.md`](docs/COFACTOR_GENERALIZATION.md). It covers the small-subgroup attack threat model, the per-cofactor implementation strategy table (h=2/4/8 fast paths + non-power-of-2 fallback), the math for hand-constructing h-torsion adversarial test vectors, and a worked Ed25519 (h=8) example. The Schnorr verifier's cofactor check supports any `h` via dispatch (v4.0.2, F-MED-017) but using a non-h=4 curve requires per-curve threat-model work that the dispatch alone can't do.
+
 ---
 
 # BeeDev

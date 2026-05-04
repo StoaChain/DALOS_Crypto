@@ -28,7 +28,7 @@
  */
 
 import { blake3SumCustom } from '../dalos-blake3/index.js';
-import type { CoordAffine } from './coords.js';
+import type { CoordAffine, CoordExtended } from './coords.js';
 import {
   DALOS_ELLIPSE,
   type Ellipse,
@@ -62,6 +62,61 @@ import * as self from './schnorr.js';
 // ============================================================================
 // Constants
 // ============================================================================
+
+/**
+ * F-MED-017 (audit cycle 2026-05-04, v4.0.2): hybrid cofactor-check
+ * dispatch helper. Mirrors the Go-side `(*Ellipse).cofactorCheckRejects`
+ * in Elliptic/Schnorr.go.
+ *
+ * Returns `true` if X is in the h-torsion subgroup (must be rejected as
+ * a small-subgroup attack point). Returns `false` for legitimate points.
+ *
+ * Dispatch on `e.r` (the curve's cofactor):
+ *   h = 1               → trivial passthrough (no small-subgroup vector)
+ *   h = 2^k for k ≥ 1   → k chained doublings (FAST PATH for h=4)
+ *   h = non-power-of-2  → fallback to `scalarMultiplier(h, X, e)`
+ *
+ * The h=4 fast path preserves byte-identity with the v4.0.1 behavior
+ * for all current curves (DALOS, LETO, ARTEMIS, APOLLO — all h=4).
+ *
+ * CRITICAL: this helper is necessary BUT NOT SUFFICIENT for adding a
+ * non-h=4 curve. See `docs/COFACTOR_GENERALIZATION.md` for the full
+ * procedure (gcd(h, Q) verification, h-torsion adversarial vector
+ * construction, corpus byte-identity re-pinning, security threat
+ * model documentation).
+ */
+function cofactorCheckRejects(x: CoordExtended, e: Ellipse): boolean {
+  const h = e.r;
+  // log2 helper: returns -1 if h is not a power of 2, else log2(h).
+  const log2OrMinusOne = (n: bigint): number => {
+    if (n < 1n) return -1;
+    if ((n & (n - 1n)) !== 0n) return -1;
+    let k = 0;
+    let v = n;
+    while (v > 1n) {
+      v >>= 1n;
+      k++;
+    }
+    return k;
+  };
+
+  const k = log2OrMinusOne(h);
+  if (k >= 0) {
+    // h = 2^k → k chained doublings produce [h]·X.
+    let y = x;
+    for (let i = 0; i < k; i++) {
+      y = doubling(y, e);
+    }
+    return isInfinityPoint(y);
+  }
+
+  // Non-power-of-2 cofactor — general scalar multiplication.
+  // Documented but never exercised by current curves. See
+  // docs/COFACTOR_GENERALIZATION.md for the procedure to add a
+  // non-power-of-2 cofactor curve.
+  const y = scalarMultiplier(h, x, e);
+  return isInfinityPoint(y);
+}
 
 /** Domain-separation tag for the Fiat–Shamir challenge hash. */
 export const SCHNORR_HASH_DOMAIN_TAG = 'DALOS-gen1/SchnorrHash/v1';
@@ -399,16 +454,12 @@ export function schnorrVerify(
   if (!onCurveR) return false;
 
   // F-SEC-001: cofactor subgroup-membership check on R.
-  // Legitimate R = [k]·G has [4]·R = [4k]·G ≠ O (gcd(4, Q)=1, k ∈ [1, Q-1]).
-  // Rejects order-4 small-subgroup attack points.
-  // F-PERF-001 (v4.0.1): two HWCD doublings instead of scalarMultiplier(e.r, _).
-  // The DALOS curve cofactor is 4 = 2², so [4]·X is exactly two doublings of X.
-  // Old path built a 48-element PrecomputeMatrix for the trivial scalar 4
-  // (~16x more big-int work than necessary). Equivalence pinned by the
-  // Go-side TestCofactor4_DoublingEquivalence and the Go↔TS corpus
-  // byte-identity check on the adversarial cofactor vectors.
-  const rCofactor = doubling(doubling(rExtended, e), e);
-  if (isInfinityPoint(rCofactor)) return false;
+  // Legitimate R = [k]·G has [h]·R = [hk]·G ≠ O (gcd(h, Q)=1, k ∈ [1, Q-1]).
+  // Rejects h-torsion small-subgroup attack points.
+  // F-PERF-001 (v4.0.1): two HWCD doublings on the h=4 fast path.
+  // F-MED-017 (v4.0.2): generalised via cofactorCheckRejects dispatch
+  //   — the h=4 fast path is preserved byte-identically.
+  if (cofactorCheckRejects(rExtended, e)) return false;
 
   // Parse public key
   let pkAffine: CoordAffine;
@@ -425,10 +476,10 @@ export function schnorrVerify(
   if (!onCurveP) return false;
 
   // F-SEC-001: cofactor subgroup-membership check on P (public key).
-  // Same rationale as R — rejects order-4 small-subgroup attack public keys.
-  // F-PERF-001 (v4.0.1): see comment above on the two-doublings rewrite.
-  const pCofactor = doubling(doubling(pExtended, e), e);
-  if (isInfinityPoint(pCofactor)) return false;
+  // Same rationale as R — rejects h-torsion small-subgroup attack public keys.
+  // F-PERF-001 (v4.0.1): two HWCD doublings on the h=4 fast path.
+  // F-MED-017 (v4.0.2): generalised via cofactorCheckRejects dispatch.
+  if (cofactorCheckRejects(pExtended, e)) return false;
 
   // Fiat–Shamir challenge
   const challenge = schnorrHash(sig.r.ax, publicKey, message, e);
@@ -555,17 +606,11 @@ export async function schnorrVerifyAsync(
   if (!onCurveR) return false;
 
   // F-SEC-001 (Phase 6): cofactor subgroup-membership check on R — security
-  // parity with the sync `schnorrVerify` path. Origin v3.1.0 added the
-  // async surface BEFORE Phase 6 landed; without this check the async
-  // verifier would accept order-4 small-subgroup attack signatures the
-  // sync verifier rejects. Same construction: legitimate R = [k]·G has
-  // [4]·R = [4k]·G ≠ O (gcd(4, Q) = 1, k ∈ [1, Q-1]).
-  // F-PERF-001 (v4.0.1): two HWCD doublings instead of scalarMultiplier(e.r, _).
-  // [4]·X = doubling(doubling(X)). ~16x less big-int work for the cofactor
-  // step. Doubling is fast and synchronous — no `await` needed even on the
-  // async path. Equivalence pinned by Go-side TestCofactor4_*.
-  const rCofactor = doubling(doubling(rExtended, e), e);
-  if (isInfinityPoint(rCofactor)) return false;
+  // parity with the sync `schnorrVerify` path.
+  // F-PERF-001 (v4.0.1): two HWCD doublings on the h=4 fast path.
+  // F-MED-017 (v4.0.2): generalised via cofactorCheckRejects dispatch
+  //   — sync because doublings/scalarMultiplier are fast on small h.
+  if (cofactorCheckRejects(rExtended, e)) return false;
 
   let pkAffine: CoordAffine;
   try {
@@ -581,10 +626,10 @@ export async function schnorrVerifyAsync(
   if (!onCurveP) return false;
 
   // F-SEC-001 (Phase 6): cofactor subgroup-membership check on P — same
-  // rationale as R above; rejects order-4 small-subgroup public keys.
-  // F-PERF-001 (v4.0.1): see comment above on the two-doublings rewrite.
-  const pCofactor = doubling(doubling(pExtended, e), e);
-  if (isInfinityPoint(pCofactor)) return false;
+  // rationale as R above; rejects h-torsion small-subgroup public keys.
+  // F-PERF-001 (v4.0.1): two HWCD doublings on the h=4 fast path.
+  // F-MED-017 (v4.0.2): generalised via cofactorCheckRejects dispatch.
+  if (cofactorCheckRejects(pExtended, e)) return false;
 
   const challenge = schnorrHash(sig.r.ax, publicKey, message, e);
   if (challenge === null) return false;

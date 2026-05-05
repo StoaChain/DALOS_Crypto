@@ -63,8 +63,25 @@ func roundTripFixture(t *testing.T) (path, password string) {
 	// base49 round-trip in ImportPrivateKey loses a byte and AES-GCM
 	// tag verification fails. Retry rate is roughly 1/16 per encryption.
 	// The probability of all 100 attempts failing is ~ 1e-117.
+	//
+	// F-LOW-014 retry-friendliness (v4.0.3): ExportPrivateKey now uses
+	// O_EXCL, so the SECOND retry attempt (and beyond) would otherwise
+	// fail with EEXIST against the prior failed-roundtrip wallet on
+	// disk. The retry helper KNOWS it's intentionally re-generating the
+	// SAME wallet on each loop iteration (the AES-1/2 ciphertext drift
+	// is the only thing that changes between attempts, not the public
+	// key or filename). Explicit os.Remove before each ExportPrivateKey
+	// satisfies the F-LOW-014 contract: collision is acknowledged and
+	// resolved by deletion before re-export, exactly as the F-LOW-014
+	// docstring specifies for the operational case where overwrite is
+	// genuinely intended.
 	const maxAttempts = 100
 	for attempt := 0; attempt < maxAttempts; attempt++ {
+		// Remove any prior attempt's file before re-exporting (F-LOW-014).
+		// First-iteration: file doesn't exist yet, Remove returns ENOENT
+		// which we ignore. Later iterations: cleans up the prior failed
+		// roundtrip's wallet so O_EXCL can re-create.
+		_ = os.Remove(walletPath)
 		if err := ExportPrivateKey(&e, bs0001InputBitstring, password); err != nil {
 			t.Fatalf("ExportPrivateKey failed: %v", err)
 		}

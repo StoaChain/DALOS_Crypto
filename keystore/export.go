@@ -110,8 +110,37 @@ func ExportPrivateKey(e *el.Ellipse, BitString, Password string) error {
 	// the AES-256-GCM-encrypted private key plus the matching public key — that's
 	// enough material for an offline brute-force oracle if the password is weak.
 	// Windows ignores the mode bits (NTFS uses ACLs); Linux/macOS honor them.
-	OutputFile, err := os.OpenFile(FileName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	//
+	// F-LOW-014 (audit cycle 2026-05-04, v4.0.3): switched O_TRUNC → O_EXCL so a
+	// filename collision is REJECTED rather than silently overwriting an existing
+	// wallet on disk. GenerateFilenameFromPublicKey produces filenames of shape
+	// {first7-PUBL-chars}...{last7-PUBL-chars}.txt (14 base-49 chars total →
+	// ~1.4e-24 collision probability per pair) — astronomically improbable, but
+	// the failure mode if it ever occurs would be silent destruction of an
+	// existing wallet (and thus the only recoverable copy of the key it
+	// protects). O_EXCL turns the race / collision into a hard error at the
+	// open syscall, which the caller can surface to the user with the actual
+	// filename for manual review. Pre-v4.0.3 the open succeeded, the new
+	// wallet was written on top of the existing one, and the user would
+	// discover the loss only when trying to recover the prior key.
+	//
+	// Operational note: if a re-export of the SAME wallet is ever needed
+	// (e.g., after a partial-write recovery — though the WriteString error
+	// path below cleans up via os.Remove), the user must manually delete the
+	// pre-existing file first. This is intentional: explicit deletion forces
+	// confirmation that overwriting the file is the desired action.
+	OutputFile, err := os.OpenFile(FileName, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
 	if err != nil {
+		// os.IsExist(err) catches the EEXIST case (the F-LOW-014 reject path);
+		// surface it with a distinct, user-actionable message naming the
+		// collision target. Other errors (permission denied, disk full at
+		// create-time, etc.) flow through the generic wrap below.
+		if os.IsExist(err) {
+			fmt.Printf("Error: wallet file %q already exists — refusing to overwrite (F-LOW-014 collision protection).\n", FileName)
+			fmt.Println("       Inspect the existing file before retrying. If you intended to replace it,")
+			fmt.Println("       delete it manually and re-run the export.")
+			return fmt.Errorf("export refused: file %q already exists (F-LOW-014 collision protection): %w", FileName, err)
+		}
 		fmt.Println("Error: failed to create export file:", err)
 		return fmt.Errorf("failed to create export file %q: %w", FileName, err)
 	}

@@ -264,6 +264,68 @@ func DalosEllipse() Ellipse {
     return e
 }
 
+// dalosEllipseSingletonState is the package-level once-guarded slot
+// for the DALOS Genesis Ellipse. F-LOW-007 (audit cycle 2026-05-04,
+// v4.0.3): see DalosEllipseSingleton's docstring for rationale.
+var (
+    dalosEllipseOnce     sync.Once
+    dalosEllipseInstance Ellipse
+)
+
+// DalosEllipseSingleton returns a process-wide singleton DALOS Genesis
+// Ellipse. First call builds the Ellipse via DalosEllipse() under a
+// sync.Once guard; subsequent calls return a copy of the cached value.
+// Because Ellipse's generatorCache field is a *generatorPMCache pointer,
+// every value-copy returned by this function aliases the SAME underlying
+// cache slot — so the per-curve generator PrecomputeMatrix is built
+// AT MOST ONCE across the entire process, regardless of how many
+// callers invoke DalosEllipseSingleton().
+//
+// HARDENING (v4.0.3, audit cycle 2026-05-04, F-LOW-007): the existing
+// DalosEllipse() factory allocates a fresh Ellipse + fresh
+// generatorPMCache slot on every call. Production CLI (Dalos.go) calls
+// it once at main() startup, so the perf cost is paid once per
+// invocation — fine. But test code calls it many times (see
+// PointOperations_test.go's cross-curve sweep, KeyGeneration_test.go's
+// per-test fixtures, etc.); each test gets a fresh Ellipse with a
+// fresh empty cache, so the PrecomputeMatrix is rebuilt on first
+// scalar-mult per test. With the test suite's ~30+ DalosEllipse()
+// calls, that's 30+ redundant PM builds (~50ms each) → ~1.5s of pure
+// test-runtime overhead.
+//
+// Tests that don't need a fresh isolated curve (the common case)
+// should switch to DalosEllipseSingleton() for the runtime saving.
+// Tests that DO need isolation (e.g., probing the cache-population
+// behavior itself, or testing an Ellipse-modifying operation) should
+// continue using DalosEllipse() to get a fresh instance per test.
+//
+// API surface: returns Ellipse (by value) to match DalosEllipse()'s
+// signature exactly — drop-in interchangeable. The struct copy on each
+// call is tiny relative to a single PM build it avoids.
+//
+// Goroutine safety: sync.Once.Do guarantees exactly-one execution and
+// proper happens-before ordering for readers; the cached Ellipse is
+// safe to read from any goroutine after the first call returns.
+//
+// Genesis byte-identity: the singleton's underlying Ellipse is built
+// by DalosEllipse() unmodified — same params, same generator, same
+// cofactor. Identical to anything DalosEllipse() returns on the same
+// machine. No effect on the 105-vector corpus or any address-derivation
+// path.
+//
+// Other curves (E521, LETO, ARTEMIS, APOLLO) do NOT have singletons
+// added in this commit because (a) their factories are rarely called
+// in production, (b) the cross-curve test sweep added in F-MED-014
+// only calls each one once per test, and (c) adding 4 more singletons
+// is YAGNI. Future commits may extend the pattern if test runtime
+// becomes a concern.
+func DalosEllipseSingleton() Ellipse {
+    dalosEllipseOnce.Do(func() {
+        dalosEllipseInstance = DalosEllipse()
+    })
+    return dalosEllipseInstance
+}
+
 //=============================================================================
 // HISTORICAL CURVES
 //

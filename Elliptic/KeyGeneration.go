@@ -97,21 +97,46 @@ func DalosAddressComputer(PublicKeyInt *big.Int) string {
     return Account
 }
 
+// ConvertToLetters maps each byte of `hash` to a Unicode rune via the
+// 16×16 CharacterMatrix and returns the resulting string. Used by the
+// Demiourgos address derivation (see DalosAddressComputer above).
+//
+// HARDENING (v4.0.3, audit cycle 2026-05-04, F-LOW-005): the pre-v4.0.3
+// implementation built the result via repeated `[]string` append +
+// final `strings.Join`. Each iteration allocated TWO heap strings: the
+// single-rune `string(Matrix[row][col])` conversion AND the slice
+// re-grow when `append` ran out of capacity. For a typical 160-byte
+// `hash` input (the post-seven-fold-Blake3 buffer in
+// `DalosAddressComputer`), that's 160 single-char string allocs +
+// log₂(160) ≈ 8 slice re-grows = ~168 heap allocations + ~10–50 µs of
+// pure GC pressure per address derivation.
+//
+// Post-v4.0.3: `strings.Builder.Grow + WriteRune`. Single buffer pre-
+// sized to the upper bound (4 bytes per rune × len(hash), since
+// CharacterMatrix runes can be up to U+FFFF and UTF-8-encode to 1-3
+// bytes; the 4× upper bound is conservative and avoids any re-grow).
+// One allocation at Grow, one at .String(). Matches the established
+// in-file template at `GenerateRandomBitsOnCurve` (lines 168 area).
+//
+// Output is byte-identical: same sequence of runes, same order, same
+// UTF-8 encoding. Genesis byte-identity preserved (verified via the
+// 105-vector corpus byte-identity gate; ConvertToLetters is on every
+// `Ѻ.` / `Σ.` address-derivation path the corpus exercises).
 func ConvertToLetters(hash []byte) string {
-    var SliceStr []string
     Matrix := CharacterMatrix()
-    
+    var b strings.Builder
+    // Pre-size: 4 bytes-per-rune × len(hash) is the conservative upper
+    // bound (UTF-8 encodes any code point in the BMP in ≤3 bytes; 4 is
+    // future-proof if the matrix ever gains supplementary-plane code
+    // points). Eliminates buffer re-grows on the typical 160-byte input.
+    b.Grow(len(hash) * 4)
     for _, value := range hash {
         // Calculate row and column index for the Matrix
         row := value / 16 // Each row has 16 elements
         col := value % 16 // Column index within the row
-        
-        // Append the corresponding character from the Matrix to the SliceStr
-        SliceStr = append(SliceStr, string(Matrix[row][col]))
+        b.WriteRune(Matrix[row][col])
     }
-    
-    // Join the SliceStr to form the resulting string
-    return strings.Join(SliceStr, "")
+    return b.String()
 }
 
 // AffineToPublicKey serialises a CoordAffine point to the canonical

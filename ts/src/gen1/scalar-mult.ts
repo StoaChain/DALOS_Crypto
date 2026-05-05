@@ -161,6 +161,53 @@ export function bigIntToBase49(n: bigint): string {
 }
 
 /**
+ * F-LOW-006 (audit cycle 2026-05-04, v4.0.3): flatten the 7×7
+ * PrecomputeMatrix into a 48-element linear array ONCE per
+ * scalar-mult call. The pre-fix inner loop recomputed
+ * `Math.floor((idx-1)/7)` and `(idx-1)%7` on every one of the 48
+ * iterations, then did an optional-chain probe `PM[row]?.[col]` plus
+ * an `=== undefined` check — about 4 arithmetic ops + a nested
+ * lookup per iteration. For the typical DALOS scalar (~250 base-49
+ * digits), that's ~250 × 48 = 12,000 redundant `Math.floor` calls
+ * and the same number of `%` ops per scalar-mult.
+ *
+ * Post-flatten: the inner loop just does `flat[idx - 1]` — one
+ * pre-computed lookup. Builder cost is the same 48 iterations done
+ * ONCE up front, paying the optional-chain probe + undefined check
+ * exactly once per (row, col) instead of repeatedly inside the hot
+ * loop.
+ *
+ * Constant-time property preserved: `flat` is fully populated before
+ * the outer Horner loop starts; the inner 48-entry scan still runs
+ * every iteration to completion (no early exit), and `value === idx`
+ * still uniformly probes every position. The optimisation only
+ * removes per-iteration arithmetic, not data-dependent branching.
+ *
+ * Helper is module-private (consumers should always go through
+ * `scalarMultiplier` / `scalarMultiplierAsync`).
+ */
+function flattenPM(PM: PrecomputeMatrix): CoordExtended[] {
+  const flat: CoordExtended[] = new Array(48);
+  for (let idx = 1; idx <= 48; idx++) {
+    const row = Math.floor((idx - 1) / 7);
+    const col = (idx - 1) % 7;
+    const candidate = PM[row]?.[col];
+    if (candidate === undefined) {
+      // PrecomputeMatrix from precomputeMatrix() / PrecomputeMatrix-
+      // WithGenerator() is always 7×7-defined by construction. A
+      // missing slot here would indicate a malformed PM passed via
+      // the optional `precomputed` parameter — surface loudly rather
+      // than silently substituting INFINITY_POINT_EXTENDED.
+      throw new Error(
+        `flattenPM: PrecomputeMatrix is malformed (missing entry at PM[${row}][${col}], idx=${idx})`,
+      );
+    }
+    flat[idx - 1] = candidate;
+  }
+  return flat;
+}
+
+/**
  * Computes `scalar · P` on the DALOS curve in Extended coordinates.
  *
  * Algorithm: branch-free base-49 Horner (v1.3.0+ hardened). Every
@@ -189,6 +236,9 @@ export function scalarMultiplier(
   }
 
   const PM = precomputed ?? precomputeMatrix(P, e);
+  // F-LOW-006 (v4.0.3): flatten 7×7 PM → 48-entry linear array ONCE
+  // per call. See flattenPM docstring above for rationale.
+  const flat = flattenPM(PM);
   const digits = bigIntToBase49(scalar);
   let result: CoordExtended = INFINITY_POINT_EXTENDED;
 
@@ -202,16 +252,15 @@ export function scalarMultiplier(
     const value = digitValueBase49(ch);
 
     // Branch-free point selection over all 48 precompute entries.
-    // Always examines every index — no early exit.
+    // Always examines every index — no early exit. F-LOW-006 (v4.0.3):
+    // post-flatten, each iteration is a single `flat[idx - 1]` lookup
+    // plus the `value === idx` selector — no per-iter Math.floor / %.
+    // The non-null assertion is justified by flattenPM's invariant
+    // that all 48 entries are populated (it throws otherwise).
     let toAdd: CoordExtended = INFINITY_POINT_EXTENDED;
     for (let idx = 1; idx <= 48; idx++) {
-      const row = Math.floor((idx - 1) / 7);
-      const col = (idx - 1) % 7;
       if (value === idx) {
-        const candidate = PM[row]?.[col];
-        if (candidate !== undefined) {
-          toAdd = candidate;
-        }
+        toAdd = flat[idx - 1]!;
       }
     }
 
@@ -314,6 +363,10 @@ export async function scalarMultiplierAsync(
   }
 
   const PM = precomputed ?? precomputeMatrix(P, e);
+  // F-LOW-006 (v4.0.3): same flatten-once optimisation as the sync
+  // path. See flattenPM docstring for rationale + constant-time
+  // preservation argument.
+  const flat = flattenPM(PM);
   const digits = bigIntToBase49(scalar);
   let result: CoordExtended = INFINITY_POINT_EXTENDED;
 
@@ -324,15 +377,11 @@ export async function scalarMultiplierAsync(
     }
     const value = digitValueBase49(ch);
 
+    // Branch-free 48-entry scan, post-flatten — single lookup per iter.
     let toAdd: CoordExtended = INFINITY_POINT_EXTENDED;
     for (let idx = 1; idx <= 48; idx++) {
-      const row = Math.floor((idx - 1) / 7);
-      const col = (idx - 1) % 7;
       if (value === idx) {
-        const candidate = PM[row]?.[col];
-        if (candidate !== undefined) {
-          toAdd = candidate;
-        }
+        toAdd = flat[idx - 1]!;
       }
     }
 

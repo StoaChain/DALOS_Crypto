@@ -188,6 +188,7 @@ export interface AdversarialCofactorVector {
 }
 
 export interface AdversarialCorpus {
+  readonly schema_version: number;
   readonly adversarial_cofactor_vectors: readonly AdversarialCofactorVector[];
 }
 
@@ -195,11 +196,23 @@ let cachedAdversarialCorpus: AdversarialCorpus | undefined;
 
 /**
  * Load the Go-reference adversarial-vector corpus. Cached after first call.
+ *
+ * F-LOW-013 (audit cycle 2026-05-04, v4.0.3): validates schema_version
+ * BEFORE caching so a malformed file cannot poison subsequent reads.
+ * Mirrors the genesis (schema_version=1) and historical (schema_
+ * version=2) loaders' validation pattern. Adversarial corpus is at
+ * version 1 (initial — added in v4.0.3 alongside the loader gate).
  */
 export function loadAdversarialCorpus(): AdversarialCorpus {
   if (cachedAdversarialCorpus === undefined) {
     const raw = readFileSync(adversarialCorpusPath, 'utf-8');
-    cachedAdversarialCorpus = JSON.parse(raw) as AdversarialCorpus;
+    const parsed = JSON.parse(raw) as AdversarialCorpus;
+    if (parsed.schema_version !== 1) {
+      throw new Error(
+        `Adversarial corpus schema mismatch: expected 1, got ${parsed.schema_version}`,
+      );
+    }
+    cachedAdversarialCorpus = parsed;
   }
   return cachedAdversarialCorpus;
 }

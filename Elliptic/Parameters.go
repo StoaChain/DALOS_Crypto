@@ -167,6 +167,49 @@ func SuperiorTrace(Prime, Trace *big.Int) *big.Int {
     return output.Add(Prime, One).Add(output, Trace)
 }
 
+// E521Ellipse returns parameters for the published E-521 reference
+// curve. NOT a production primitive — see SCOPE NOTE below.
+//
+// SCOPE NOTE (F-LOW-011, audit cycle 2026-05-04, v4.0.3): E521 is
+// intentionally kept in this package as a CROSS-CURVE TEST FIXTURE
+// and as a worked example of how to define new curve parameters
+// against the `Ellipse` struct. It has zero production callers
+// (verified 2026-05-05 via `grep -rn "E521Ellipse"` on workspace
+// `Z:\` outside this repo) and is NOT registered against the
+// `ts/src/registry/` primitive-registry surface. Calls to
+// `E521Ellipse()` work correctly post-F-MED-014 (the latent
+// `e.G.AX = new(big.Int)` allocation bug surfaced by Cluster C's
+// cross-curve test sweep was fixed inline at lines 207-208 below
+// this declaration).
+//
+// Why kept rather than deleted:
+//   1. The Cluster C cross-curve test sweep (PointOperations_test.go
+//      runs 11 tests across 5 curves) uses E521 as a non-DALOS
+//      reference data point — its different prime field shape
+//      provides genuine cross-coverage that LETO/ARTEMIS/APOLLO
+//      (all DALOS-family TEC variants) don't.
+//   2. The factory itself documents the canonical E-521 parameters,
+//      which are useful as a reference for anyone adding a new
+//      published curve to this codebase later.
+//   3. Adding E521 to the primitive-registry surface is YAGNI today
+//      — Ouronet does not mint E521 addresses and has no plans to;
+//      promoting it to a registry-backed primitive would require
+//      defining E521-specific address prefixes, Schnorr v2 spec
+//      conformance, and a TS-port mirror, all without a real
+//      consumer.
+//
+// If a future cycle does need E521 as a production primitive (e.g.,
+// a separate StoaChain product wants to use it), the path is the
+// same as the historical curves got in v1.2.0: add a TS-side
+// counterpart in `ts/src/historical/`, add a `CryptographicPrimitive`
+// adapter in `ts/src/registry/`, register against the default
+// registry, and add E521-specific test vectors to a NEW corpus file
+// (NOT v1_genesis.json — that's frozen). Until then, this factory
+// is documentation + test fixture only.
+//
+// Documented as DOCUMENTED-NOT-FIXED-BY-DESIGN in the v4.0.3 audit
+// close-out — mirrors F-MED-018 / F-MED-007 architectural-boundary
+// precedent.
 func E521Ellipse() Ellipse {
     var (
         e Ellipse

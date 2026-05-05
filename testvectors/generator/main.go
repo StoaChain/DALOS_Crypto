@@ -821,9 +821,21 @@ func generateAdversarial() {
 
 	// Write atomically: .tmp then rename, so concurrent readers never observe
 	// a half-written file. Same pattern as the genesis/historical writers.
+	//
+	// F-LOW-013 (audit cycle 2026-05-04, v4.0.3): added schema_version
+	// field — both genesis (schema_version=1) and historical (schema_
+	// version=2) corpora declare a top-level version, and their TS
+	// loaders (`ts/tests/fixtures.ts`) validate the field BEFORE caching.
+	// Adversarial was the odd-one-out: no version, no loader gate. Now
+	// declared at version 1 (initial). Future schema changes (e.g.,
+	// adding new attack-vector classes) bump the number; the TS loader's
+	// matching gate refuses to load mismatched-version files, defending
+	// against silent stale-corpus consumption.
 	adversarialOutput := struct {
+		SchemaVersion              int                          `json:"schema_version"`
 		AdversarialCofactorVectors []AdversarialCofactorVector `json:"adversarial_cofactor_vectors"`
 	}{
+		SchemaVersion:              1,
 		AdversarialCofactorVectors: adversarialVectors,
 	}
 	adversarialJSON, err := json.MarshalIndent(adversarialOutput, "", "  ")

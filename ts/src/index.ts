@@ -25,4 +25,13 @@ export * as historical from './historical/index.js';
 // Re-export the dalos-blake3 subpath at the top level for discoverability.
 // Canonical import path is still `@stoachain/dalos-crypto/dalos-blake3`. Exposes `blake3SumCustom`
 // and `sevenFoldBlake3` — the Genesis seven-fold construction. This subpath WILL be extracted to a sibling npm package in Phase 11; the root namespace re-export is a forward-compatible alias.
+//
+// F-LOW-004 (audit cycle 2026-05-04, v4.0.3): both `blake3` and `dalosBlake3`
+// are exported. `dalosBlake3` mirrors the subpath name (`./dalos-blake3`) and
+// is the recommended alias going forward — IDE auto-import on `blake3` was
+// ambiguous against `@noble/hashes/blake3` and other competing libraries in
+// monorepo / multi-dep contexts. The original `blake3` alias is retained for
+// back-compat (it has been on the public API since v2.3.0); future major may
+// retire it.
+export * as dalosBlake3 from './dalos-blake3/index.js';
 export * as blake3 from './dalos-blake3/index.js';

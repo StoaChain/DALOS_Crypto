@@ -92,6 +92,43 @@ export interface PrimitiveMetadata {
 /**
  * Abstract cryptographic primitive. DALOS Genesis is the reference
  * implementation. Future generations register under new `id`s.
+ *
+ * SCOPE NOTE (F-LOW-010, audit cycle 2026-05-04, v4.0.3): this
+ * interface is shaped for **elliptic-curve primitives in the DALOS
+ * family** — concretely, primitives that:
+ *   - Generate keys from a bit-string of curve-specific length.
+ *   - Generate keys from integers in base 10 OR base 49 (the Go
+ *     reference's `(*Ellipse).GenerateScalarFromBitString` accepts
+ *     both bases via the `isBase10` flag).
+ *   - Produce Ouronet-style `Ѻ.` / `Σ.` addresses derivable from a
+ *     base-49 public-key string.
+ *
+ * The interface name `CryptographicPrimitive` is broader than the
+ * current implementation surface — it was chosen for forward-
+ * compatibility branding, not because the interface itself is
+ * fully primitive-agnostic. A genuine post-quantum primitive (e.g.
+ * a lattice-based signature scheme) would NOT fit this shape — its
+ * key-generation paths, address derivation, and signature-format
+ * semantics differ enough that it would warrant a sibling interface
+ * (e.g. `LatticePrimitive`) rather than an adapter to this one.
+ *
+ * The `[key: string]: unknown` index signature on `PrimitiveMetadata`
+ * (line 85 above) DOES allow per-primitive metadata extension at the
+ * data-layer, but the method shape itself (`generateFromInteger`'s
+ * `base: 10 | 49` literal type, `publicKeyToAddress`'s string-string
+ * signature, `detectGeneration`'s pattern-match on address prefix)
+ * remains EC-family-specific.
+ *
+ * If a future cycle adds non-EC primitive support, the recommended
+ * path is: (a) rename this interface to `EllipticPrimitive` (or
+ * leave the name and mark it `@deprecated` in favor of the new one),
+ * (b) introduce a parent `Primitive` marker interface that BOTH
+ * EC and PQ variants extend, (c) split key-gen / address / signing
+ * into composable mixin interfaces that each variant implements
+ * selectively. Documented as architectural-deferral here rather than
+ * narrowed in v4.0.3 — narrowing without a concrete second consumer
+ * is YAGNI; the current single-implementation scope is honestly
+ * captured in this docstring.
  */
 export interface CryptographicPrimitive {
   /** Stable identifier, e.g., `"dalos-gen-1"`. */

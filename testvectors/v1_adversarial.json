@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "adversarial_cofactor_vectors": [
     {
       "id": "adv-cof-0001",

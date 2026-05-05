@@ -53,6 +53,41 @@ import { type PrecomputeMatrix, addition, fortyNiner, precomputeMatrix } from '.
  * Co-located with the consuming function. Schnorr's async signer/verifier
  * read this cache through `getOrBuildGeneratorPM` to thread the cached
  * matrix into `scalarMultiplierAsync`'s `precomputed` parameter.
+ *
+ * F-LOW-009 (audit cycle 2026-05-04, v4.0.3): the audit recommended
+ * folding this WeakMap into a `generatorPM` slot on the `Ellipse`
+ * interface itself (matching the Go-side `*generatorPMCache` pointer
+ * pattern). DEFERRED for v4.0.3 with rationale:
+ *
+ *   1. The TS `Ellipse` interface declares ALL fields `readonly` (see
+ *      ts/src/gen1/curve.ts:19-46). Adding a mutable `generatorPM`
+ *      slot would break that immutability contract — either the slot
+ *      becomes mutable (interface-shape regression) or the cache uses
+ *      a wrapper object reachable through a readonly reference (back
+ *      to needing two levels of indirection — same complexity as the
+ *      current WeakMap).
+ *   2. The four production curve singletons are frozen at module load
+ *      via IIFE construction (`DALOS_ELLIPSE: Ellipse = (() => {...})()`
+ *      patterns); adding a mutable slot would require either rewriting
+ *      these constructors to NOT freeze, or adding a side-table inside
+ *      the frozen object (defeating the freeze).
+ *   3. The current WeakMap implementation is correct, observably-fast
+ *      (single hash-table lookup per scalar-mult call), and provides
+ *      the GC-eligibility property for consumer-defined custom curves
+ *      that a slot-based approach would lose (custom curves would now
+ *      pin their PM cache to the consumer-managed Ellipse object's
+ *      lifetime).
+ *   4. The "two parallel caches" framing in the audit conflated the
+ *      `Ellipse.field` slot (a per-curve Modular helper, populated at
+ *      construction time, never mutated) with the runtime PM cache.
+ *      They serve different purposes: `e.field` is a constructor-time
+ *      derivation; the WeakMap is a memo for an expensive build that
+ *      happens on first use, not at construction.
+ *
+ * This is documented as DEFERRED-NOT-FIXED-BY-DESIGN — mirrors the
+ * F-MED-018 / F-MED-007 architectural-boundary precedent. Future
+ * reconsideration would benefit from an explicit ADR weighing the
+ * GC-eligibility tradeoff against the immutability-contract break.
  */
 const generatorPMCache = new WeakMap<Ellipse, PrecomputeMatrix>();
 

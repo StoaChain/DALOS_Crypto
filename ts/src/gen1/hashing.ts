@@ -133,10 +133,16 @@ export function convertHashToBitString(hash: Uint8Array, bitLength: number): str
   // `bigIntToBase49` (REQ-29) for the same reason; mirrored here for
   // consistency. Output is byte-identical to the old `+=` path —
   // `parts.join('')` produces the same string, just in O(n).
-  const parts: string[] = new Array(hash.length);
-  for (let i = 0; i < hash.length; i++) {
-    parts[i] = hash[i].toString(2).padStart(8, '0');
-  }
+  //
+  // F-MED-010 follow-up (v4.0.2 publish recovery): switched from
+  // `for (let i = 0; ...) parts[i] = hash[i].toString(...)` to
+  // `Array.from(hash, ...)`. The indexed-access form tripped TS's
+  // `noUncheckedIndexedAccess: true` rule (hash[i] types as `number |
+  // undefined` even though the loop bound proves it's defined).
+  // `Array.from(Uint8Array, mapper)` types `b` as `number` cleanly
+  // with no non-null assertion needed. Output and big-O cost
+  // unchanged.
+  const parts = Array.from(hash, (b) => b.toString(2).padStart(8, '0'));
   const full = parts.join('');
   if (full.length === bitLength) return full;
   if (full.length > bitLength) {

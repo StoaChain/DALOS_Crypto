@@ -70,11 +70,7 @@
 import type { Bitmap } from './bitmap.js';
 import { bitmapToBitString, validateBitmap } from './bitmap.js';
 import { DALOS_ELLIPSE, type Ellipse, extended2Affine } from './curve.js';
-import {
-  InvalidBitStringError,
-  InvalidBitmapError,
-  InvalidPrivateKeyError,
-} from './errors.js';
+import { InvalidBitStringError, InvalidBitmapError, InvalidPrivateKeyError } from './errors.js';
 import { affineToPublicKey, dalosAddressMaker, seedWordsToBitString } from './hashing.js';
 import {
   bigIntToBase49,

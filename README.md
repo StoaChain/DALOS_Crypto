@@ -217,7 +217,7 @@ Category-A fixes (output-preserving) landed in the Go reference:
 Category-B fixes (Schnorr, output-changing — v2.0.0 of the Schnorr signature format) landed in the Go reference:
 - ✅ SC-1 — length-prefixed Fiat–Shamir transcript
 - ✅ SC-2 — RFC-6979 deterministic nonces
-- ✅ SC-3 — `"dalos-schnorr-v2"` domain-separation tag
+- ✅ SC-3 — `"DALOS-gen1/SchnorrHash/v1"` + `"DALOS-gen1/SchnorrNonce/v1"` domain-separation tags (see [`docs/SCHNORR_V2_SPEC.md`](docs/SCHNORR_V2_SPEC.md) §3.3)
 - ✅ SC-4 — canonical `s` range (reject `s ≥ Q`)
 - ✅ SC-5 — on-curve checks on deserialised points
 - ✅ SC-6 — structured `VerifyResult` errors, no silent false-true
@@ -266,7 +266,7 @@ Every finding from the original audit has been addressed in the Go reference (v2
 |---|---|
 | Scalar multiplication was non-constant-time | ✅ **Fixed** — branch-free base-49 Horner linear-scan over the precompute matrix. Runtime + memory access pattern independent of the secret digit. |
 | Silent error discards in several places | ✅ **Fixed** — explicit error returns / typed errors throughout the Go reference; `throw` with descriptive messages in the TS port. |
-| Schnorr hardening items (7 findings) | ✅ **Fixed** — Schnorr v2.0.0 ships SC-1…SC-7 (length-prefixed Fiat–Shamir, RFC-6979 deterministic nonces, `dalos-schnorr-v2` domain tag, canonical `s ∈ [0,Q)`, on-curve checks, structured errors, constant-time comparisons). See [`docs/SCHNORR_V2_SPEC.md`](docs/SCHNORR_V2_SPEC.md). |
+| Schnorr hardening items (7 findings) | ✅ **Fixed** — Schnorr v2.0.0 ships SC-1…SC-7 (length-prefixed Fiat–Shamir, RFC-6979 deterministic nonces, `DALOS-gen1/SchnorrHash/v1` + `DALOS-gen1/SchnorrNonce/v1` domain tags, canonical `s ∈ [0,Q)`, on-curve checks, structured errors, constant-time comparisons). See [`docs/SCHNORR_V2_SPEC.md`](docs/SCHNORR_V2_SPEC.md) §3.3 for the canonical tag definitions. |
 | AES mode audit pending | ✅ **Resolved** — AES-256-GCM with Blake3 KDF confirmed + documented in [`docs/DALOS_CRYPTO_GEN1.md § 7`](docs/DALOS_CRYPTO_GEN1.md#7-aes-256-gcm-encryption). TS port additionally works around a latent Go-era IV nibble bug (see Hardening catalogue, TS-only improvement). |
 
 Full audit trace lives in [`AUDIT.md`](AUDIT.md). No open findings at v2.1.0 (Go) / v1.1.0 (TS).

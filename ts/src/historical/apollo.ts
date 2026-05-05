@@ -23,10 +23,14 @@
  * `registry.register(Apollo)`. Address prefixes: standard `₱.`,
  * smart `Π.`.
  *
- * Note: the original Go source contains a copy-paste bug (line 907)
- * setting `p.Name = "TEC_S1023_Pr1029p639_m200"` on this factory. The
- * TypeScript port preserves the **correct** identity under the name
- * `APOLLO`.
+ * Historical note: the original Go source contained a copy-paste bug
+ * setting the APOLLO factory's `e.Name` to ARTEMIS's identity string
+ * (`"TEC_S1023_Pr1029p639_m200"`). That bug was fixed before the
+ * historical curves were promoted to production in v1.2.0; the Go
+ * source at `Elliptic/Parameters.go` `ApolloEllipse()` now correctly
+ * sets `e.Name = "APOLLO"`. The TypeScript port has always used the
+ * correct identity. F-LOW-017 (audit cycle 2026-05-04, v4.0.3):
+ * comment updated to past tense to reflect the resolved state.
  *
  * Parameters:
  *

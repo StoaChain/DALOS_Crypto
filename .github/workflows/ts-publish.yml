@@ -216,14 +216,22 @@ jobs:
         # /bee:pollinate's backfill step (called from main user invocation) is
         # the canonical front-door; this workflow step is a safety net for
         # scenarios where pollinate hasn't run yet.
-        # F-INT-004 (audit cycle 2026-05-04): list updated to include
-        # ts-v4.0.0 (which the prior list was missing — backfill silently
-        # didn't cover it because the entry wasn't there).
+        # F-INT-004 (audit cycle 2026-05-04, v4.0.1): list updated to
+        # include ts-v4.0.0 (which the prior list was missing — backfill
+        # silently didn't cover it because the entry wasn't there).
+        # F-LOW-018 recurrence (audit cycle 2026-05-04, v4.0.3): added
+        # ts-v4.0.1 + ts-v4.0.2 — both shipped between the F-INT-004
+        # update and now, so the safety-net loop had drifted again.
+        # This loop NEEDS to be appended to on every release; consider
+        # converting to dynamic enumeration via `git for-each-ref` so
+        # future bumps don't require touching this file (deferred —
+        # current static list is reviewable / auditable, dynamic enum
+        # would mask backfill scope from a code reader).
         working-directory: ${{ github.workspace }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          for PRIOR_TAG in ts-v1.0.0 ts-v1.1.0 ts-v1.2.0 ts-v3.0.0 ts-v3.0.1 ts-v3.0.2 ts-v3.0.3 ts-v3.1.0 ts-v4.0.0; do
+          for PRIOR_TAG in ts-v1.0.0 ts-v1.1.0 ts-v1.2.0 ts-v3.0.0 ts-v3.0.1 ts-v3.0.2 ts-v3.0.3 ts-v3.1.0 ts-v4.0.0 ts-v4.0.1 ts-v4.0.2; do
             PRIOR_TITLE="${PRIOR_TAG#ts-}"
             if gh release view "$PRIOR_TAG" >/dev/null 2>&1; then
               echo "Backfill: $PRIOR_TAG Release already exists — skipping."

@@ -292,7 +292,7 @@ Summary of hardening items (SC-1 … SC-7), all resolved:
 |---|---|
 | SC-1 — length-prefix Fiat-Shamir | Every input to the challenge hash is length-prefixed |
 | SC-2 — deterministic nonces | RFC-6979 — nonce = HMAC-DRBG(privKey ‖ msgHash) |
-| SC-3 — domain tag | `"dalos-schnorr-v2"` prefix separates from other Schnorr variants |
+| SC-3 — domain tag | `"DALOS-gen1/SchnorrHash/v1"` (challenge) + `"DALOS-gen1/SchnorrNonce/v1"` (nonce) tags separate from other Schnorr variants — see [`SCHNORR_V2_SPEC.md`](SCHNORR_V2_SPEC.md) §3.3 |
 | SC-4 — canonical s range | Signatures where `s ≥ Q` are rejected (reduced-s is canonical) |
 | SC-5 — on-curve checks | Public keys parsed from wire are verified on-curve before use |
 | SC-6 — error returns | Explicit `VerifyResult` with reason codes; no silent false-true |

@@ -37,7 +37,15 @@ func confirmSeedWords(seedWords []string) error {
 
     inputWords := make([]string, 0, len(seedWords))
 
-    // Using fmt.Scan to read all words (space-separated) into inputWords
+    // Using fmt.Scan to read all words (space-separated) into inputWords.
+    // F-LOW-015 (audit cycle 2026-05-04, v4.0.3): the post-loop length
+    // check that used to follow this loop has been removed — it was dead
+    // code. The loop runs exactly len(seedWords) iterations; on any
+    // fmt.Scan failure the early `return` above fires, so reaching the
+    // statement after the loop guarantees `len(inputWords) ==
+    // len(seedWords)`. The deleted check could never observe a mismatch
+    // and was pure noise. Per-word equality check below is the actual
+    // confirmation gate.
     for i := 0; i < len(seedWords); i++ {
         var word string
         _, err := fmt.Scan(&word)
@@ -45,11 +53,6 @@ func confirmSeedWords(seedWords []string) error {
             return fmt.Errorf("reading input word %d: %w", i+1, err)
         }
         inputWords = append(inputWords, word)
-    }
-
-    // Check if the number of input words matches the original
-    if len(inputWords) != len(seedWords) {
-        return fmt.Errorf("number of seed words does not match (expected %d, got %d)", len(seedWords), len(inputWords))
     }
 
     // Check each seed word
@@ -120,7 +123,11 @@ func main() {
     // Sub-options for conversion
     bitConvFlag := flag.String("bs", "", "Converts a private Key as BitString to Public Key")
     intConvFlag := flag.String("int10", "", "Converts a private Key as String representing an Integer in Base 10 to Public Key")
-    strConvFlag := flag.String("int49", "", "Converts a private Key as String representing an Integer in Base 10 to Public Key")
+    // F-LOW-003 (audit cycle 2026-05-04, v4.0.3): the "-int49" flag's
+    // help-text used to read "...Integer in Base 10..." — copy-paste
+    // mismatch with the flag name. Users reading `dalos -h` saw both
+    // -int10 and -int49 described as "Base 10". Fixed to "Base 49".
+    strConvFlag := flag.String("int49", "", "Converts a private Key as String representing an Integer in Base 49 to Public Key")
     
     // Parse the flags
     flag.Parse()

@@ -13,7 +13,255 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Expand test-vector corpus from 85 → 500+ — edge cases (all-zero, all-ones, boundary scalars), invalid-input rejection vectors.
 - `docs/SCHNORR_HARDENING.md` — detailed fix plan for the 7 Schnorr findings (Category B, applied in the TS port).
 - Third-party cryptographic audit engagement.
-- Audit-cycle-2 LOW-band triage (~17 distinct items remaining; see `AUDIT.md` close-out section).
+
+---
+
+## [4.0.3] — 2026-05-05
+
+**Patch release.** Closes audit-cycle-2026-05-04's entire LOW band
+(19 distinct findings) — combined with v4.0.2's MEDIUM-band closure
+this completes the cycle. The next audit starts from a fully-clean
+state. Genesis 105-vector corpus byte-identity preserved end-to-end
+(verified via deterministic-record SHA compare on every cluster
+checkpoint):
+
+  - `bitstring_vectors`   `bd4d14ca1ba070b7…`  MATCH
+  - `seed_words_vectors`  `6c9a2577c23caa64…`  MATCH
+  - `bitmap_vectors`      `cd530b3b125a4546…`  MATCH
+  - `historical/leto`     `daad91d2427ddb2b…`  MATCH
+  - `historical/artemis`  `abd32a4660819d63…`  MATCH
+  - `historical/apollo`   `7bc541f94fa3cd4a…`  MATCH
+
+Per-corpus extended-elided SHA-256 (unchanged since v3.0.0):
+  - `v1_genesis.json`     `082f7a40405d4c075f1975af0a6075bb0228bbccae60a53b05b350a09ce223ae`
+  - `v1_historical.json`  `80c93f4d4956e01236808f81f518d17eeaad431f4fedb7c26233d2508f06e68b`
+
+`v1_adversarial.json`'s SHA changes in this release (the F-LOW-013 fix
+adds a `schema_version: 1` top-level field). Adversarial corpus is
+INDEPENDENT of the Genesis byte-identity contract.
+
+**Audit cycle 2026-05-04 final status:** 60/60 substantive findings
++ 3/3 NEEDS-CONTEXT dispositioned across v4.0.1 (CRITICAL+HIGH),
+v4.0.2 (MEDIUM + NEEDS-CONTEXT), and v4.0.3 (LOW). See [`AUDIT.md`](AUDIT.md)
+"Audit Cycle 2 Close-Out" section for the full per-finding matrix.
+
+### Why a patch release?
+
+Same rationale as v4.0.2: every fix is either a Go-side library
+hardening (no public-API surface change), an additive TS export
+(F-LOW-004's `dalosBlake3` alias is purely additive), a perf
+micro-optimisation with byte-identical output, a doc-only update,
+or a test/file-organisation refactor. The published
+`@stoachain/dalos-crypto` npm package's wire format, behaviour,
+and existing exports are byte-identical to v4.0.2 at the
+happy-path surface.
+
+### Cluster L-A — Documentation + cosmetic close-out (commit `0eeb239`)
+
+Six findings, single doc/cosmetic commit:
+  - **F-LOW-003** ✅ — `-int49` flag help-text typo "Base 10" → "Base 49".
+    Audit's "Dalos.go:91-93" line reference was stale (shifted with
+    F-MED-002/004 docstring additions in v4.0.2); actual location was
+    `Dalos.go:123`.
+  - **F-LOW-015** ✅ — Deleted unreachable post-loop length check in
+    `confirmSeedWords`. Loop runs exactly N iterations + early-returns
+    on err → guard is tautologically true.
+  - **F-LOW-017** ✅ — `apollo.ts` doc comment rewritten to past-tense
+    (the Go bug it referenced was fixed before v1.2.0; verified
+    `e.Name = "APOLLO"` at `Elliptic/Parameters.go:382`).
+  - **F-LOW-018 (recurrence)** ✅ — `ts-publish.yml` backfill loop
+    appended `ts-v4.0.1` + `ts-v4.0.2`; comment block now explicitly
+    documents the recurring-drift pattern.
+  - **F-LOW-019** ✅ — Schnorr domain tag fixed across 4 doc references
+    (`CLAUDE.md`, `README.md` × 2, `docs/DALOS_CRYPTO_GEN1.md`).
+    Replaced bogus `dalos-schnorr-v2` with the actual
+    `DALOS-gen1/SchnorrHash/v1` + `DALOS-gen1/SchnorrNonce/v1` tags
+    from `docs/SCHNORR_V2_SPEC.md` §3.3.
+  - **F-LOW-020** ✅ — CLAUDE.md "Current state" rewritten from
+    `v2.1.0`/`v1.2.0` to current `v4.0.3` (this release) with full
+    hardening trajectory + a forward-reminder to bump on each release.
+
+Pre-existing closure verified: F-LOW-016 = duplicate of F-HIGH-007
+(closed in v4.0.1).
+
+### Cluster L-B — Perf micro-optimizations (commit `c7bd717`)
+
+Three findings, established hot-path patterns:
+
+#### F-LOW-005 — `ConvertToLetters` strings.Builder swap
+Pre-fix per-iteration `string(Matrix[row][col])` + `append([]string,
+...)` + final `strings.Join`. ~168 heap allocs per address derivation.
+Swapped to `strings.Builder.Grow + WriteRune` (mirrors in-file
+`GenerateRandomBitsOnCurve` template). 2 allocs per call. Output
+byte-identical (every Ѻ./Σ. address regenerates correctly).
+
+#### F-LOW-006 — TS scalar-mult flatten 7×7 matrix
+Both `scalarMultiplier` (sync) and `scalarMultiplierAsync` had a
+48-entry inner-scan that recomputed `Math.floor((idx-1)/7)` and
+`(idx-1)%7` on every iteration — constant across all 48 iterations
+yet repeatedly recomputed. ~12,000 redundant arithmetic ops per
+typical scalar-mult.
+
+Extracted module-private `flattenPM(PM): CoordExtended[]` helper
+that builds a 48-entry linear array ONCE per call. Inner loop becomes
+`flat[idx-1]!` — single lookup. Constant-time property preserved
+(`flat` populated before outer Horner loop; inner 48-scan still
+branch-free / no-early-exit).
+
+#### F-LOW-007 — `DalosEllipseSingleton()` with `sync.Once`
+`DalosEllipse()` allocates fresh Ellipse + cache slot per call. Test
+runtime overhead with ~30 call sites: ~1.5s of pure PM-rebuild waste.
+
+Added `DalosEllipseSingleton() Ellipse` — package-level `sync.Once`-
+guarded slot. Drop-in interchangeable with `DalosEllipse()` (same
+return type by value). The shared `*generatorPMCache` pointer means
+PM is built at most once per process. Test refactors to adopt are
+deferred (opt-in; production CLI unchanged).
+
+### Cluster L-C — Security hardening (commit `61037b6`)
+
+Three findings:
+
+#### F-LOW-001 — PNG decoder pixel-bomb DoS surface
+`ParsePngFileToBitmap` previously called `png.Decode(f)` directly —
+a malicious PNG with a tiny on-disk size but an IHDR claiming
+65535×65535 pixels would force ~17 GB heap alloc → OOM-kill.
+
+Rebuilt as a 6-stage sandwich:
+  1. `io.LimitReader(f, 64KB+1)` — caps disk read.
+  2. `io.ReadAll` into in-memory `raw` buffer.
+  3. Reject if `len(raw) > 64 KB`.
+  4. `png.DecodeConfig(bytes.NewReader(raw))` — IHDR only, no pixel
+     buffer.
+  5. Reject if dimensions ≠ 40×40 BEFORE allocating pixels.
+  6. `png.Decode(bytes.NewReader(raw))` — only reached for confirmed
+     40×40 input (pixel buffer ≤ ~6.4 KB).
+
+Both decode passes operate on the same in-memory buffer (no double
+disk read).
+
+#### F-LOW-002 — Vitest 2.x → 3.2.4 (closes 6 transitive npm-audit findings)
+`npm audit` reported 6 moderate-severity vulns through vitest 2.1.x's
+transitive dep chain (esbuild GHSA-67mh-4wv8-2f99 dev-server CORS +
+vite GHSA-4w7w-66w2-5vf9 path-traversal). Both dev-server-only;
+published-package consumers unaffected.
+
+Tried minimum-invasive `overrides` first; vite 5.x line lacks the
+GHSA-4w7w fix. Bumped vitest `^2.1.0 → ^3.2.4` (and
+`@vitest/coverage-v8` to match) — vitest 3.x ships patched vite 6.x
+internally. Result: **0 npm-audit vulnerabilities** (was 6), 426/426
+tests still pass. No published-package API change.
+
+#### F-LOW-014 — `O_TRUNC → O_EXCL` silent-overwrite hardening
+F-SEC-002 in v4.0.1 fixed wallet-file PERMISSIONS (0o600) but kept
+`O_TRUNC` semantics — meaning a filename collision (probability
+~49⁻¹⁴ ≈ 1.4e-24) would silently overwrite the existing wallet.
+Astronomically improbable, but failure mode is silent data loss.
+
+Switched to `O_EXCL`. Distinct EEXIST branch (via `os.IsExist(err)`)
+surfaces user-actionable message naming the colliding file. Test
+helper updates (`roundTripFixture`'s retry loop adds `os.Remove`
+between attempts; `export_errpath_test.go`'s form-locking regex
+rewritten as 3 targeted patterns).
+
+### Cluster L-D — Architecture close-out (commit `00f6ab7`)
+
+Seven findings. Mixed disposition per actual ROI:
+
+#### Fixed (4):
+
+  - **F-LOW-004** ✅ — Added `dalosBlake3` alias alongside `blake3`
+    in `ts/src/index.ts` (additive, IDE auto-import disambiguation
+    against `@noble/hashes/blake3`). Original `blake3` retained for
+    back-compat.
+  - **F-LOW-008** ✅ — New `Elliptic/internal_assertions.go`
+    compile-time pin on 6 internal helpers
+    (`noErrAddition`, `noErrDoubling`, `isOnCurveExtended`,
+    `arePointsEqualProjective`, `schnorrHashFromAffine`,
+    `cofactorCheckRejects`). Symmetric to assertions.go's
+    public-interface pin; closes the Phase-11 coverage gap on
+    private hot-path helpers.
+  - **F-LOW-012** ✅ — Split 297-line static rune table out of
+    `Elliptic/KeyGeneration.go` (789 lines → 484 lines) into NEW
+    `Elliptic/CharacterMatrix.go` (337 lines). Same package, same
+    exports, byte-identical to pre-split. Brings file-organisation
+    parity with TS port (which already has `character-matrix.ts`
+    separate from `key-gen.ts`).
+  - **F-LOW-013** ✅ — Added `schema_version: 1` to v1_adversarial.json
+    (regenerated) + matching loader gate in `ts/tests/fixtures.ts`'s
+    `loadAdversarialCorpus`. Mirrors genesis (v1)/historical (v2)
+    loaders' validation pattern.
+
+#### Documented-not-fixed (3):
+
+  - **F-LOW-009** 📝 — TS WeakMap-based generator-PM cache kept.
+    Slot-based refactor proposed by the audit would break the
+    `Ellipse` interface's `readonly` contract + IIFE-frozen
+    construction pattern + lose the GC-eligibility property for
+    consumer-defined custom curves. Rationale documented inline at
+    the cache declaration. Future ADR can revisit if needs change.
+  - **F-LOW-010** 📝 — `CryptographicPrimitive` interface SCOPE NOTE
+    added — clarifies the interface is shaped for elliptic-curve
+    primitives in the DALOS family, names the EC-specific
+    assumptions, documents the recommended migration path if a
+    future cycle adds non-EC primitive support (rename to
+    `EllipticPrimitive`, introduce parent `Primitive` marker, split
+    into composable mixins).
+  - **F-LOW-011** 📝 — `E521Ellipse()` kept as cross-curve test
+    fixture + documentation reference. Zero production callers
+    (verified). Documented inline why kept (Cluster C cross-curve
+    test sweep + reference parameters), why not promoted to registry
+    (no consumer; YAGNI), and migration path if needed later.
+
+Pattern: F-LOW-009/010/011 mirror the F-MED-018 / F-MED-007 /
+F-MED-019 architectural-boundary precedent — when audit's
+recommended fix would impose non-trivial refactor against an
+unchanging consumer need, document the intentional scope rather
+than dissolve the boundary.
+
+### v4.0.2 publish-recovery follow-ups folded into v4.0.3
+
+During v4.0.2's pollinate, the publish workflow caught two issues
+my no-Node-on-PATH dev environment couldn't catch locally — both
+were fixed in commits that landed BEFORE v4.0.2 actually shipped to
+npm (the F-INT-002 v4.0.1 hardening blocked publish via `gates`):
+
+  - `473c01b` fix(lint): F-MED-008 follow-up — Biome wanted the
+    multi-line errors.js import collapsed to single line (96 chars,
+    under the 100-char threshold).
+  - `d12d2c3` fix(typecheck): F-MED-010 follow-up — TS strict-
+    mode `noUncheckedIndexedAccess: true` rejected `hash[i]`
+    indexed access; switched to `Array.from(hash, mapper)`.
+
+Both are part of v4.0.2's published code; documented here for
+completeness so the v4.0.3 git-log has a clean traceable
+chain back to the v4.0.1 baseline.
+
+### Verification
+
+For every fix in this release:
+  - `go build + vet + test -count=1 ./...` all packages pass
+  - TS local `npm run lint`: 48 files, 0 errors
+  - TS local `npm run typecheck`: 0 errors
+  - TS local `npm run test`: 19 test files, 426 tests pass on
+    vitest 3.2.4
+  - `npm audit`: 0 vulnerabilities
+  - Genesis byte-identity preserved on BOTH corpora (6/6
+    deterministic record-set hashes MATCH)
+
+### Migration notes
+
+**TypeScript port consumers:** v4.0.3 npm package
+(`@stoachain/dalos-crypto@4.0.3`) is wire-compatible with v4.0.2 at
+the happy-path surface. New top-level `dalosBlake3` alias is purely
+additive — existing `import { blake3 } from '@stoachain/dalos-crypto'`
+continues to work. Vitest 3.x bump is internal (devDependency only);
+no consumer-facing impact.
+
+**Go-reference consumers:** no library-signature changes in v4.0.3.
+The `CharacterMatrix` family moved to a new file but stays in the
+same package with the same exported symbols. Public API surface is
+unchanged.
 
 ---
 

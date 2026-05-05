@@ -13,6 +13,517 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Expand test-vector corpus from 85 → 500+ — edge cases (all-zero, all-ones, boundary scalars), invalid-input rejection vectors.
 - `docs/SCHNORR_HARDENING.md` — detailed fix plan for the 7 Schnorr findings (Category B, applied in the TS port).
 - Third-party cryptographic audit engagement.
+- Audit-cycle-2 LOW-band triage (~17 distinct items remaining; see `AUDIT.md` close-out section).
+
+---
+
+## [4.0.2] — 2026-05-05
+
+**Patch release.** Closes the `audit-2026-05-04` cycle's MEDIUM-band
+findings + all 3 NEEDS-CONTEXT findings. v4.0.1 closed CRITICAL+HIGH;
+v4.0.2 closes the entire MEDIUM band, completing audit cycle 2. Genesis
+105-vector corpus byte-identity preserved end-to-end (verified via
+deterministic-record SHA compare on every commit cluster):
+
+  - `bitstring_vectors`   `bd4d14ca1ba070b7…`  MATCH
+  - `seed_words_vectors`  `6c9a2577c23caa64…`  MATCH
+  - `bitmap_vectors`      `cd530b3b125a4546…`  MATCH
+  - `historical/leto`     `daad91d2427ddb2b…`  MATCH
+  - `historical/artemis`  `abd32a4660819d63…`  MATCH
+  - `historical/apollo`   `7bc541f94fa3cd4a…`  MATCH
+
+Final extended-elided SHA-256 (unchanged since v3.0.0):
+  - `v1_genesis.json`     `082f7a40405d4c075f1975af0a6075bb0228bbccae60a53b05b350a09ce223ae`
+  - `v1_historical.json`  `80c93f4d4956e01236808f81f518d17eeaad431f4fedb7c26233d2508f06e68b`
+
+**Audit cycle 2 status, post-v4.0.2:** 21/21 MEDIUM findings + 3/3
+NEEDS-CONTEXT findings dispositioned. The cycle's MEDIUM band is closed.
+See [`AUDIT.md`](AUDIT.md) "Audit Cycle 2 Close-Out" section for the
+per-finding disposition matrix.
+
+### Why a patch release?
+
+Same rationale as v4.0.1: every fix here is either a Go-side library
+hardening (no TS public-surface change), a TS-side additive change
+(new typed exception classes — pure addition, no removal), a perf
+micro-optimization (byte-identical output), a doc-only update, or a
+test-only addition. The published `@stoachain/dalos-crypto` npm
+package's wire format, behaviour, and exports are byte-identical to
+v4.0.1 at the **happy-path** surface — only error-class type info
+on the gen1 surface gains new branches (additive, not breaking).
+
+### Schnorr cofactor dispatch generalisation (commit `cf5b2fe`)
+
+#### F-MED-017 — Cofactor scalar Go vs TS divergence
+
+`Elliptic/Schnorr.go` previously used a package-level `cofactor4 =
+big.NewInt(4)` constant for the small-subgroup attack rejection check.
+The TS port (`ts/src/gen1/schnorr.ts`) used `e.r` from the curve struct.
+All currently-defined curves have cofactor 4, so the divergence was
+benign today — but adding a future cofactor-8 curve to either side would
+silently downgrade Go's check to the wrong scalar.
+
+**Fix:** hybrid dispatch helper `cofactorCheckRejects(P CoordExtended)`:
+
+  - **h=4 fast path** (DALOS Genesis + all currently-defined curves):
+    two chained doublings, `IsInfinityPoint` check. Byte-identical to
+    v4.0.1 behaviour; no perf regression.
+  - **h ∈ {1, 2, 8, …}** (any other power of 2): `k` chained doublings.
+  - **h non-power-of-2** (e.g. Curve448 with h=4 but generalised): falls
+    back to `e.ScalarMultiplier(big.NewInt(int64(h)), P)`.
+
+Mirror dispatch shipped on the TS side at `ts/src/gen1/schnorr.ts`.
+Cross-language parity restored.
+
+**New documentation:** [`docs/COFACTOR_GENERALIZATION.md`](docs/COFACTOR_GENERALIZATION.md)
+(~430 lines) covers the math, the small-subgroup attack threat model,
+the per-cofactor implementation strategy table, hand-construction of
+h-torsion adversarial test vectors, and a worked Ed25519 (h=8) example.
+"For AI agents" section explains how to safely extend the codebase to
+new cofactors without tripping the Genesis byte-identity gate.
+
+### Documentation hardening — `from*` entry-point scope
+
+#### F-MED-018 — `fullKeyFromBitString` always uses DALOS prefixes
+
+Audit flagged that calling `fromBitString(bits, LETO)` on the TS gen1
+surface returns a `DalosFullKey` whose `keyPair.publ` is a valid LETO
+public key but whose `standardAddress` and `smartAddress` use Ouronet
+Genesis prefixes. The registry-mediated path (`gen1-factory.ts`) re-stamps
+prefixes correctly; direct `from*` callers do not.
+
+**Resolution: DOCUMENTED-NOT-FIXED.** The gen1 surface is intentionally
+DALOS-default — it ships the Genesis primitive and not the full multi-
+curve registry. Multi-curve consumers route via the `/registry` subpath
+which does the per-curve prefix stamping (see OuronetUI's
+`src/lib/dalos/key-gen.ts` for the canonical pattern). Mirrors the
+F-API-006 / F-TEST-002 architectural-boundary precedent: document the
+intentional asymmetry rather than dissolve it. Diagnostic test script
+(`ts/check_med018.mjs`) preserved in the working tree for empirical
+verification of the documented scope.
+
+### Cluster A — CLI hardening + Elliptic purity (commit `30cd056`)
+
+5 MEDIUM findings closed; Genesis byte-identity preserved.
+
+#### F-MED-001 — `-g` input-method branches not mutually exclusive
+
+Pre-fix: five sibling `if` blocks (no `else if`) for `-raw / -bits /
+-seed / -i10 / -i49` dispatch. Multi-flag invocations (`dalos -g -raw
+-bits 0101…`) generated, printed, and attempted to save TWO unrelated
+wallets in one run. Confirmed by audit-bug-detector (F-BUG-002).
+
+**Fix:** two layers of defense at `Dalos.go`:
+  - Explicit multi-flag rejection BEFORE dispatch (counts how many input
+    flags are set; rejects if > 1 with a clear message).
+  - Converted dispatch to `else if` chain so a future contributor adding
+    a 6th input method without updating the count check sees only ONE
+    branch fire.
+
+#### F-MED-002 — `-p PASSWORD` shell-history leak
+
+`-p PASSWORD` leaks via shell history, `/proc/PID/cmdline`, `ps -ef`,
+auditd, container logs. **Resolution: DOCUMENTED-NOT-FIXED.** The
+proper fix (interactive `term.ReadPassword` fallback) requires
+`golang.org/x/term`, which would break this package's "no external
+deps" invariant (see `go.mod` F-MED-003 docstring). The CLI is
+documented as a developer convenience, NOT for production wallet
+management. Limitation documented inline at `Dalos.go`'s `-p` flag
+declaration.
+
+#### F-MED-004 — Wallet password no minimum-strength validation
+
+Pre-fix: only empty-string check at `-p`. Combined with the documented
+AES-2 single-pass-Blake3 KDF (no salt), passwords < ~12 chars are
+GPU-brute-forceable in days.
+
+**Fix:** added 16-character minimum length validation at the `-p` flag
+boundary. 16 chars at ~70-char alphabet gives ~3.3e29 combinations —
+safe against any realistic attacker even without KDF strengthening.
+Note: this validates the password the user supplied; KDF half remains
+policy-locked (Genesis frozen).
+
+#### F-MED-006 — `confirmSeedWords` calls `os.Exit(1)` from helper
+
+Phase 10 / REQ-31 / v4.0.0 introduced sentinel-return convention.
+`confirmSeedWords` predated it, called `os.Exit(1)` from 3 sites.
+Inconsistent + harder to test (cannot exercise without spawning
+subprocess).
+
+**Fix:** refactored to `confirmSeedWords(...) error`; `main()` exits.
+
+#### F-MED-016 — `ValidatePrivateKey` retains `fmt.Println`
+
+Phase 10 / REQ-31 explicitly stated "`Elliptic/` retains pure-crypto
+only". Three `fmt.Println` sites inside `ValidatePrivateKey` violated
+this — library consumer cannot suppress them; goes to stdout
+unconditionally.
+
+**Fix:** `(bool, string)` return widened to `(valid bool, bitString
+string, reason string)`. Failure reason returned to caller; CLI
+driver renders the reason itself. Mirrors the TS port's
+`validateBitmap`'s `{ valid, reason? }` shape. Per-call sites in
+`Dalos.go` updated to print the new reason field.
+
+### Cluster B — Library API hygiene (commit `05eb8dd`)
+
+3 MEDIUM findings closed; Genesis byte-identity preserved.
+
+#### F-MED-008 — TS `from*` API entry points threw bare `Error`
+
+Pre-fix: 5 throw sites in `ts/src/gen1/key-gen.ts` threw
+`new Error(...)` with diagnostic strings. Consumers wanting to
+differentiate "bad bitstring" from "bad scalar" from "bad bitmap" had
+to do `String(err.message).includes('bitstring')` — brittle to wording
+changes. The Schnorr surface gained `SchnorrSignError` in v3.0.3 but
+the key-gen surface lagged.
+
+**Fix:** 3 new typed error classes in `ts/src/gen1/errors.ts`:
+  - `InvalidBitStringError` — thrown by `generateScalarFromBitString`
+    (and any `from*` path that funnels through it).
+  - `InvalidPrivateKeyError` — thrown by `scalarToPrivateKey`,
+    `fromIntegerBase10`, `fromIntegerBase49`.
+  - `InvalidBitmapError` — thrown by `fromBitmap`.
+
+5 throw sites in `key-gen.ts` swapped from bare `Error` to the typed
+classes. `error.message` text unchanged (additive change, no break).
+Re-exported from `ts/src/gen1/index.ts`. Consumer pattern documented
+in `errors.ts` module docstring with a worked catch-by-class example.
+
+#### F-MED-009 — `keystore.ImportPrivateKey` writes to stdout
+
+v4.0.0 carve-out made `keystore` standalone consumable; library
+function still emitted `"DALOS Keys are being opened!"` and `"Public
+Key verification successful!"` to stdout. Server / GUI / JSON-pipe
+consumers couldn't suppress them.
+
+**Fix:** removed both `fmt.Println` calls from `keystore/import.go`
+(library purity restored). Breadcrumb prints relocated to both
+`keystore.ImportPrivateKey` call sites in `Dalos.go` (`-open` and
+`-sign` branches), preserving CLI behaviour byte-for-byte. HARDENING
+docstring on `keystore/import.go` explains the carve-out rationale
+and the relocation pattern.
+
+#### F-MED-020 — `EllipseMethods` interface missing `GenerateFromBitmap`
+
+`(*Ellipse).GenerateFromBitmap` (added v1.2.0) is a public method but
+was missing from `EllipseMethods`. Phase 11 conformance assertion only
+enforced `*Ellipse ⊇ EllipseMethods`, not the inverse — consumers
+dispatching through the interface type couldn't call
+`GenerateFromBitmap`.
+
+**Fix:** added the missing declaration to `EllipseMethods` in
+`Elliptic/PointOperations.go`. The `Bitmap` import is the first
+dependency this package takes on `Bitmap`; previously only the
+`*Ellipse` method body referenced it.
+
+### Cluster C — Test coverage gaps (commit `510913b`)
+
+3 MEDIUM findings closed via 1,144 lines of new test coverage. Pure
+additions; no production code changed except a 2-line latent-bug fix
+in `E521Ellipse()` surfaced by the cross-curve sweep. Genesis
+byte-identity preserved.
+
+#### F-MED-012 — Blake3 had zero direct tests
+
+Pre-fix: `Blake3/{Blake3,Compress,CompressGeneric}.go` had no tests.
+Indirect coverage came only from the Genesis corpus.
+
+**Fix:** new `Blake3/Blake3_test.go` (336 lines) with two complementary
+strategies:
+
+  1. **KAT lock for empty input.** Hardcoded `af1349b9…f3262` from
+     BLAKE3-team/BLAKE3 `test_vectors.json`. Catches the broadest class
+     of round-function / IV / flag-handling regressions.
+  2. **Internal cross-path consistency tests.** All 3 fast paths inside
+     `Sum512` (single-block, single-chunk, multi-chunk) and all output
+     paths (`Sum256`, `Sum512`, `Sum1024`, `SumCustom`, `XOF`,
+     `Hasher.Write+Sum`) MUST agree on overlapping inputs. 7 cross-path
+     tests cover this.
+
+#### F-MED-013 — AES core had no direct tests
+
+Pre-fix: only `BitStringToHex_doc_test.go` existed; the core
+`EncryptBitString` / `DecryptBitString` / `MakeKeyFromPassword` /
+`ZeroBytes` surface had no direct tests. Correctness was indirect
+through `keystore_test.go`'s Export → Import round-trip.
+
+**Fix:** new `AES/AES_test.go` (337 lines) with seven test families:
+round-trip integrity (with the AES-1/2 retry helper), wrong-password
+rejection, tampered-ciphertext rejection (locks GCM authentication),
+KDF determinism + non-degeneracy, nonce randomness (catches GCM nonce
+reuse), `ZeroBytes` scrub (KG-3 v2.1.0 memory hygiene primitive).
+
+#### F-MED-014 — HWCD point ops had no direct tests
+
+Pre-fix: `PointOperations.go`'s core arithmetic (`Addition` + V1/V2/V3,
+`Doubling` + V1/V2, `Tripling`, `FortyNiner`, `ScalarMultiplier`)
+had no isolated tests. A bug in the Tripling formula that happens to
+preserve corpus inputs would slip through.
+
+**Fix:** new `Elliptic/PointOperations_test.go` (460 lines) with 11
+tests, each running across all 5 curves (DALOS, E521, LETO, ARTEMIS,
+APOLLO) for 44 cross-curve subtest cases:
+
+  - **Identity element:** `IsInfinityPoint`, `IsOnCurve` on O and G,
+    `Addition(G, O) = G`.
+  - **Group order (most important crypto invariant):**
+    `[Q]·G = O` on EVERY curve. `[1]·G = G`. `[2]·G = Doubling(G)`.
+  - **Group axiom consistency:** `Addition(P, P) = Doubling(P)`,
+    `Tripling(P) = Addition(2P, P)`, commutativity, associativity.
+  - **Dispatch + helper consistency:** `Addition`'s V1/V2 dispatch
+    matches direct `AdditionV1/V2` calls. `Doubling` V1/V2 same.
+    `FortyNiner(P) = [49]·P` (locks the scalar-mult base-49
+    digit decomposition).
+
+**Latent-bug fix bundled:** `E521Ellipse()` (`Elliptic/Parameters.go`)
+was missing `e.G.AX = new(big.Int)` and `e.G.AY = new(big.Int)`
+allocations since v1.0.0 — the function panicked on call. No
+production or test callers existed (verified via grep), so the bug
+went undetected for the entire codebase lifetime. Surfaced by the
+cross-curve test sweep adding the first real caller; fixed inline
+with explanatory comment.
+
+### Cluster D — Hot-path optimizations (commit `9a28e4c`)
+
+2 MEDIUM perf findings closed across Go and TS with full cross-language
+parity. Genesis byte-identity preserved.
+
+#### F-MED-010 — `ConvertHashToBitString` O(n²) string concatenation
+
+Pre-fix Go: `var full string; for _, b := range Hash { full +=
+fmt.Sprintf("%08b", b) }`. Go strings are immutable; `+=` in a loop
+allocates a new backing array on every iteration. For DALOS (200-byte
+hash → 1600-char bitstring) that's 200 allocs of 8/16/24/…/1600 bytes
+≈ 160 KB of intermediate garbage per call.
+
+**Fix Go (`Elliptic/KeyGeneration.go`):** `strings.Builder.Grow +
+WriteByte` with an inlined 8-bit big-endian render (skips the
+`fmt.Sprintf` temporary allocation per call). Mirrors the existing
+`GenerateRandomBitsOnCurve` pattern in the same file.
+
+**Fix TS (`ts/src/gen1/hashing.ts`):** swapped `let full = ''; for
+(...) full += ...` to `parts: string[]` + `parts.join('')`. Mirrors
+the existing REQ-29 `bigIntToBase49` pattern.
+
+#### F-MED-011 — SchnorrVerify re-parses the public key string
+
+Pre-fix: `SchnorrVerify` already parsed the public key into `PAffine`
+(line 556), then called `e.SchnorrHash(r, PublicKey, Message)` (line
+584), which re-ran `ConvertPublicKeyToAffineCoords(PublicKey)` — a
+~700-char base-49 → big.Int parse, O(n²) inside `math/big`. Wasted
+work on every verify.
+
+**Fix:** extracted `(*Ellipse).schnorrHashFromAffine(R, PAffine,
+Message)` private helper. `SchnorrHash` itself parses and delegates;
+`SchnorrVerify` skips the parse and calls `schnorrHashFromAffine`
+directly. Public API unchanged.
+
+**TS mirror (`ts/src/gen1/schnorr.ts`):** added exported
+`schnorrHashFromAffine(R, pkAffine, message, e)`; routed both
+`schnorrVerify` (sync) and `schnorrVerifyAsync` through it. Sign
+path's `self.schnorrHash` indirection preserved (existing test spies
+in `ts/tests/gen1/schnorr.test.ts` continue to work).
+
+### Cluster E — Audit-cycle close-out (commit `a984ec2`)
+
+Documentation-only commit dispositioning two MEDIUM findings without
+code changes:
+
+  - **F-MED-019** ❎ NOT-FIXED-BY-DESIGN — `dist/gen1/` lacks 4 v3.0.3+
+    exports. Verified `git ls-files ts/dist/` returns 0 entries; `dist/`
+    is in `ts/.gitignore`. The local `dist/` is a developer-side build
+    artifact only; CI rebuilds from `src/` on every release. Local
+    `npm link` consumers should run `npm run build` themselves.
+    Promoting to a tracked-`dist/` model would defeat the CI rebuild
+    guarantee.
+  - **F-MED-021** ✅ STALE — already fixed in v4.0.1 (commit `a191bfa`)
+    under tracking ID **F-INT-002**. The auditor's snapshot pre-dated
+    the fix; report wasn't refreshed against post-fix state.
+
+### Group 1 — Selective error-wrap policy (commit `b83646b`)
+
+Two coordinated findings closed via OWASP-aligned selective `%w`-wrap
+at the wallet-decrypt boundary. Genesis byte-identity preserved.
+
+#### F-NEEDS-001 — Wrong-password / corrupt-ciphertext oracle
+
+Pre-fix `AesGcm.Open` failure path:
+```go
+return "", fmt.Errorf("AES DecryptBitString Open (likely wrong
+                      password or corrupt ciphertext): %w", err)
+```
+Two leak vectors: (a) parenthetical names the failure CLASS, (b) `%w`
+wrap exposes inner GCM error string (`"cipher: message authentication
+failed"`) to any consumer that calls `errors.Unwrap` or
+`fmt.Errorf("%v", inner)`.
+
+**Fix (`AES/AES.go`):** flat `errors.New("AES DecryptBitString:
+authentication failed")`. NO unwrap chain, NO inner-string exposure,
+NO failure-class hint. Wrong-password and tampered-ciphertext are now
+indistinguishable through every layer above this primitive.
+
+**Test contract added (`AES/AES_test.go`):** `TestDecrypt_WrongPassword`
+strengthened to lock the F-NEEDS-001 contract programmatically with
+3 assertions: (1) function-prefix preserved (log identifiability),
+(2) `errors.Unwrap(err)` returns nil (catches `%w` regression),
+(3) GCM-internal tokens forbidden (catches `%v` regression — leaks
+the inner string without an unwrap chain).
+
+#### F-MED-005 — `keystore.ImportPrivateKey` selective `%w`-wrap
+
+Pre-fix: every error site in `keystore/import.go` used `errors.New`,
+flattening even the structural errors that don't leak oracle bits.
+
+**Fix (`keystore/import.go`):** selective wrap by error category:
+  - `os.ReadFile` failure: wraps with `%w` + path context.
+  - AESDecrypt failure (auth-tag boundary): KEEPS the flat generic
+    error per F-NEEDS-001. Inner err deliberately discarded with
+    explicit `_ = err2` + inline policy comment.
+  - `GenerateScalarFromBitString` failure (post-decrypt — pwd was
+    correct): wraps with `%w` + corruption context.
+  - `ScalarToKeys` failure (post-decrypt): wraps with `%w` + version-
+    skew context.
+  - PUBL-mismatch: improved message naming both common causes (file
+    tampering or cross-curve mismatch).
+
+### Group 2 — Fail-fast on contractually-nil errors + explicit infinity binding (commit `f40e636`)
+
+Two NEEDS-CONTEXT findings closed via the v2.1.0 PO-3 fail-fast
+convention. Genesis byte-identity preserved.
+
+#### F-NEEDS-002 — Blake3 contractually-nil errors silently swallowed
+
+Pre-fix `Blake3/Blake3.go` had 4 sites that discarded errors via bare
+`_, _ =`:
+  - `Hasher.Sum`'s XOF-read path (line 138)
+  - `Sum512`'s multi-chunk path (line 216)
+  - `Sum1024` (line 225)
+  - `SumCustom` (line 234)
+
+Per `io.Writer` contract, `hash.Hash.Write` returns nil unconditionally;
+`OutputReader.Read` returns `io.EOF` only after MaxUint64 bytes —
+unreachable in practice. Today no-op suppressions of contractually-nil
+errors. But the bare `_, _ =` is fragile: if a future upstream-library
+change introduces a non-nil error, the existing code would silently
+corrupt the digest output (worst possible failure mode for a hash).
+
+**Fix:** explicit panic-on-non-nil pattern matching the v2.1.0 PO-3
+convention (`Elliptic/PointOperations.go`'s `noErrAddition` /
+`noErrDoubling`):
+```go
+if _, err := h.Write(b); err != nil {
+    panic(fmt.Sprintf("Blake3.<Caller>: Hasher.Write returned
+                      unexpected err: %v", err))
+}
+```
+Caller named in the panic message for debug-path obviousness. Zero
+runtime overhead in the common case.
+
+#### F-NEEDS-003 — `IsOnCurve` infinity flag silently dropped
+
+Pre-fix `SchnorrVerify` (Go) and `schnorrVerify` / `schnorrVerifyAsync`
+(TS) discarded the second return value of `IsOnCurve` (the Infinity
+flag). The cofactorCheckRejects call at the next layer (F-SEC-001 /
+F-MED-017) DID reject infinity, so the practical attack surface was
+unchanged today — but the implicit reliance was fragile.
+
+**Fix Go (`Elliptic/Schnorr.go`):** explicit `Infinity`-flag binding
+at both R-side and P-side `IsOnCurve` calls inside `SchnorrVerify`.
+
+**Fix TS (cross-language parity bonus, `ts/src/gen1/schnorr.ts`):**
+same pattern applied at 4 sites across `schnorrVerify` (sync) and
+`schnorrVerifyAsync`. The audit only filed F-NEEDS-003 against the
+Go side; the TS counterparts had identical drops and got the same fix.
+
+### Group 3 — Toolchain hygiene + ValidateBitmap close-out (commit `c2eda8f`)
+
+Final two MEDIUMs closed; audit cycle 2 MEDIUM band complete.
+
+#### F-MED-003 — Go toolchain pin bumped 1.19 → 1.22
+
+`go.mod`'s `go` directive was pinned to 1.19, which fell EOL in August
+2023. Multiple Go stdlib CVEs landed since: CVE-2023-29406, CVE-2023-
+39325, CVE-2024-24783, CVE-2024-24784, CVE-2024-34156. None touch
+the Genesis cryptographic primitives, but the toolchain itself stops
+receiving security backports once it falls out of the supported
+window.
+
+**Fix:** `go.mod` directive bumped to `go 1.22` (currently supported,
+matches CI's pre-existing pin in `.github/workflows/go-ci.yml`). No
+external Go consumers verified on workspace `Z:\` (OuronetCore is
+TypeScript). Comprehensive rationale docstring added to `go.mod`;
+`CLAUDE.md`, `Dalos.go`'s F-MED-002 docstring, and the CI workflow
+setup-Go comment all updated to reference the new minimum. Genesis
+byte-identity preserved (math primitives produce bit-identical output
+across Go 1.19 / 1.22 / 1.26).
+
+#### F-MED-007 — `Bitmap.ValidateBitmap` close-out
+
+`Bitmap.ValidateBitmap` is a no-op: returns nil unconditionally. The
+function already carries a comprehensive HARDENING docstring (added in
+F-API-006 v4.0.1) explaining why no real validation is performed.
+
+**Resolution: NOT-FIXED-BY-DESIGN.** Three reasons documented in the
+function docstring:
+  1. The Go type system already enforces structural validity
+     (`[40][40]bool` cannot hold non-bool values, cannot have wrong
+     dimensions at the type level, cannot be a nil reference).
+  2. A meaningful "is this a valid DALOS bitmap" check would have to
+     be CURVE-SPECIFIC (DALOS uses 40×40=1600 bits, APOLLO uses 32×
+     32=1024, LETO different again). Per-curve dimensioning belongs
+     on the receiving Ellipse, not on the Bitmap helper.
+  3. Entropy / "is this all zeros" checks are caught downstream by
+     F-ERR-007's range check in `SchnorrSign`.
+
+Cross-language asymmetry with TS's `validateBitmap` (which DOES check)
+is INTENTIONAL — the TS port has to do dynamically what the Go type
+system covers statically. Mirrors the F-API-006 / F-TEST-002 / F-MED-018
+architectural-boundary precedent.
+
+### Verification
+
+For every fix in this release:
+- `go build ./...` and `go vet ./...` clean (local Go 1.26.2; CI Go 1.22).
+- Full test suite passes (5 Go packages green, including new Blake3,
+  AES, and PointOperations test files added in Cluster C).
+- Genesis 105-vector corpus byte-identity preserved at the deterministic-
+  record-set level (6/6 hashes MATCH at every commit checkpoint — see
+  table at top of this section).
+- TS suite passes (typecheck + tests) — verified pre-shipping in CI's
+  `gates` matrix (Node 20/22/24).
+
+### Migration notes
+
+**TypeScript port consumers:** the v4.0.2 npm package
+(`@stoachain/dalos-crypto@4.0.2`) is wire-compatible with v4.0.1 at the
+happy-path surface. New typed exception classes (F-MED-008) are
+ADDITIVE — existing `catch (err) { String(err.message).includes(...) }`
+patterns continue to work; new code can opt into class-based catch:
+
+```typescript
+import { fromBitString, InvalidBitStringError } from
+  '@stoachain/dalos-crypto/gen1';
+
+try {
+  const key = fromBitString(userInput);
+} catch (e) {
+  if (e instanceof InvalidBitStringError) { /* handle */ }
+  else throw e;
+}
+```
+
+The new `schnorrHashFromAffine` export is additive — `schnorrHash`'s
+public surface is unchanged.
+
+**Go-reference consumers:** no library-signature changes in v4.0.2.
+The minimum Go toolchain is now 1.22 (was 1.19 in v4.0.1).
+`Elliptic.ValidatePrivateKey` gained a third return value (`reason
+string`) — embedders need to update call sites, but the library has
+no external Go consumers (verified during F-MED-003 triage).
+
+The Schnorr cofactor-check helper (`cofactorCheckRejects`) is a new
+private method — no public API impact.
 
 ---
 

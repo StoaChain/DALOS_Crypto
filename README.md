@@ -2,10 +2,10 @@
 
 [![Audit](https://img.shields.io/badge/Audit-Complete-brightgreen)](AUDIT.md)
 [![Curve](https://img.shields.io/badge/Curve-verified-brightgreen)](verification/VERIFICATION_LOG.md)
-[![Version](https://img.shields.io/badge/Version-4.0.1-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-4.0.2-blue)](CHANGELOG.md)
 [![Phases 0-11 + v4.0.0](https://img.shields.io/badge/Phases%200--11%20%2B%20v4.0.0-COMPLETE-brightgreen)](docs/TS_PORT_PLAN.md)
-[![Language](https://img.shields.io/badge/Language-Go%201.19-00ADD8)](go.mod)
-[![TypeScript Port](https://img.shields.io/badge/TypeScript%20port-v4.0.1%20on%20npm-brightgreen)](https://www.npmjs.com/package/@stoachain/dalos-crypto)
+[![Language](https://img.shields.io/badge/Language-Go%201.22-00ADD8)](go.mod)
+[![TypeScript Port](https://img.shields.io/badge/TypeScript%20port-v4.0.2%20on%20npm-brightgreen)](https://www.npmjs.com/package/@stoachain/dalos-crypto)
 [![Historical Curves](https://img.shields.io/badge/Historical%20curves-LETO%20%2F%20ARTEMIS%20%2F%20APOLLO%20%E2%9C%93%20production-brightgreen)](docs/HISTORICAL_CURVES.md)
 
 **Ouro-Network Cryptography**, codename **DALOS**, is the cryptographic foundation of the **Ouro-Network Blockchain**. It is built around a custom Twisted Edwards elliptic curve defined over a 1606-bit prime field, supporting **2¹⁶⁰⁰ unique private keys** — vastly more than the 2²⁵⁶ space of traditional blockchains.

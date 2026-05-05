@@ -54,12 +54,13 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          # 1.19 is the documented minimum (CLAUDE.md "Common commands"
-          # → "go1.19, no external deps"). Bumping forward intentionally
-          # so that any new Go feature this version adds is allowed
-          # while older versions still build (anything we add must
-          # compile against 1.19+; CI on 1.22 catches forward-only usage
-          # so we know to add a backward-compat note).
+          # F-MED-003 (v4.0.2): the documented minimum was bumped from
+          # 1.19 to 1.22 (see go.mod docstring for the EOL / CVE
+          # rationale). CI now matches the go.mod minimum exactly so
+          # the canonical-test environment IS the supported floor.
+          # Forward-only usage (1.23+ features) is still caught here
+          # because anything we ship must compile against 1.22 — if a
+          # contributor uses a 1.23-only feature, this CI cell fails.
           go-version: '1.22'
           cache: true
 

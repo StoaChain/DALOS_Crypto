@@ -84,29 +84,50 @@ A second comprehensive audit pass ran on 2026-05-04 against the v4.0.0 tree usin
 - **F-MED-018** 📝 DOCUMENTED-NOT-FIXED — `fullKeyFromBitString` always uses DALOS prefixes (commit `cd5d986`). The TS `gen1/from*` entry points are DALOS-default by design at the gen1 layer; multi-curve consumers route via the `/registry` subpath which re-stamps prefixes correctly (see OuronetUI's `src/lib/dalos/key-gen.ts` for the canonical pattern). Mirrors the F-API-006 / F-TEST-002 architectural-boundary precedent.
 - **F-MED-015** ✅ — CRLF wallet import (consolidated into F-HIGH-009's fix shipped in v4.0.1). `ImportPrivateKey`'s positional `len(lines) != 12` parser was replaced with header-anchored extraction (`findValueAfterHeader` in `keystore/import.go`), trims CRLF per-line, and tolerates trailing whitespace.
 
+**Group 1 — Selective error-wrap policy (commit `b83646b`):**
+- **F-MED-005** ✅ — `keystore.ImportPrivateKey` selective `%w`-wrap. Structural sites (file-read, post-decrypt scalar / key generation) wrap with `%w` to preserve diagnostic uplift for ops; the auth-tag boundary deliberately KEEPS the flat generic error (see F-NEEDS-001 below). PUBL-mismatch message improved to name both common causes (file tampering or cross-curve mismatch).
+- **F-NEEDS-001** ✅ — `AES.DecryptBitString` auth-tag oracle closed. Pre-v4.0.2 the GCM Open failure path wrapped the inner GCM error with `%w` plus a parenthetical "(likely wrong password or corrupt ciphertext)" — both leaked oracle bits. Post-v4.0.2: flat `errors.New("AES DecryptBitString: authentication failed")`, no unwrap path. Wrong-password and tampered-ciphertext are now indistinguishable through every layer above this primitive. Test contract added to `AES/AES_test.go` locks the policy programmatically (3 assertions: prefix preserved, `errors.Unwrap` returns nil, GCM-internal tokens forbidden).
+
+**Group 2 — Fail-fast on contractually-nil errors + explicit infinity binding (commit `f40e636`):**
+- **F-NEEDS-002** ✅ — All 4 Blake3 call sites (`Hasher.Sum`'s XOF-read path, `Sum512`'s multi-chunk path, `Sum1024`, `SumCustom`) replaced bare `_, _ =` with explicit `if err != nil { panic(...) }`. Matches the v2.1.0 PO-3 fail-fast convention (`Elliptic/PointOperations.go`'s `noErrAddition` / `noErrDoubling`). Zero runtime overhead in the common case; turns the worst-possible failure mode (wrong digest output, no error) into an immediate panic if a future upstream-library change emits non-nil errors.
+- **F-NEEDS-003** ✅ — Explicit `Infinity`-flag binding at every `IsOnCurve` call inside Schnorr verify. Go (`Elliptic/Schnorr.go`): both R-side and P-side checks. TS (cross-language parity bonus): `schnorrVerify` + `schnorrVerifyAsync`, 4 sites total. Pre-v4.0.2 the `_` discard relied on the next-layer `cofactorCheckRejects` to catch infinity by accident of code ordering. Post-v4.0.2 the rejection layer is self-documenting and the contractual gap is closed.
+
+**Group 3 — Toolchain hygiene + ValidateBitmap close-out (this commit, commit `<group3>`):**
+- **F-MED-003** ✅ — `go.mod` directive bumped from `go 1.19` (EOL August 2023) to `go 1.22` (currently supported). Closes exposure to multiple Go stdlib CVEs since 1.19 EOL (CVE-2023-29406, CVE-2023-39325, CVE-2024-24783/24784, CVE-2024-34156). 1.22 specifically because CI was already pinned there (`.github/workflows/go-ci.yml`), so the canonical-test-environment Go version is unchanged. No external Go consumers verified (OuronetCore is TypeScript; no `go.mod` files anywhere on workspace `Z:\` outside this repo). Comprehensive rationale docstring added to `go.mod`. CLAUDE.md, `Dalos.go` (F-MED-002 docstring), and `.github/workflows/go-ci.yml` setup-Go comment updated to reference the new minimum. Genesis byte-identity preserved (math primitives produce bit-identical output across Go 1.19 / 1.22 / 1.26).
+- **F-MED-007** ❎ NOT-FIXED-BY-DESIGN — `Bitmap.ValidateBitmap` is a no-op. The function already carries a comprehensive HARDENING docstring (added in F-API-006 v4.0.1) explaining why no real validation is performed: (a) the Go type system already enforces structural validity (`[40][40]bool` cannot hold non-bool values, cannot have wrong dimensions at the type level, cannot be a nil reference); (b) a meaningful "is this a valid DALOS bitmap" check would have to be CURVE-SPECIFIC (DALOS uses 40×40=1600 bits, APOLLO uses 32×32=1024, LETO different again) — per-curve dimensioning belongs on the receiving Ellipse, not on the Bitmap helper itself; (c) entropy / "is this all zeros" checks are arguable since the downstream key-gen pipeline produces a valid scalar from any 1600-bit input including all-zeros (the resulting scalar=0 is rejected by F-ERR-007's range check in `SchnorrSign` at the point of use). The cross-language divergence with TS's `validateBitmap` (which DOES return `{valid, reason?}` and performs structural checks) is INTENTIONAL — the TS port has to do dynamically what the Go type system covers statically. Mirrors the F-API-006 / F-TEST-002 / F-MED-018 architectural-boundary precedent: document the intentional asymmetry rather than dissolve it.
+
 ### MEDIUMs explicitly NOT-FIXED-BY-DESIGN in this cycle
 
+- **F-MED-007** ❎ — `Bitmap.ValidateBitmap` (see Group 3 entry above for full rationale).
 - **F-MED-019** ❎ — `dist/gen1/` lacks 4 v3.0.3+ exports. Verified `git ls-files ts/dist/` returns 0 entries; `dist/` is in `ts/.gitignore`. The local `dist/` is a developer-side build artifact only; CI's `npm run build` step at `.github/workflows/ts-publish.yml`'s `gates` job rebuilds from `src/` on every release. The `prepare`/`prepack` lifecycle additionally rebuilds before `npm publish`. Local `npm link` consumers should run `npm run build` themselves. Promoting this to a tracked-`dist/` model would defeat the CI rebuild guarantee — declined as a regression risk.
 
 ### MEDIUMs already resolved (stale findings)
 
 - **F-MED-021** ✅ STALE — already fixed in v4.0.1 (commit `a191bfa`) under tracking ID **F-INT-002**. The current `.github/workflows/ts-publish.yml` already implements every mitigation the auditor recommended: workflow-level `concurrency` group with `cancel-in-progress: false`, `gates` matrix job exercising Node 20/22/24 with lint + typecheck + build + test + docs:check, and `publish: needs: gates`. The auditor's snapshot pre-dated commit `a191bfa`; the report wasn't refreshed against post-fix state. Workflow-file docstring explicitly cites the F-INT-002 v4.0.1 closure.
 
-### MEDIUMs that survive the audit cycle (open by deliberate deferral)
+### NEEDS-CONTEXT findings — all dispositioned in v4.0.2
 
-| ID | Title | Why deferred |
-|----|-------|--------------|
-| **F-MED-003** | Outdated Go toolchain pin (go 1.19, EOL since Aug 2023) | Toolchain bump requires testing build matrix against ouronet-go consumers + updating CI runner pins. Worth its own dedicated spec. |
-| **F-MED-005** | `ImportPrivateKey` swallows underlying decrypt error | In direct tension with F-NEEDS-001 (decrypt-oracle question). Both findings touch the same return-path; resolving them together as a single coordinated spec preserves consistency. Awaiting user policy on selective-`%w`-wrap. |
-| **F-MED-007** | `Bitmap.ValidateBitmap` is a no-op | Resolution requires deciding what "validation" should reject — purely structural (dimensions, allowed values) or also semantic (e.g., reject all-zero / all-one bitmaps as low-entropy). User judgment needed. |
+All three NEEDS-CONTEXT findings have been closed during this cycle:
 
-### NEEDS-CONTEXT findings (validator-flagged for user judgment)
+- **F-NEEDS-001** ✅ — Closed in Group 1 (commit `b83646b`) via the selective-wrap policy. Auth-tag-mismatch oracle eliminated; oracle-prevention contract regression-tested in `AES/AES_test.go`.
+- **F-NEEDS-002** ✅ — Closed in Group 2 (commit `f40e636`) via fail-fast panic on contractually-impossible Blake3 errors.
+- **F-NEEDS-003** ✅ — Closed in Group 2 (commit `f40e636`) via explicit Infinity-flag binding at every `IsOnCurve` call inside Schnorr verify (Go + TS, sync + async — cross-language parity preserved).
 
-Three findings were CONFIRMED-real but reclassified by the validator agent as needing user policy decisions before they can be filed as actionable specs:
+### Final disposition
 
-- **F-NEEDS-001** — Wrong-password / corrupt-ciphertext oracle through differing error messages (`keystore/import.go:38-41` + `AES/AES.go:170-173`). Live oracle is closed at the only current consumer (CLI surfaces conflated message), but `AES.DecryptBitString` returns a parenthetical `"(likely wrong password or corrupt ciphertext)"` with `%w`-wrap — a future library consumer that surfaces the inner error would re-leak. **Tension with F-MED-005:** which errors stay generic (auth-tag-mismatch — keep generic per OWASP) and which should propagate (NewCipher / NewGCM / nonce-too-short / scalar-gen / key-derive — wrap with `%w`).
-- **F-NEEDS-002** — Bare `_, _ =` on Blake3.Write / XOF.Read swallows hash-state corruption (4 sites in `Blake3/Blake3.go`). `hash.Hash.Write` is documented per `io.Writer` contract to never return non-nil error; Blake3 follows the same convention. Today these are no-op suppressions of by-contract-nil errors. Validator suggests reclassifying as LOW (defensive-coding hygiene).
-- **F-NEEDS-003** — Schnorr `IsOnCurve` infinity flag silently dropped (`Elliptic/Schnorr.go:376, 404`). The two call sites discard the second return; HOWEVER, lines 384-387 / 411-414 immediately perform a cofactor check (`[4]·R` and `[4]·P`) that rejects infinity via `IsInfinityPoint`. Defence-in-depth-on-defence-in-depth. Validator suggests reclassifying as LOW (cosmetic / future-proofing).
+**Headline: 21/21 MEDIUM-band findings dispositioned + 3/3 NEEDS-CONTEXT findings dispositioned. Audit cycle 2 MEDIUM band closed.**
+
+Of the 21 MEDIUMs (F-MED-001 … F-MED-021):
+- ✅ **15 FIXED** in this cycle (commits cf5b2fe, 30cd056, 05eb8dd, 510913b, 9a28e4c, b83646b, Group 3): F-MED-001, 003, 004, 005, 006, 008, 009, 010, 011, 012, 013, 014, 016, 017, 020.
+- ✅ **1 STALE** (already fixed in v4.0.1): F-MED-021.
+- ✅ **1 CONSOLIDATED** (closed by F-HIGH-009 in v4.0.1): F-MED-015.
+- 📝 **2 DOCUMENTED-NOT-FIXED** with rationale: F-MED-002 (no-external-deps invariant), F-MED-018 (gen1 surface DALOS-default by design).
+- ❎ **2 NOT-FIXED-BY-DESIGN** with rationale: F-MED-007 (Go type system covers structural validity that TS does dynamically), F-MED-019 (dist/ gitignored / CI rebuild guarantee).
+
+Of the 3 NEEDS-CONTEXT findings, all closed in v4.0.2:
+- ✅ F-NEEDS-001 in Group 1, F-NEEDS-002 + F-NEEDS-003 in Group 2.
+
+No findings remain open. The next audit cycle starts from a clean MEDIUM band.
 
 ### Genesis byte-identity tracking through the cycle
 

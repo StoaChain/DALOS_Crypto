@@ -27,7 +27,7 @@ Claudstermind's KB has the full picture; read it before making changes here.
 This repo houses **both** the canonical Go reference (root) and the published TypeScript port (`ts/`). They are independently buildable but are bound by a single contract: the 105-vector corpus in `testvectors/v1_genesis.json`. Any change in either implementation that perturbs a deterministic vector is a bug — the Genesis key-gen pipeline is frozen forever.
 
 When making changes, always confirm which side you're touching:
-- **Go reference** — `Dalos.go` + `Elliptic/`, `AES/`, `Blake3/`, `Bitmap/`, `Auxilliary/`. Module name `DALOS_Crypto`, Go 1.19, no external deps (Blake3 + AES are inlined).
+- **Go reference** — `Dalos.go` + `Elliptic/`, `AES/`, `Blake3/`, `Bitmap/`, `Auxilliary/`. Module name `DALOS_Crypto`, Go 1.22+ (bumped from 1.19 in v4.0.2 / F-MED-003 — see `go.mod` for rationale), no external deps (Blake3 + AES are inlined).
 - **TypeScript port** — everything under `ts/`. Published as `@stoachain/dalos-crypto`. Sole runtime dep is `@noble/hashes` (for Blake3 + RFC-6979 nonces).
 
 The `testvectors/` corpus is the oracle. The Go generator at `testvectors/generator/main.go` is the single producer; the TS test suite is its primary consumer (cross-checks every record against TS-computed output).

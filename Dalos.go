@@ -94,8 +94,9 @@ func main() {
     // leaks via shell history, /proc/PID/cmdline, `ps -ef`, auditd, and
     // container logs. The proper fix is interactive `term.ReadPassword`
     // — but that requires `golang.org/x/term` which would break this
-    // package's "no external deps" invariant (see CLAUDE.md "Common
-    // commands" → "go1.19, no external deps"). The CLI is documented
+    // package's "no external deps" invariant (see CLAUDE.md "Two
+    // implementations, one contract" → "no external deps" + go.mod
+    // F-MED-003 docstring). The CLI is documented
     // as a developer convenience, NOT for production wallet management
     // (production consumers use OuronetUI which has its own secure
     // input pipeline). Scope-decision: keep `-p` as the only password

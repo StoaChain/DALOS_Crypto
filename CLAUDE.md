@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## New Claude session? Start here.
 
-This project is linked to **Claudstermind** at `../Claudstermind/`. Run the cluster-load skill:
+This project is linked to **Claudstermind** at `../../Claudstermind/`. Run the cluster-load skill:
 
-> Read `../Claudstermind/README.md` and load context for this project.
+> Read `../../Claudstermind/README.md` and load context for this project.
 
-See [`../Claudstermind/skills/load-cluster.md`](../Claudstermind/skills/load-cluster.md) for the full procedure. Claudstermind holds this project's onboarding, current state, architecture deep-dive, conventions, and accumulated learnings — always check there before re-briefing Claude.
+See [`../../Claudstermind/skills/load-cluster.md`](../../Claudstermind/skills/load-cluster.md) for the full procedure. Claudstermind holds this project's onboarding, current state, architecture deep-dive, conventions, and accumulated learnings — always check there before re-briefing Claude.
 
-The knowledge base lives at [`../Claudstermind/projects/DALOS_Crypto/`](../Claudstermind/projects/DALOS_Crypto/).
+The knowledge base lives at [`../../Claudstermind/projects/DALOS_Crypto/`](../../Claudstermind/projects/DALOS_Crypto/).
 
 ## Cluster context at a glance
 

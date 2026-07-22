@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `StoaChain/DALOS_Crypto` are documented in this file.
+All notable changes to `OuroborosNetwork/dalos-crypto` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
@@ -13,6 +13,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Expand test-vector corpus from 85 → 500+ — edge cases (all-zero, all-ones, boundary scalars), invalid-input rejection vectors.
 - `docs/SCHNORR_HARDENING.md` — detailed fix plan for the 7 Schnorr findings (Category B, applied in the TS port).
 - Third-party cryptographic audit engagement.
+
+---
+
+## [4.0.4] — 2026-07-22
+
+**Patch release — package rename, no functional change.**
+
+The TypeScript package is now published as **`@ouronet/dalos-crypto`**. It was
+previously `@stoachain/dalos-crypto`; the old name is deprecated on npm and
+points here. DALOS is Ouronet-level cryptography, so the published scope now
+matches the owning organisation — part of the Phase-4 reorganisation that also
+moved this repository to `OuroborosNetwork/dalos-crypto`.
+
+Migration is a rename and nothing else:
+
+```diff
+- import { createDefaultRegistry } from "@stoachain/dalos-crypto/registry";
++ import { createDefaultRegistry } from "@ouronet/dalos-crypto/registry";
+```
+
+Source, exports, subpath layout, and behaviour are byte-for-byte those of
+4.0.3 — the Genesis 105-vector corpus is unchanged and every hash still
+matches. The version advances to 4.0.4 rather than republishing 4.0.3 under
+the new name because the `ts-v4.0.3` release tag is already spent; treat
+`@ouronet/dalos-crypto@4.0.4` and `@stoachain/dalos-crypto@4.0.3` as the same
+code.
+
+**426 tests pass** across Node 20 / 22 / 24.
 
 ---
 

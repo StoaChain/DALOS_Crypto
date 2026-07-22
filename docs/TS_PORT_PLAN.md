@@ -26,7 +26,7 @@ These decisions are fixed. Revisiting them requires an explicit re-planning pass
 
 | Area | Locked to | Rationale |
 |------|-----------|-----------|
-| **Package architecture** | 3 layers: `@stoachain/dalos-blake3` → `@stoachain/dalos-crypto` → `@stoachain/ouronet-core` | Each layer independently auditable + publishable |
+| **Package architecture** | 3 layers: `@stoachain/dalos-blake3` → `@ouronet/dalos-crypto` → `@ouronet/ouronet-core` | Each layer independently auditable + publishable |
 | **Genesis curve** | 1606-bit TE curve, A=1, D=-26, unchanged from Go | Mathematical verification passed all 7 tests; 1600 bits is ample |
 | **Key-gen input types** | 6: random, bitstring, int base-10, int base-49, seed words, 40×40 bitmap | Covers all UX cases |
 | **Bitmap convention** | 40×40 pixels, **black = 1, white = 0**, **row-major top-to-bottom, left-to-right**, **strict pure B/W** | Simplest, universal, no scan-order ambiguity |
@@ -49,7 +49,7 @@ These decisions are fixed. Revisiting them requires an explicit re-planning pass
 - AES-256-GCM wrapper for encrypted-file export (bit-identical to Go)
 - Schnorr sign/verify with 7 Category-B hardening items
 - Modular `CryptographicPrimitive` interface + registry
-- Integration with `@stoachain/ouronet-core`'s `Codex` class
+- Integration with `@ouronet/ouronet-core`'s `Codex` class
 - Browser UI migration to remove `go.ouronetwork.io` call
 - Reproducibility: every TS output validated byte-for-byte against Go test vectors
 
@@ -94,21 +94,21 @@ Plus, to be added in Phase 0a:
 │  StoaChain/OuronetUI              │
 │  • React app                      │
 │  • No direct DALOS code           │
-│  • Uses: @stoachain/ouronet-core  │
+│  • Uses: @ouronet/ouronet-core  │
 └──────────────┬────────────────────┘
                │
                ▼
 ┌───────────────────────────────────┐
 │  StoaChain/OuronetCore            │
-│  npm: @stoachain/ouronet-core     │
+│  npm: @ouronet/ouronet-core     │
 │  • Codex, pact, signing, etc.     │
-│  • Uses: @stoachain/dalos-crypto  │
+│  • Uses: @ouronet/dalos-crypto  │
 └──────────────┬────────────────────┘
                │
                ▼
 ┌───────────────────────────────────┐
 │  StoaChain/DALOS_Crypto/ts/       │
-│  npm: @stoachain/dalos-crypto     │
+│  npm: @ouronet/dalos-crypto     │
 │  • All Genesis primitives         │
 │  • CryptographicRegistry          │
 │  • Uses: @stoachain/dalos-blake3  │
@@ -123,7 +123,7 @@ Plus, to be added in Phase 0a:
 └───────────────────────────────────┘
 ```
 
-Each package has its own version cadence. The three-layer split means third parties can consume `@stoachain/dalos-crypto` without the blockchain weight of `ouronet-core`.
+Each package has its own version cadence. The three-layer split means third parties can consume `@ouronet/dalos-crypto` without the blockchain weight of `ouronet-core`.
 
 ---
 
@@ -169,10 +169,10 @@ Semantic versioning, pinned to Genesis freeze:
 | 5 | TS AES Encryption Port (as-is) | ⏳ | 3-5 d | `ts/src/gen1/aes.ts` |
 | 6 | TS Schnorr Hardened | ⏳ | 1 wk | `ts/src/gen1/schnorr.ts` |
 | 7 | TS Modular Primitive Registry | ⏳ | 1 wk | `ts/src/registry/` |
-| 8 | Integration into `@stoachain/ouronet-core` | ⏳ | 1 wk | Core uses registry |
+| 8 | Integration into `@ouronet/ouronet-core` | ⏳ | 1 wk | Core uses registry |
 | 9 | OuronetUI Migration | ⏳ | 3-5 d | `go.ouronetwork.io` call removed |
 | 10 | Performance Optimisation (conditional) | ⏳ | 1-2 wk | Web Worker + maybe WASM |
-| 11 | Documentation + Public npm Publish | ⏳ | 1 wk | `@stoachain/dalos-crypto@1.0.0` live |
+| 11 | Documentation + Public npm Publish | ⏳ | 1 wk | `@ouronet/dalos-crypto@1.0.0` live |
 | 12 | Go Server Retirement (optional) | ⏳ | 1 wk | Post 4-week soak |
 
 **Total for remaining phases: 11–14 weeks of focused work.**
@@ -271,7 +271,7 @@ Semantic versioning, pinned to Genesis freeze:
 2. **`ts/package.json`:**
    ```json
    {
-     "name": "@stoachain/dalos-crypto",
+     "name": "@ouronet/dalos-crypto",
      "version": "0.0.1",
      "description": "DALOS Cryptography — Genesis TypeScript port",
      "type": "module",
@@ -336,7 +336,7 @@ Ready for Phase 2 (base-49 Horner scalar multiplication).
 
 **Goal:** Port the pure-arithmetic layer. Every function validated against Go test vectors.
 
-**Subpath:** `@stoachain/dalos-crypto/gen1/` (Genesis)
+**Subpath:** `@ouronet/dalos-crypto/gen1/` (Genesis)
 
 **Files to create:**
 
@@ -859,9 +859,9 @@ function schnorrHash(r: bigint, pk: string, msg: Uint8Array): bigint;
 
 ## Phase 7 — Cryptographic Primitive Registry ✅ DONE (v2.9.0, 2026-04-23)
 
-**Landed:** `ts/src/registry/*.ts` — full primitive + registry surface exposed as subpath `@stoachain/dalos-crypto/registry`. 34 new tests (268 total). Gen-2 primitives can now register cleanly.
+**Landed:** `ts/src/registry/*.ts` — full primitive + registry surface exposed as subpath `@ouronet/dalos-crypto/registry`. 34 new tests (268 total). Gen-2 primitives can now register cleanly.
 
-Ready for Phase 8 (integration into `@stoachain/ouronet-core`).
+Ready for Phase 8 (integration into `@ouronet/ouronet-core`).
 
 ---
 
@@ -949,16 +949,16 @@ export function createDefaultRegistry(): CryptographicRegistry;  // with DalosGe
 
 ---
 
-## Phase 8 — Integration into `@stoachain/ouronet-core` ⏸ BLOCKED ON NPMPUSHER SECRET
+## Phase 8 — Integration into `@ouronet/ouronet-core` ⏸ BLOCKED ON NPMPUSHER SECRET
 
 **Code landed** (2026-04-23):
 
-- **`@stoachain/dalos-crypto`** side:
+- **`@ouronet/dalos-crypto`** side:
   - `ts/package.json` bumped to `1.0.0` (first production release).
   - `.github/workflows/ts-publish.yml` created, triggered by `ts-v*.*.*` tags. Mirrors OuronetCore's pattern (explicit `.npmrc` writing with `NPMPUSHER` secret). Includes a pre-flight secret-presence check with clear error message.
   - Tagged `ts-v1.0.0`. Workflow ran but failed at the publish step — `NPMPUSHER` secret is not configured on the `StoaChain/DALOS_Crypto` repo (it's on `StoaChain/OuronetCore`).
 
-- **`@stoachain/ouronet-core`** side (via `file:../DALOS_Crypto/ts` dev-only dep):
+- **`@ouronet/ouronet-core`** side (via `file:../DALOS_Crypto/ts` dev-only dep):
   - `package.json` bumped to `1.3.0`.
   - New `./dalos` subpath export.
   - `src/dalos/index.ts` re-exports the full `CryptographicPrimitive` + `CryptographicRegistry` surface.
@@ -974,23 +974,23 @@ export function createDefaultRegistry(): CryptographicRegistry;  // with DalosGe
    cd D:/_Claude/DALOS_Crypto
    git tag -d ts-v1.0.0
    git push origin :refs/tags/ts-v1.0.0
-   git tag -a ts-v1.0.0 -m '@stoachain/dalos-crypto@1.0.0'
+   git tag -a ts-v1.0.0 -m '@ouronet/dalos-crypto@1.0.0'
    git push origin ts-v1.0.0
    ```
-3. In OuronetCore, swap `"@stoachain/dalos-crypto": "file:../DALOS_Crypto/ts"` → `"@stoachain/dalos-crypto": "^1.0.0"`, regenerate lockfile, commit + tag `v1.3.0` (or `v1.3.1` if v1.3.0 has been tagged already) → triggers OuronetCore's publish workflow.
+3. In OuronetCore, swap `"@ouronet/dalos-crypto": "file:../DALOS_Crypto/ts"` → `"@ouronet/dalos-crypto": "^1.0.0"`, regenerate lockfile, commit + tag `v1.3.0` (or `v1.3.1` if v1.3.0 has been tagged already) → triggers OuronetCore's publish workflow.
 
 After that, Phase 8 is complete on the npmjs side and Phase 9 (OuronetUI migration) can proceed using clean semver-ranged npm deps.
 
 ---
 
-## Phase 8 — Integration into `@stoachain/ouronet-core` (pre-landing spec; kept for reference) (1 week)
+## Phase 8 — Integration into `@ouronet/ouronet-core` (pre-landing spec; kept for reference) (1 week)
 
-**Goal:** Ouronet-core uses `@stoachain/dalos-crypto` via the registry for all DALOS operations.
+**Goal:** Ouronet-core uses `@ouronet/dalos-crypto` via the registry for all DALOS operations.
 
 **Steps:**
 
-1. Add `@stoachain/dalos-crypto` as a `dependency` in ouronet-core's `package.json`
-2. In `@stoachain/ouronet-core/crypto/`, add or extend:
+1. Add `@ouronet/dalos-crypto` as a `dependency` in ouronet-core's `package.json`
+2. In `@ouronet/ouronet-core/crypto/`, add or extend:
    - Re-export the registry
    - Add a Codex-level method `createOuronetAccount({ mode, data, isSmart, primitiveId? })` which:
      - Picks the primitive from the registry (default if not specified)
@@ -1003,7 +1003,7 @@ After that, Phase 8 is complete on the npmjs side and Phase 9 (OuronetUI migrati
 
 - Updated ouronet-core with registry integration
 - Tests covering all 6 input types via the Codex API
-- `@stoachain/ouronet-core` version bump (minor)
+- `@ouronet/ouronet-core` version bump (minor)
 
 **Exit criteria:**
 
@@ -1081,7 +1081,7 @@ After that, Phase 8 is complete on the npmjs side and Phase 9 (OuronetUI migrati
 
 ## Phase 11 — Documentation + Public npm Publish (1 week)
 
-**Goal:** Publish `@stoachain/dalos-crypto@1.0.0` to npm. Make DALOS discoverable and usable by external developers.
+**Goal:** Publish `@ouronet/dalos-crypto@1.0.0` to npm. Make DALOS discoverable and usable by external developers.
 
 **Steps:**
 
@@ -1090,7 +1090,7 @@ After that, Phase 8 is complete on the npmjs side and Phase 9 (OuronetUI migrati
 3. Write `docs/DALOS_CRYPTO_GEN1.md` — high-level architectural overview (curve, hashing, encoding, security)
 4. Quick-start guide with code examples for all 6 input types
 5. Update the Ouronet Gitbook with a cross-link to DALOS crypto
-6. Publish `@stoachain/dalos-crypto@1.0.0` to npm (access: public)
+6. Publish `@ouronet/dalos-crypto@1.0.0` to npm (access: public)
 7. Publish `@stoachain/dalos-blake3@1.0.0` (already at 1.0.0 from Phase 3)
 
 **Deliverables:**
@@ -1103,7 +1103,7 @@ After that, Phase 8 is complete on the npmjs side and Phase 9 (OuronetUI migrati
 
 **Exit criteria:**
 
-- `npm install @stoachain/dalos-crypto` on a fresh machine yields a working install
+- `npm install @ouronet/dalos-crypto` on a fresh machine yields a working install
 - API docs render correctly
 
 **Effort:** 1 week.
@@ -1140,7 +1140,7 @@ After that, Phase 8 is complete on the npmjs side and Phase 9 (OuronetUI migrati
 | 6 | Third-party audit before Phase 6 | Optional; strongly recommended but not blocking |
 | 7 | Bigger curves | NO — see `FUTURE.md` §4 |
 | 8 | Post-quantum primitive | Separate track; `FUTURE.md` §1 |
-| 9 | Standalone npm for dalos-crypto | YES — `@stoachain/dalos-crypto` |
+| 9 | Standalone npm for dalos-crypto | YES — `@ouronet/dalos-crypto` |
 | 10 | Licence | Proprietary, AncientHoldings GmbH |
 
 ---

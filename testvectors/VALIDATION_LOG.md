@@ -98,7 +98,7 @@ The `generator_version` field bumped from `1.2.0` → `3.0.0` and `host` field u
 1. **Genesis preservation across the XCURVE-1..4 hardening pass.** All 50 bitstring + 15 seedwords + 20 bitmap + 20 Schnorr DALOS vectors reproduce byte-for-byte. The `aux.CeilDiv8` helper produces identical output to floor division for byte-aligned safe-scalars (DALOS S=1600).
 2. **APOLLO byte-identity preservation.** S=1024 is byte-aligned; XCURVE-1..4 produce identical APOLLO output. Pre-fix and post-fix scratch tools produce zero-diff JSON across all probed outputs.
 3. **LETO + ARTEMIS wire-format break (intentional, per spec).** Pre-v3.0.0 LETO/ARTEMIS Schnorr signatures and seedword-derived keys do NOT match post-v3.0.0 outputs. The byte-identity contract is now formalized at v3.0.0 via `v1_historical.json` and verified by the TS test suite (`tests/registry/historical-primitives.test.ts` BYTE-IDENTITY blocks).
-4. **Cross-implementation byte-identity formalized.** The TypeScript port at `@stoachain/dalos-crypto@3.0.0` now reproduces every committed Go-side historical vector byte-for-byte, validated on every npm test run.
+4. **Cross-implementation byte-identity formalized.** The TypeScript port at `@ouronet/dalos-crypto@3.0.0` now reproduces every committed Go-side historical vector byte-for-byte, validated on every npm test run.
 
 ---
 

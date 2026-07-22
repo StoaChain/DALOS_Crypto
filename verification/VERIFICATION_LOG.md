@@ -147,7 +147,7 @@ Each re-run produces a new entry in this file (append, don't overwrite).
 ## Historical Curves Run — 2026-04-24
 
 Sidecar audit of the three historical curves shipped under
-`@stoachain/dalos-crypto@1.1.0`'s `/historical` subpath: **LETO**,
+`@ouronet/dalos-crypto@1.1.0`'s `/historical` subpath: **LETO**,
 **ARTEMIS**, and **APOLLO**. These are the TypeScript ports of the
 Go-side `LetoEllipse()`, `ArtemisEllipse()`, and `ApolloEllipse()`
 factories in [`../Elliptic/Parameters.go`](../Elliptic/Parameters.go).
@@ -212,7 +212,7 @@ required for DALOS Genesis.
 
 These parameters are FROZEN at this commit — any future changes to
 the historical curve constants would constitute a breaking change to
-`@stoachain/dalos-crypto` and require a major-version bump.
+`@ouronet/dalos-crypto` and require a major-version bump.
 
 ---
 

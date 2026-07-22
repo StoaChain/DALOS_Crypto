@@ -484,7 +484,7 @@ The TypeScript port validates byte-for-byte against the hardened v2.0.0 Go refer
 
 1. **Phase 0b** (TS scaffold) — in progress next
 2. **Phases 1–7** (math → scalar mult → hashing → key-gen → AES → Schnorr → registry) — TS implementation
-3. **Phase 8** (integration into `@stoachain/ouronet-core`)
+3. **Phase 8** (integration into `@ouronet/ouronet-core`)
 4. **Phase 9** (OuronetUI migration — remove `go.ouronetwork.io/api/generate`)
 5. **Phases 10–12** (perf, docs, Go-server retirement)
 

@@ -1,4 +1,4 @@
-name: Publish @stoachain/dalos-crypto to npmjs
+name: Publish @ouronet/dalos-crypto to npmjs
 
 # Triggered by pushing a tag matching ts-vX.Y.Z. The tag's version
 # must match the version in ts/package.json. Publishing uses the
@@ -144,7 +144,7 @@ jobs:
           if [ -z "$NPM_PUBLISHER" ]; then
             echo "::error::NPM_PUBLISHER secret is not configured on this repository."
             echo "::error::Add it at: https://github.com/StoaChain/DALOS_Crypto/settings/secrets/actions"
-            echo "::error::The token must have publish permission for the @stoachain npm scope."
+            echo "::error::The token must have publish permission for the @ouronet npm scope."
             exit 1
           fi
           echo "NPM_PUBLISHER secret is present (length: ${#NPM_PUBLISHER})"
@@ -162,7 +162,7 @@ jobs:
         run: |
           cat > .npmrc <<EOF
           //registry.npmjs.org/:_authToken=${{ secrets.NPM_PUBLISHER }}
-          @stoachain:registry=https://registry.npmjs.org
+          @ouronet:registry=https://registry.npmjs.org
           always-auth=true
           EOF
 

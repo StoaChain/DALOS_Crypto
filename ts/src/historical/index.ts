@@ -1,5 +1,5 @@
 /**
- * @stoachain/dalos-crypto/historical
+ * @ouronet/dalos-crypto/historical
  *
  * Three novel Twisted-Edwards curves discovered during Kjrekntolopon's
  * original Cryptoplasm research (the very first iteration of what would

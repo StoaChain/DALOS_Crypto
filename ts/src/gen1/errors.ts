@@ -10,7 +10,7 @@
  * Catch-by-class pattern for npm consumers:
  *
  * ```typescript
- * import { fromBitString, InvalidBitStringError } from '@stoachain/dalos-crypto/gen1';
+ * import { fromBitString, InvalidBitStringError } from '@ouronet/dalos-crypto/gen1';
  *
  * try {
  *   const key = fromBitString(userInput);

@@ -1,11 +1,11 @@
-# @stoachain/dalos-crypto
+# @ouronet/dalos-crypto
 
 > TypeScript port of the DALOS Genesis cryptographic primitive — Ouronet's
 > custom 1606-bit Twisted Edwards curve with six key-generation input
 > paths, Schnorr v2 signatures, AES-256-GCM encryption, and a pluggable
 > `CryptographicRegistry` for multi-generation forward compatibility.
 
-[![npm](https://img.shields.io/npm/v/@stoachain/dalos-crypto.svg)](https://www.npmjs.com/package/@stoachain/dalos-crypto)
+[![npm](https://img.shields.io/npm/v/@ouronet/dalos-crypto.svg)](https://www.npmjs.com/package/@ouronet/dalos-crypto)
 [![tests](https://img.shields.io/badge/tests-426%20passing-brightgreen.svg)](#verification)
 [![license](https://img.shields.io/badge/license-UNLICENSED-blue.svg)](https://github.com/StoaChain/DALOS_Crypto)
 
@@ -14,9 +14,9 @@
 ## Install
 
 ```bash
-npm install @stoachain/dalos-crypto
+npm install @ouronet/dalos-crypto
 # or
-yarn add @stoachain/dalos-crypto
+yarn add @ouronet/dalos-crypto
 ```
 
 Requires **Node ≥ 20** (uses native `BigInt` + `globalThis.crypto.getRandomValues`).
@@ -102,8 +102,8 @@ for the full provenance, audit log, and usage.
 ### Mint an Ouronet account (every mode)
 
 ```ts
-import { type Bitmap } from "@stoachain/dalos-crypto/gen1";
-import { DalosGenesis } from "@stoachain/dalos-crypto/registry";
+import { type Bitmap } from "@ouronet/dalos-crypto/gen1";
+import { DalosGenesis } from "@ouronet/dalos-crypto/registry";
 
 // 1 — OS randomness (simplest)
 const a = DalosGenesis.generateRandom();
@@ -151,8 +151,8 @@ console.log(accounts.map((acc) => acc.standardAddress));
 ### Sign + verify (Schnorr v2)
 
 ```ts
-import { SchnorrSignError, sign, verify } from "@stoachain/dalos-crypto/gen1";
-import { DalosGenesis } from "@stoachain/dalos-crypto/registry";
+import { SchnorrSignError, sign, verify } from "@ouronet/dalos-crypto/gen1";
+import { DalosGenesis } from "@ouronet/dalos-crypto/registry";
 
 const account = DalosGenesis.generateRandom();
 let sig = "";
@@ -175,7 +175,7 @@ to seconds; the async variants yield to the event loop every 8
 outer-loop iterations on a fixed data-independent cadence and keep
 Interaction-to-Next-Paint (INP) under 200 ms.
 
-Three additive functions, all re-exported from `@stoachain/dalos-crypto/gen1`:
+Three additive functions, all re-exported from `@ouronet/dalos-crypto/gen1`:
 `scalarMultiplierAsync`, `schnorrSignAsync`, `schnorrVerifyAsync`. The
 yield trigger depends only on the scalar-mult outer-loop iteration
 index — never on the scalar value or any secret-derived branch — so
@@ -184,8 +184,8 @@ Output is byte-identical to the sync variants for the same inputs
 (deterministic v2 RFC-6979-style nonces).
 
 ```ts
-import { schnorrSignAsync, schnorrVerifyAsync } from "@stoachain/dalos-crypto/gen1";
-import { DalosGenesis } from "@stoachain/dalos-crypto/registry";
+import { schnorrSignAsync, schnorrVerifyAsync } from "@ouronet/dalos-crypto/gen1";
+import { DalosGenesis } from "@ouronet/dalos-crypto/registry";
 
 const account = DalosGenesis.generateRandom();
 const sig = await schnorrSignAsync(account.keyPair, "hello world");
@@ -199,7 +199,7 @@ contexts where blocking is acceptable.
 ### AES encryption (Genesis-compatible key-file format)
 
 ```ts
-import { decrypt, encrypt } from "@stoachain/dalos-crypto/gen1";
+import { decrypt, encrypt } from "@ouronet/dalos-crypto/gen1";
 
 const cipher = await encrypt("secret message", "strong-password");
 const recovered = await decrypt(cipher, "strong-password");
@@ -209,7 +209,7 @@ console.log(recovered === "secret message"); // true
 ### Detect which primitive minted an address
 
 ```ts
-import { createDefaultRegistry, DalosGenesis } from "@stoachain/dalos-crypto/registry";
+import { createDefaultRegistry, DalosGenesis } from "@ouronet/dalos-crypto/registry";
 
 const registry = createDefaultRegistry();
 const account = DalosGenesis.generateRandom();
@@ -223,10 +223,10 @@ if (detected) console.log(detected.id); // "dalos-gen-1"
 
 ```ts
 // Per-subpath narrow imports (recommended for tree-shaking).
-import { fromRandom } from "@stoachain/dalos-crypto/gen1";
-import { createDefaultRegistry, DalosGenesis } from "@stoachain/dalos-crypto/registry";
-import { LETO } from "@stoachain/dalos-crypto/historical";
-import { blake3SumCustom } from "@stoachain/dalos-crypto/dalos-blake3";
+import { fromRandom } from "@ouronet/dalos-crypto/gen1";
+import { createDefaultRegistry, DalosGenesis } from "@ouronet/dalos-crypto/registry";
+import { LETO } from "@ouronet/dalos-crypto/historical";
+import { blake3SumCustom } from "@ouronet/dalos-crypto/dalos-blake3";
 
 // All four subpaths exist; pick whichever surface area you need.
 console.log(typeof fromRandom, typeof DalosGenesis, typeof createDefaultRegistry, typeof LETO, typeof blake3SumCustom);

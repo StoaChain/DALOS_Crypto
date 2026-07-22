@@ -1,6 +1,6 @@
 # DALOS Cryptography Gen-1 — Architectural Overview
 
-> Audit-facing architectural deep-dive for `@stoachain/dalos-crypto@1.1.0`
+> Audit-facing architectural deep-dive for `@ouronet/dalos-crypto@1.1.0`
 > and the matching Go reference. Intended to give cryptographic
 > auditors, security reviewers, and downstream implementers a complete
 > mental model of the Genesis primitive: curve, key-gen pipelines,
@@ -310,7 +310,7 @@ the curve (typically ~400 bytes for DALOS).
 
 Encrypts private-key material for on-disk storage (Codex files, UI
 persistence). NOT for ephemeral encryption — that role belongs to
-`@stoachain/ouronet-core/crypto`'s V1/V2 format.
+`@ouronet/ouronet-core/crypto`'s V1/V2 format.
 
 ### Format
 
@@ -392,7 +392,7 @@ paths, no bitmap).
 
 ### Historical primitives (v1.2.0+)
 
-Three primitives live at `@stoachain/dalos-crypto/registry`:
+Three primitives live at `@ouronet/dalos-crypto/registry`:
 
 | ID              | Curve                      | Standard | Smart | Safe scalar |
 |-----------------|----------------------------|----------|-------|-------------|

@@ -42,8 +42,8 @@
  * primitive), use the **registry-mediated path** instead:
  *
  * ```typescript
- * import { CryptographicRegistry } from '@stoachain/dalos-crypto/registry';
- * import { Apollo } from '@stoachain/dalos-crypto/registry';
+ * import { CryptographicRegistry } from '@ouronet/dalos-crypto/registry';
+ * import { Apollo } from '@ouronet/dalos-crypto/registry';
  *
  * const registry = new CryptographicRegistry();
  * registry.register(Apollo);

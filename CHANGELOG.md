@@ -52,7 +52,7 @@ hardening (no public-API surface change), an additive TS export
 (F-LOW-004's `dalosBlake3` alias is purely additive), a perf
 micro-optimisation with byte-identical output, a doc-only update,
 or a test/file-organisation refactor. The published
-`@stoachain/dalos-crypto` npm package's wire format, behaviour,
+`@ouronet/dalos-crypto` npm package's wire format, behaviour,
 and existing exports are byte-identical to v4.0.2 at the
 happy-path surface.
 
@@ -252,9 +252,9 @@ For every fix in this release:
 ### Migration notes
 
 **TypeScript port consumers:** v4.0.3 npm package
-(`@stoachain/dalos-crypto@4.0.3`) is wire-compatible with v4.0.2 at
+(`@ouronet/dalos-crypto@4.0.3`) is wire-compatible with v4.0.2 at
 the happy-path surface. New top-level `dalosBlake3` alias is purely
-additive — existing `import { blake3 } from '@stoachain/dalos-crypto'`
+additive — existing `import { blake3 } from '@ouronet/dalos-crypto'`
 continues to work. Vitest 3.x bump is internal (devDependency only);
 no consumer-facing impact.
 
@@ -295,7 +295,7 @@ Same rationale as v4.0.1: every fix here is either a Go-side library
 hardening (no TS public-surface change), a TS-side additive change
 (new typed exception classes — pure addition, no removal), a perf
 micro-optimization (byte-identical output), a doc-only update, or a
-test-only addition. The published `@stoachain/dalos-crypto` npm
+test-only addition. The published `@ouronet/dalos-crypto` npm
 package's wire format, behaviour, and exports are byte-identical to
 v4.0.1 at the **happy-path** surface — only error-class type info
 on the gen1 surface gains new branches (additive, not breaking).
@@ -744,14 +744,14 @@ For every fix in this release:
 ### Migration notes
 
 **TypeScript port consumers:** the v4.0.2 npm package
-(`@stoachain/dalos-crypto@4.0.2`) is wire-compatible with v4.0.1 at the
+(`@ouronet/dalos-crypto@4.0.2`) is wire-compatible with v4.0.1 at the
 happy-path surface. New typed exception classes (F-MED-008) are
 ADDITIVE — existing `catch (err) { String(err.message).includes(...) }`
 patterns continue to work; new code can opt into class-based catch:
 
 ```typescript
 import { fromBitString, InvalidBitStringError } from
-  '@stoachain/dalos-crypto/gen1';
+  '@ouronet/dalos-crypto/gen1';
 
 try {
   const key = fromBitString(userInput);
@@ -800,7 +800,7 @@ Every fix here is either:
   return). Pure additions — existing single-return-value callers fail
   to compile but the fix is mechanical and the only known consumer is
   this repo's own CLI + test suite. The published TypeScript port
-  `@stoachain/dalos-crypto` is not affected by Go-side signatures.
+  `@ouronet/dalos-crypto` is not affected by Go-side signatures.
 - A CLI-only diagnostic improvement (F-CRIT-002, F-API-002, F-ERR-001).
 - A TS-public-surface no-op (this release does not change any TS
   public exports; the npm package's wire format and behaviour are
@@ -1460,7 +1460,7 @@ bigVal, err := el.ConvertBase49toBase10(s)
 if err != nil { /* handle malformed base-49 input */ }
 ```
 
-The TypeScript package `@stoachain/dalos-crypto` is unaffected — no TS
+The TypeScript package `@ouronet/dalos-crypto` is unaffected — no TS
 public surface changed in v4.0.1.
 
 ---
@@ -1557,7 +1557,7 @@ Any future drift in TYPE SIGNATURES (parameter types, return types, method names
 
 #### TS gen1 consistency + historical re-exports (Phase 9, REQ-27-30)
 
-- **`ts/src/historical/index.ts`** — re-exports `Modular`, `ZERO`, `ONE`, `TWO`, `bytesToBigIntBE`, `bigIntToBytesBE`, `parseBase10` from `gen1/math.js`. Discoverability parity with the registry/* subpath: consumers can now `import { Modular, LETO } from '@stoachain/dalos-crypto/historical'` without dual-importing.
+- **`ts/src/historical/index.ts`** — re-exports `Modular`, `ZERO`, `ONE`, `TWO`, `bytesToBigIntBE`, `bigIntToBytesBE`, `parseBase10` from `gen1/math.js`. Discoverability parity with the registry/* subpath: consumers can now `import { Modular, LETO } from '@ouronet/dalos-crypto/historical'` without dual-importing.
 
 #### Public API ergonomic re-exports (Phase 3, REQ-12)
 
@@ -1642,7 +1642,7 @@ The two BREAKING changes on the Go side are the `Elliptic/` carve-out (Phase 10)
 
 #### TypeScript consumers
 
-No BREAKING surface changes. The `Modular` field structural property (Phase 5) and the `validateBitString` `reason` field (Phase 9) are additive. `bigIntToBase49`'s O(n²) → O(n) refactor is byte-identical for every input. New ergonomic re-exports in `@stoachain/dalos-crypto/historical` (`Modular`, `ZERO`, `ONE`, `TWO`, etc.) save the dual-import for historical-curve consumers.
+No BREAKING surface changes. The `Modular` field structural property (Phase 5) and the `validateBitString` `reason` field (Phase 9) are additive. `bigIntToBase49`'s O(n²) → O(n) refactor is byte-identical for every input. New ergonomic re-exports in `@ouronet/dalos-crypto/historical` (`Modular`, `ZERO`, `ONE`, `TWO`, etc.) save the dual-import for historical-curve consumers.
 
 The v3.1.0 throw-contract change (`schnorrSign` throws `SchnorrSignError` on internal failure rather than returning `""`) is retained in v4.0.0 — see [v3.1.0 Migration Guide](#310--2026-05-02) for the full pattern.
 
@@ -1654,10 +1654,10 @@ The v3.1.0 throw-contract change (`schnorrSign` throws `SchnorrSignError` on int
 
 ### Added
 
-- **`scalarMultiplierAsync`** — exported from `@stoachain/dalos-crypto/gen1`. Async wrapper over `scalarMultiplier` that yields to the event loop every 8 outer-loop iterations on a fixed data-independent cadence.
-- **`schnorrSignAsync`** — exported from `@stoachain/dalos-crypto/gen1`. Async wrapper over `schnorrSign` for browser-friendly signing without blocking the event loop. Throws `SchnorrSignError` on internal failure (same condition as sync surface).
-- **`schnorrVerifyAsync`** — exported from `@stoachain/dalos-crypto/gen1`. Async wrapper over `schnorrVerify`. Yields on the same fixed cadence as the sign path.
-- **`SchnorrSignError`** — typed exception class exported from `@stoachain/dalos-crypto/gen1`. Importable for `instanceof` catch blocks. Thrown on internal sign failure (Fiat-Shamir challenge derivation null-result).
+- **`scalarMultiplierAsync`** — exported from `@ouronet/dalos-crypto/gen1`. Async wrapper over `scalarMultiplier` that yields to the event loop every 8 outer-loop iterations on a fixed data-independent cadence.
+- **`schnorrSignAsync`** — exported from `@ouronet/dalos-crypto/gen1`. Async wrapper over `schnorrSign` for browser-friendly signing without blocking the event loop. Throws `SchnorrSignError` on internal failure (same condition as sync surface).
+- **`schnorrVerifyAsync`** — exported from `@ouronet/dalos-crypto/gen1`. Async wrapper over `schnorrVerify`. Yields on the same fixed cadence as the sign path.
+- **`SchnorrSignError`** — typed exception class exported from `@ouronet/dalos-crypto/gen1`. Importable for `instanceof` catch blocks. Thrown on internal sign failure (Fiat-Shamir challenge derivation null-result).
 - **`ts/tests/gen1/schnorr.test.ts`** — 2 new TS rejection-cases tests for off-curve R (line 255) + off-curve P (line 268) (Phase 1 SC-5 regression coverage).
 - **`Elliptic/Schnorr_adversarial_test.go`** — new Go-side adversarial test file with mutation-test verification (off-curve R, off-curve P, scalar-out-of-range, identity-point edge cases).
 - **PM-cache instrumentation tests** — Go-side pointer-equality assertion (same `*Ellipse` returns same precompute matrix pointer across calls) and TS-side spy counter (verifies `precomputeMatrix` factory is called exactly once per `Ellipse` instance across N sign+verify cycles).
@@ -1706,7 +1706,7 @@ if (sig === '') { /* handle failure */ }
 **After v3.1.0:**
 
 ```ts
-import { SchnorrSignError } from '@stoachain/dalos-crypto/gen1';
+import { SchnorrSignError } from '@ouronet/dalos-crypto/gen1';
 try {
   const sig = primitive.sign(kp, msg);
   // ...
@@ -1727,20 +1727,20 @@ Implementation mode: **quality**. Spec lifecycle: high-additive-bundle (audit-sp
 
 ## [3.0.3] — 2026-05-01
 
-**Frontend ergonomics + README CI gate (patch).** Closes audit findings F-FE-001 (TypeScript port — README quick-start broken examples + missing aliases) and F-INT-002 (TypeScript port — registry detect example uses wrong field path) by (1) adding six plain-text-friendly ergonomic alias exports to `@stoachain/dalos-crypto/gen1` (`sign`, `verify`, `encrypt`, `decrypt`, `textToBitString`, `bitStringToText`) so the README quick-start snippets become real, callable code; (2) rewriting all five broken `ts`-tagged code blocks in `ts/README.md` (Mint, Quick-Start Sign, Quick-Start AES, Detect, Subpaths) so every example compiles cleanly under tsc; (3) adding a new `npm run docs:check` script + matching CI step that extracts every fenced `ts`/`typescript` block from `ts/README.md` and typechecks it on every push, preventing future README drift. **366/366 TS tests pass** (347 baseline + 11 new alias round-trip tests + 8 new CI-workflow structural tests in `ts/tests/ci-workflow/`). Pure additive — every existing export remains in place; no breaking changes.
+**Frontend ergonomics + README CI gate (patch).** Closes audit findings F-FE-001 (TypeScript port — README quick-start broken examples + missing aliases) and F-INT-002 (TypeScript port — registry detect example uses wrong field path) by (1) adding six plain-text-friendly ergonomic alias exports to `@ouronet/dalos-crypto/gen1` (`sign`, `verify`, `encrypt`, `decrypt`, `textToBitString`, `bitStringToText`) so the README quick-start snippets become real, callable code; (2) rewriting all five broken `ts`-tagged code blocks in `ts/README.md` (Mint, Quick-Start Sign, Quick-Start AES, Detect, Subpaths) so every example compiles cleanly under tsc; (3) adding a new `npm run docs:check` script + matching CI step that extracts every fenced `ts`/`typescript` block from `ts/README.md` and typechecks it on every push, preventing future README drift. **366/366 TS tests pass** (347 baseline + 11 new alias round-trip tests + 8 new CI-workflow structural tests in `ts/tests/ci-workflow/`). Pure additive — every existing export remains in place; no breaking changes.
 
 ### Changed
 
 - **`ts/README.md`** — five broken `ts`-tagged code blocks rewritten:
   - **Mint block** (lines 98-139): all imports hoisted to the top of the block (TypeScript ESM rule), bitmap is now created programmatically (`Array.from({ length: 40 }, () => Array<0 | 1>(40).fill(0))` — exactly 1600 pixels, no `/* ... */` placeholder), base-10 scalar is a finite digit string, base-49 scalar uses only `BASE49_ALPHABET` characters, undeclared `someStandardAddress` replaced with `account.standardAddress`, no declared-but-unused variables (compatible with inherited `noUnusedLocals: true`).
-  - **Quick-Start Sign block** (lines 143-149): imports `{ sign, verify }` from `@stoachain/dalos-crypto/gen1`, calls `sign(account.keyPair, "hello world")` (keyPair-first order), passes signature + message + `account.keyPair.publ` to `verify`.
-  - **Quick-Start AES block** (lines 153-158): imports `{ encrypt, decrypt }` from `@stoachain/dalos-crypto/gen1`, uses `await encrypt(...)` / `await decrypt(...)` (async), asserts the recovered plaintext.
+  - **Quick-Start Sign block** (lines 143-149): imports `{ sign, verify }` from `@ouronet/dalos-crypto/gen1`, calls `sign(account.keyPair, "hello world")` (keyPair-first order), passes signature + message + `account.keyPair.publ` to `verify`.
+  - **Quick-Start AES block** (lines 153-158): imports `{ encrypt, decrypt }` from `@ouronet/dalos-crypto/gen1`, uses `await encrypt(...)` / `await decrypt(...)` (async), asserts the recovered plaintext.
   - **Detect block** (lines 162-165): self-contained — declares `const registry = createDefaultRegistry();` inline, uses an inline address literal, accesses `detected.id` (top-level field, not `detected.metadata.id`), compares against `"dalos-gen-1"` (the actual primitive id, not `"dalos-genesis"`).
   - **Subpaths block** (lines 171-177): every import line references a real named export from its stated subpath. No bare `...` placeholders.
 
 ### Added
 
-- **`ts/src/gen1/aliases.ts`** — new file. Six ergonomic wrapper exports re-exported from `@stoachain/dalos-crypto/gen1`:
+- **`ts/src/gen1/aliases.ts`** — new file. Six ergonomic wrapper exports re-exported from `@ouronet/dalos-crypto/gen1`:
   - `sign(keyPair, message)` — thin pass-through over `schnorrSign` with the conventional keyPair-first argument order.
   - `verify(signature, message, publicKey)` — thin pass-through over `schnorrVerify`.
   - `async encrypt(plaintext, password)` — UTF-8 plaintext → bitstring → `encryptBitString`. Throws on empty input (the bigint round-trip cannot recover empty plaintext through the alias surface; power users can still call `encryptBitString` directly).
@@ -1767,7 +1767,7 @@ Implementation mode: **quality**. Spec lifecycle: high-additive-bundle (audit-sp
 
 ### Migration Guide
 
-- **No action required for any user.** Pure additive change: six new exports under `@stoachain/dalos-crypto/gen1`, plus a new `docs:check` developer script and CI gate. Every existing export remains at the same import path with the same signature. README republishes alongside this release with the corrected examples.
+- **No action required for any user.** Pure additive change: six new exports under `@ouronet/dalos-crypto/gen1`, plus a new `docs:check` developer script and CI gate. Every existing export remains at the same import path with the same signature. README republishes alongside this release with the corrected examples.
 
 Implementation mode: **quality**. Spec lifecycle: /bee:audit (2026-04-29) → /bee:new-spec (high-frontend-fixes audit-spec) → /bee:plan-all (2 phases, 10 tasks, plan-review iter1+1, cross-plan iter1) → /bee:ship (autonomous execution + review).
 
@@ -1795,7 +1795,7 @@ Implementation mode: **quality**. Spec lifecycle: /bee:audit (2026-04-29) → /b
 
 ### Doc/Audit
 
-- **`README.md`** (top-level) — Status section bumped to `@stoachain/dalos-crypto@3.0.2`.
+- **`README.md`** (top-level) — Status section bumped to `@ouronet/dalos-crypto@3.0.2`.
 
 ### Migration Guide
 
@@ -1918,7 +1918,7 @@ The TypeScript port's Gen-1 cryptographic surface is now FEATURE-COMPLETE and re
   - `get(id)`, `has(id)`, `all()`, `size()` — inspection
   - `detect(address)` — find primitive by `detectGeneration` match
   - `default()` / `setDefault(id)` / `defaultIdOf()` — default management
-- **`ts/src/registry/index.ts`** — public surface for `@stoachain/dalos-crypto/registry` subpath
+- **`ts/src/registry/index.ts`** — public surface for `@ouronet/dalos-crypto/registry` subpath
 - **`ts/tests/registry/registry.test.ts`** — 34 tests covering:
   - DalosGenesis identity + metadata correctness
   - All 5 keygen paths reproduce Go corpus through the primitive interface
@@ -1935,7 +1935,7 @@ The TypeScript port's Gen-1 cryptographic surface is now FEATURE-COMPLETE and re
 Added `"./registry"` to `package.json` exports. Consumers can now import as:
 
 ```typescript
-import { createDefaultRegistry, DalosGenesis } from '@stoachain/dalos-crypto/registry';
+import { createDefaultRegistry, DalosGenesis } from '@ouronet/dalos-crypto/registry';
 ```
 
 ### Architecture implications
@@ -1966,7 +1966,7 @@ registry.register(DalosGen2);
 
 ### Next
 
-Phase 8 — integration into `@stoachain/ouronet-core`. The ouronet-core library at npm will start consuming `@stoachain/dalos-crypto` via the registry surface. Codex / key storage / signing flows begin using the TS port instead of the `go.ouronetwork.io/api/generate` call.
+Phase 8 — integration into `@ouronet/ouronet-core`. The ouronet-core library at npm will start consuming `@ouronet/dalos-crypto` via the registry surface. Codex / key storage / signing flows begin using the TS port instead of the `go.ouronetwork.io/api/generate` call.
 
 ---
 
@@ -2023,7 +2023,7 @@ The cryptographic surface of the TS port is now **feature-complete and functiona
 - AES encrypted-file I/O (Phase 5)
 - Schnorr v2 sign and verify (Phase 6)
 
-Phase 7 adds the `CryptographicPrimitive` registry pattern so future Gen-2 primitives can plug in cleanly, then Phase 8+ handle integration into `@stoachain/ouronet-core` and the OuronetUI migration.
+Phase 7 adds the `CryptographicPrimitive` registry pattern so future Gen-2 primitives can plug in cleanly, then Phase 8+ handle integration into `@ouronet/ouronet-core` and the OuronetUI migration.
 
 ### Updated
 
@@ -2150,7 +2150,7 @@ The TS port now produces **100% byte-identical output to the Go reference** for:
 
 ### What this means
 
-The TypeScript port at `@stoachain/dalos-crypto@0.4.0` (scaffold version) can now produce identical Ouronet accounts to the Go service at `go.ouronetwork.io/api/generate` for every input the Go service accepts. In Phase 8 (ouronet-core integration) and Phase 9 (OuronetUI migration) we swap the Go remote call for local TS invocation. Existing accounts remain valid forever; new accounts match Go output exactly.
+The TypeScript port at `@ouronet/dalos-crypto@0.4.0` (scaffold version) can now produce identical Ouronet accounts to the Go service at `go.ouronetwork.io/api/generate` for every input the Go service accepts. In Phase 8 (ouronet-core integration) and Phase 9 (OuronetUI migration) we swap the Go remote call for local TS invocation. Existing accounts remain valid forever; new accounts match Go output exactly.
 
 ### Next
 
@@ -2160,14 +2160,14 @@ Phase 5 ports the AES wrapper (AES-256-GCM + Blake3 KDF) for CLI-compatible encr
 
 ## [2.5.0] — 2026-04-23
 
-**Phase 3 landed — TypeScript Hashing + address encoding. 🎯 FIRST BYTE-IDENTITY GATE PASSED.** Complete port of `Elliptic/KeyGeneration.go`'s hashing + address-derivation pipeline, plus the 16×16 Unicode `CharacterMatrix`, plus a Blake3 wrapper at `@stoachain/dalos-crypto/dalos-blake3` (subpath; extracted to a sibling npm package in Phase 11). **142/142 tests pass** including the first real byte-identity validation against the committed Go test-vector corpus.
+**Phase 3 landed — TypeScript Hashing + address encoding. 🎯 FIRST BYTE-IDENTITY GATE PASSED.** Complete port of `Elliptic/KeyGeneration.go`'s hashing + address-derivation pipeline, plus the 16×16 Unicode `CharacterMatrix`, plus a Blake3 wrapper at `@ouronet/dalos-crypto/dalos-blake3` (subpath; extracted to a sibling npm package in Phase 11). **142/142 tests pass** including the first real byte-identity validation against the committed Go test-vector corpus.
 
 ### Added
 
 - **`ts/src/dalos-blake3/index.ts`** — Blake3 XOF wrapper over `@noble/hashes@2.2.0`:
   - `blake3SumCustom(input, outputBytes)` — matches Go's `Blake3.SumCustom` interface
   - `sevenFoldBlake3(input, outputBytes)` — applies Blake3 seven times (the DALOS construction)
-  - Exposed as subpath export `@stoachain/dalos-crypto/dalos-blake3` (will be extracted to a separate `@stoachain/dalos-blake3` package at Phase 11)
+  - Exposed as subpath export `@ouronet/dalos-crypto/dalos-blake3` (will be extracted to a separate `@stoachain/dalos-blake3` package at Phase 11)
 - **`ts/src/gen1/character-matrix.ts`** — the 256-rune 16×16 matrix from `CharacterMatrix()` in Elliptic/KeyGeneration.go:
   - `CHARACTER_MATRIX_FLAT` — 256-char string in row-major order (BMP chars only; UTF-16 indexing returns single chars)
   - `CHARACTER_MATRIX` — 2D view, `readonly string[][]`
@@ -2198,7 +2198,7 @@ Phase 5 ports the AES wrapper (AES-256-GCM + Blake3 KDF) for CLI-compatible encr
 | Public-key round-trip | `affineToPublicKey(publicKeyToAffineCoords(pk)) === pk` for all 105 vectors | ✅ **105/105 preserved** |
 
 These validations prove that ALL of the following are correct:
-- The Blake3 wrapper at `@stoachain/dalos-crypto/dalos-blake3` produces identical output to the Go Blake3 reference
+- The Blake3 wrapper at `@ouronet/dalos-crypto/dalos-blake3` produces identical output to the Go Blake3 reference
 - The seven-fold construction is applied correctly
 - UTF-8 encoding matches Go's `[]byte(string)`
 - The 256-rune character matrix matches the Go `CharacterMatrix()` at every position
@@ -2207,7 +2207,7 @@ These validations prove that ALL of the following are correct:
 
 ### Architecture note
 
-The plan called for `@stoachain/dalos-blake3` as a sibling npm package. For Phase 3 implementation, the Blake3 wrapper lives as a subpath at `@stoachain/dalos-crypto/dalos-blake3`. The code layout (its own directory, its own tests, its own subpath export) is ready for extraction: at Phase 11 when we publish to npm, we copy `ts/src/dalos-blake3/` to a new `StoaChain/Blake3/ts/` repo and publish it as `@stoachain/dalos-blake3`, then update `@stoachain/dalos-crypto` to depend on it. This deferral avoids publishing overhead while the port is still mid-flight.
+The plan called for `@stoachain/dalos-blake3` as a sibling npm package. For Phase 3 implementation, the Blake3 wrapper lives as a subpath at `@ouronet/dalos-crypto/dalos-blake3`. The code layout (its own directory, its own tests, its own subpath export) is ready for extraction: at Phase 11 when we publish to npm, we copy `ts/src/dalos-blake3/` to a new `StoaChain/Blake3/ts/` repo and publish it as `@stoachain/dalos-blake3`, then update `@ouronet/dalos-crypto` to depend on it. This deferral avoids publishing overhead while the port is still mid-flight.
 
 ### Verified
 
@@ -2284,7 +2284,7 @@ Phase 3 adds hashing: `@stoachain/dalos-blake3` (new npm package, published from
 - **`ts/src/gen1/coords.ts`** — `CoordAffine`, `CoordExtended`, `CoordInverted`, `CoordProjective` interfaces + `INFINITY_POINT_EXTENDED` constant `{ex: 0, ey: 1, ez: 1, et: 0}`.
 - **`ts/src/gen1/curve.ts`** — `Ellipse` interface + `DALOS_ELLIPSE` constant (name, P, Q, T, R, S, a, d, G verified byte-for-byte against Go) + `DALOS_FIELD` shared Modular instance + `affine2Extended` / `extended2Affine` / `isInfinityPoint` / `isOnCurve` / `arePointsEqual` / `isInverseOnCurve` predicates.
 - **`ts/src/gen1/point-ops.ts`** — HWCD formulas as typed TypeScript: `addition` dispatcher + `additionV1` (mmadd-2008-hwcd) + `additionV2` (madd-2008-hwcd-2) + `additionV3` (add-2008-hwcd), `doubling` dispatcher + `doublingV1` (mdbl-2008-hwcd) + `doublingV2` (dbl-2008-hwcd), `tripling` (tpl-2015-c), `fortyNiner` (3·P → 6·P → 12·P → 24·P → 48·P → 49·P), `precomputeMatrix` (49-element 7×7 matrix for base-49 Horner in Phase 2).
-- **`ts/src/gen1/index.ts`** — public gen1 surface. Path: `@stoachain/dalos-crypto/gen1`.
+- **`ts/src/gen1/index.ts`** — public gen1 surface. Path: `@ouronet/dalos-crypto/gen1`.
 - **`ts/tests/gen1/math.test.ts`** — 14 tests (modular ops, 1606-bit scale, byte conversions, decimal parser).
 - **`ts/tests/gen1/curve.test.ts`** — 14 tests (parameter constants match Go; predicates work correctly).
 - **`ts/tests/gen1/point-ops.test.ts`** — 28 tests proving every operation via algebraic identity cross-checks.
@@ -2313,12 +2313,12 @@ Phase 2 (scalar multiplication) adds `ts/src/gen1/scalar-mult.ts` with branch-fr
 
 ## [2.2.0] — 2026-04-23
 
-**Phase 0b landed — TypeScript build scaffold.** `ts/` subfolder now hosts the `@stoachain/dalos-crypto` package (at v0.0.1), ready for Phase 1 math code to land inside. Zero cryptographic logic yet — pure infrastructure.
+**Phase 0b landed — TypeScript build scaffold.** `ts/` subfolder now hosts the `@ouronet/dalos-crypto` package (at v0.0.1), ready for Phase 1 math code to land inside. Zero cryptographic logic yet — pure infrastructure.
 
 ### Added
 
 - **`ts/`** subdirectory containing the full TypeScript scaffold:
-  - `package.json` — `@stoachain/dalos-crypto@0.0.1`, ES modules, strict subpath exports (`.`, `./gen1`), author = Kjrekntolopon (AncientHoldings GmbH), npm `publishConfig` pointed at npmjs.org
+  - `package.json` — `@ouronet/dalos-crypto@0.0.1`, ES modules, strict subpath exports (`.`, `./gen1`), author = Kjrekntolopon (AncientHoldings GmbH), npm `publishConfig` pointed at npmjs.org
   - `tsconfig.json` — TypeScript 5.7, target ES2022, strictest options (`noUncheckedIndexedAccess`, `verbatimModuleSyntax`, `isolatedModules`, all `strict*` flags)
   - `tsconfig.test.json` — test-only config with Vitest globals
   - `biome.json` — linter + formatter (2-space indent, single quotes, trailing commas, LF)

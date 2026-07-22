@@ -1,5 +1,5 @@
 {
-  "name": "@stoachain/dalos-crypto",
+  "name": "@ouronet/dalos-crypto",
   "version": "4.0.3",
   "description": "DALOS Cryptography — Ouronet's custom 1606-bit Twisted Edwards curve, Schnorr signatures, bitmap key generation. TypeScript port of the Genesis Go reference.",
   "type": "module",
@@ -63,12 +63,12 @@
   "license": "SEE LICENSE IN ../LICENSE",
   "repository": {
     "type": "git",
-    "url": "https://github.com/StoaChain/DALOS_Crypto.git",
+    "url": "https://github.com/OuroborosNetwork/dalos-crypto.git",
     "directory": "ts"
   },
-  "homepage": "https://github.com/StoaChain/DALOS_Crypto#readme",
+  "homepage": "https://github.com/OuroborosNetwork/dalos-crypto#readme",
   "bugs": {
-    "url": "https://github.com/StoaChain/DALOS_Crypto/issues"
+    "url": "https://github.com/OuroborosNetwork/dalos-crypto/issues"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

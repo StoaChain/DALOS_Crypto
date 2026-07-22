@@ -5,12 +5,12 @@
 [![Version](https://img.shields.io/badge/Version-4.0.3-blue)](CHANGELOG.md)
 [![Phases 0-11 + v4.0.0](https://img.shields.io/badge/Phases%200--11%20%2B%20v4.0.0-COMPLETE-brightgreen)](docs/TS_PORT_PLAN.md)
 [![Language](https://img.shields.io/badge/Language-Go%201.22-00ADD8)](go.mod)
-[![TypeScript Port](https://img.shields.io/badge/TypeScript%20port-v4.0.3%20on%20npm-brightgreen)](https://www.npmjs.com/package/@stoachain/dalos-crypto)
+[![TypeScript Port](https://img.shields.io/badge/TypeScript%20port-v4.0.3%20on%20npm-brightgreen)](https://www.npmjs.com/package/@ouronet/dalos-crypto)
 [![Historical Curves](https://img.shields.io/badge/Historical%20curves-LETO%20%2F%20ARTEMIS%20%2F%20APOLLO%20%E2%9C%93%20production-brightgreen)](docs/HISTORICAL_CURVES.md)
 
 **Ouro-Network Cryptography**, codename **DALOS**, is the cryptographic foundation of the **Ouro-Network Blockchain**. It is built around a custom Twisted Edwards elliptic curve defined over a 1606-bit prime field, supporting **2¹⁶⁰⁰ unique private keys** — vastly more than the 2²⁵⁶ space of traditional blockchains.
 
-This repository is the **canonical Go reference implementation**. The **TypeScript port** in `ts/` is published as [`@stoachain/dalos-crypto`](https://www.npmjs.com/package/@stoachain/dalos-crypto) on npmjs, validated byte-for-byte against this reference on every commit. Additional language ports (Rust, etc.) will follow the same contract.
+This repository is the **canonical Go reference implementation**. The **TypeScript port** in `ts/` is published as [`@ouronet/dalos-crypto`](https://www.npmjs.com/package/@ouronet/dalos-crypto) on npmjs, validated byte-for-byte against this reference on every commit. Additional language ports (Rust, etc.) will follow the same contract.
 
 ---
 
@@ -27,7 +27,7 @@ This repository is the **canonical Go reference implementation**. The **TypeScri
 | Blake3 + AES inlined | ✅ Self-contained — no external Go module dependencies |
 | **40×40 bitmap input** | ✅ **Added in v1.2.0** — 6th key-gen path, see [`Bitmap/Bitmap.go`](Bitmap/Bitmap.go) |
 | **Historical curves** | ✅ **Production-ready as of TS v1.2.0** — LETO / ARTEMIS / APOLLO exposed as full `CryptographicPrimitive` wrappers with their own address prefixes + Schnorr v2 + registry detection. See [`docs/HISTORICAL_CURVES.md`](docs/HISTORICAL_CURVES.md). |
-| **TypeScript port** | ✅ **Live on npm** as [`@stoachain/dalos-crypto@3.1.0`](https://www.npmjs.com/package/@stoachain/dalos-crypto) — byte-identical with this Go reference on DALOS Genesis + LETO + ARTEMIS + APOLLO (366/366 tests incl. the 39-test historical-primitive integration suite + 11 alias round-trip + 8 CI-workflow structural). v3.1.0 ships `CHANGELOG.md` in the npm tarball + auto-creates GitHub Releases on tag push (release-engineering hygiene; pattern replicated from sibling project `StoaChain/OuronetCore`). |
+| **TypeScript port** | ✅ **Live on npm** as [`@ouronet/dalos-crypto@3.1.0`](https://www.npmjs.com/package/@ouronet/dalos-crypto) — byte-identical with this Go reference on DALOS Genesis + LETO + ARTEMIS + APOLLO (366/366 tests incl. the 39-test historical-primitive integration suite + 11 alias round-trip + 8 CI-workflow structural). v3.1.0 ships `CHANGELOG.md` in the npm tarball + auto-creates GitHub Releases on tag push (release-engineering hygiene; pattern replicated from sibling project `StoaChain/OuronetCore`). |
 | Third-party cryptographic audit | 📋 Recommended before production Schnorr use |
 
 ---
@@ -180,7 +180,7 @@ DALOS_Crypto/
 
 - ✅ **v1.0.0 (2026-04-23)** — Go reference audited, curve mathematically verified, 105-vector corpus frozen.
 - ✅ **v2.1.0 (2026-04-24)** — Go reference + LETO/ARTEMIS/APOLLO historical curves added (`Elliptic/Parameters.go`). Python 21-test audit on all three curves passing.
-- ✅ **TypeScript port v1.1.0** — published to **[npmjs.com/package/@stoachain/dalos-crypto](https://www.npmjs.com/package/@stoachain/dalos-crypto)**. Byte-identity with Go reference proven across 105 test vectors + 20 Schnorr sign+verify + 21 historical-curve math checks.
+- ✅ **TypeScript port v1.1.0** — published to **[npmjs.com/package/@ouronet/dalos-crypto](https://www.npmjs.com/package/@ouronet/dalos-crypto)**. Byte-identity with Go reference proven across 105 test vectors + 20 Schnorr sign+verify + 21 historical-curve math checks.
 - ✅ **Ouronet UI** — migrated off `go.ouronetwork.io/api/generate`. All key-gen now happens locally in the browser via the TS port. See Phase 9 of [`docs/TS_PORT_PLAN.md`](docs/TS_PORT_PLAN.md).
 - 📋 **Phase 12 (optional)** — retirement of the Go endpoint. Not blocking; keep alive as a fallback as long as useful. Code-side already disconnected.
 
@@ -189,9 +189,9 @@ DALOS_Crypto/
 ```
 @stoachain/dalos-blake3      ← Blake3 XOF primitive       (repo: StoaChain/Blake3 — published)
        ↑ depends on
-@stoachain/dalos-crypto      ← DALOS Gen-1 + Schnorr + AES (this repo, ts/ subfolder — published)
+@ouronet/dalos-crypto      ← DALOS Gen-1 + Schnorr + AES (this repo, ts/ subfolder — published)
        ↑ depends on
-@stoachain/ouronet-core      ← Pact builders + codex + signing pipeline (repo: StoaChain/OuronetCore — published)
+@ouronet/ouronet-core      ← Pact builders + codex + signing pipeline (repo: StoaChain/OuronetCore — published)
        ↑ depends on
 OuronetUI                    ← Browser DEX                (repo: DemiourgosHoldings/OuronetUI)
 ```
@@ -200,7 +200,7 @@ OuronetUI                    ← Browser DEX                (repo: DemiourgosHol
 
 1. **Bit-identity with Go reference** — every existing Ouronet address stays valid forever. ✅ Enforced by the 105-vector CI test battery.
 2. **Modular primitive registry** — Genesis is `DalosGenesis` (`id: "dalos-gen-1"`). Future "Gen 2" can register alongside without breaking Gen 1 users. ✅
-3. **Public exposure** — the TypeScript port is published to the public npm registry under `@stoachain/dalos-crypto`. Third parties can consume without auth. ✅
+3. **Public exposure** — the TypeScript port is published to the public npm registry under `@ouronet/dalos-crypto`. Third parties can consume without auth. ✅
 4. **Full test coverage** — 105-vector Go-reference corpus + 20 Schnorr sign-and-verify + 33 historical-curve integrity = **301 tests** passing on every commit. ✅
 
 Plan document: the 14-phase breakdown (Phase 0 = audit, Phase 1 = math foundation, … Phase 12 = retirement of the Go server) lives in [`docs/TS_PORT_PLAN.md`](docs/TS_PORT_PLAN.md) — phases 0–11 are complete.
@@ -228,7 +228,7 @@ Category-B fixes (Schnorr, output-changing — v2.0.0 of the Schnorr signature f
 One **TS-only improvement** — strictly additive, not changing wire format:
 - The TS port constrains the AES IV's high nibble to be non-zero. This sidesteps a latent round-trip edge case in the Go reference's IV serialisation (a `big.Int → hex → bytes` path that drops the high nibble when it's zero — ≈ 6% of random IVs). Ciphertexts produced by the TS port always decrypt in both TS and Go; Go-produced ciphertexts round-trip correctly in TS as long as their IV landed in the 94% safe range. This is an implementation-level avoidance rather than a spec change.
 
-**TypeScript async surface (since v3.1.0)** — additive browser-friendly path: `scalarMultiplierAsync`, `schnorrSignAsync`, `schnorrVerifyAsync` are exported from `@stoachain/dalos-crypto/gen1`. The synchronous variants block the UI thread for hundreds of milliseconds to seconds at full curve scale; the async variants yield to the event loop every 8 outer-loop iterations on a fixed data-independent cadence and keep INP under 200 ms. Output is byte-identical to the sync variants. See the `### Browser-friendly async signing` section in [`ts/README.md`](ts/README.md) for the consumer snippet.
+**TypeScript async surface (since v3.1.0)** — additive browser-friendly path: `scalarMultiplierAsync`, `schnorrSignAsync`, `schnorrVerifyAsync` are exported from `@ouronet/dalos-crypto/gen1`. The synchronous variants block the UI thread for hundreds of milliseconds to seconds at full curve scale; the async variants yield to the event loop every 8 outer-loop iterations on a fixed data-independent cadence and keep INP under 200 ms. Output is byte-identical to the sync variants. See the `### Browser-friendly async signing` section in [`ts/README.md`](ts/README.md) for the consumer snippet.
 
 See [`docs/SCHNORR_V2_SPEC.md`](docs/SCHNORR_V2_SPEC.md) for the full Schnorr v2 spec
 and [`AUDIT.md § 3`](AUDIT.md#3-fix-classification) for the finding catalogue that drove the Go-side hardening.
@@ -239,10 +239,10 @@ and [`AUDIT.md § 3`](AUDIT.md#3-fix-classification) for the finding catalogue t
 
 | Repository | Role |
 |------------|------|
-| [`StoaChain/DALOS_Crypto`](https://github.com/StoaChain/DALOS_Crypto) | **This repo** — Go reference + TypeScript port (`ts/`, published as `@stoachain/dalos-crypto`) |
+| [`StoaChain/DALOS_Crypto`](https://github.com/OuroborosNetwork/dalos-crypto) | **This repo** — Go reference + TypeScript port (`ts/`, published as `@ouronet/dalos-crypto`) |
 | [`StoaChain/Blake3`](https://github.com/StoaChain/Blake3) | Blake3 hash function (Go reference; externally validated) |
-| [`StoaChain/OuronetCore`](https://github.com/StoaChain/OuronetCore) | TypeScript client SDK — consumes `@stoachain/dalos-crypto` via its `./dalos` subpath since v1.3.0 |
-| [`DemiourgosHoldings/OuronetUI`](https://github.com/DemiourgosHoldings/OuronetUI) | Reference web application (Ouronet DEX) — consumes `@stoachain/ouronet-core` |
+| [`StoaChain/OuronetCore`](https://github.com/StoaChain/OuronetCore) | TypeScript client SDK — consumes `@ouronet/dalos-crypto` via its `./dalos` subpath since v1.3.0 |
+| [`DemiourgosHoldings/OuronetUI`](https://github.com/DemiourgosHoldings/OuronetUI) | Reference web application (Ouronet DEX) — consumes `@ouronet/ouronet-core` |
 
 ---
 

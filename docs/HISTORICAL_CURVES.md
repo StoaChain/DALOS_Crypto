@@ -2,7 +2,7 @@
 
 > Three novel twisted-Edwards ellipses discovered during Kjrekntolopon's
 > original **Cryptoplasm** research — the very first iteration of what
-> would eventually become DALOS. Shipped in `@stoachain/dalos-crypto`
+> would eventually become DALOS. Shipped in `@ouronet/dalos-crypto`
 > starting at **v1.1.0** under the `./historical` subpath and in the Go
 > reference at `Elliptic/Parameters.go` as `LetoEllipse()`,
 > `ArtemisEllipse()`, `ApolloEllipse()`.
@@ -64,7 +64,7 @@ properties in JS-land against the exported constants.
 The Cryptoplasm research produced a **catalogue of 13 curves** — three
 Montgomery-form, ten twisted-Edwards-form — spanning bit sizes from 10
 (a toy curve) up to 1605 (what became DALOS Genesis). Only the three
-above made it into `@stoachain/dalos-crypto@1.1.0`. The filter:
+above made it into `@ouronet/dalos-crypto@1.1.0`. The filter:
 
 1. **Same structural family as DALOS_ELLIPSE.** Twisted Edwards form
    `y² + x² = 1 + d·x²·y²`, cofactor 4, negative `d`. The gen-1
@@ -99,7 +99,7 @@ in the library is an act of preservation, not a recommendation for use.
 ## Production-ready as of v1.2.0
 
 Each historical curve now has a **full `CryptographicPrimitive` wrapper**
-exported from `@stoachain/dalos-crypto/registry`. Every one supports:
+exported from `@ouronet/dalos-crypto/registry`. Every one supports:
 
 - 5 key-generation input paths (random / bitString / integerBase10 /
   integerBase49 / seedWords) — same API as DalosGenesis
@@ -132,7 +132,7 @@ curves is formally pinned by `testvectors/v1_historical.json` —
 `schema_version: 2`, 60 deterministic vectors total (10 bitstring + 5
 seedwords + 5 Schnorr per curve). Every committed vector reproduces
 byte-for-byte under both the Go reference and the TypeScript port at
-`@stoachain/dalos-crypto@3.0.0+`. The TS test suite asserts this on
+`@ouronet/dalos-crypto@3.0.0+`. The TS test suite asserts this on
 every `npm test` run via the `BYTE-IDENTITY` blocks in
 `ts/tests/registry/historical-primitives.test.ts`.
 
@@ -180,7 +180,7 @@ import {
   Leto,
   Artemis,
   Apollo,
-} from '@stoachain/dalos-crypto/registry';
+} from '@ouronet/dalos-crypto/registry';
 
 // Default registry is DalosGenesis-only (Ouronet behaviour).
 const def = createDefaultRegistry();
@@ -209,8 +209,8 @@ console.log(r.detect(letoKey.standardAddress)?.id); // "dalos-leto"
 ### Low-level direct use (pre-v1.2.0 API, still supported)
 
 ```ts
-import { LETO } from '@stoachain/dalos-crypto/historical';
-import { scalarToKeyPair, schnorrSign, schnorrVerify } from '@stoachain/dalos-crypto/gen1';
+import { LETO } from '@ouronet/dalos-crypto/historical';
+import { scalarToKeyPair, schnorrSign, schnorrVerify } from '@ouronet/dalos-crypto/gen1';
 
 const kp = scalarToKeyPair(42n, LETO);
 const sig = schnorrSign(kp, 'hello', LETO);

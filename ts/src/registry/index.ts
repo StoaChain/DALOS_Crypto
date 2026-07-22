@@ -1,5 +1,5 @@
 /**
- * `@stoachain/dalos-crypto/registry` — the primitive abstraction layer.
+ * `@ouronet/dalos-crypto/registry` — the primitive abstraction layer.
  *
  * Phase 7 of the TS port. No new cryptography; this is the architecture
  * that lets future Gen-2 primitives register alongside Gen-1 without

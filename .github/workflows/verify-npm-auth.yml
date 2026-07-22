@@ -1,0 +1,109 @@
+name: Verify npm auth (dry run — publishes nothing)
+
+# Manual diagnostic. Answers one question: can the NPM_PUBLISHER secret
+# actually publish @ouronet/dalos-crypto?
+#
+# Every step here is read-only or --dry-run. Nothing reaches the registry
+# as a mutation, so this is safe to run repeatedly while sorting out a
+# token. Run it from Actions → "Verify npm auth" → Run workflow.
+#
+# Each probe is non-fatal (|| true) on purpose: a granular token may fail
+# the org-membership read while still being able to publish. We want the
+# WHOLE picture in one run, not an abort at the first red line.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Probe NPM_PUBLISHER against the @ouronet scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ts
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ts/package-lock.json
+
+      - name: Is the secret even set?
+        run: |
+          if [ -z "${{ secrets.NPM_PUBLISHER }}" ]; then
+            echo "RESULT-SECRET: MISSING — no NPM_PUBLISHER visible to this repo"
+            exit 1
+          fi
+          echo "RESULT-SECRET: present (length ${#NPM_TOKEN})"
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_PUBLISHER }}
+
+      - name: Write .npmrc
+        run: |
+          cat > .npmrc <<EOF
+          //registry.npmjs.org/:_authToken=${{ secrets.NPM_PUBLISHER }}
+          @ouronet:registry=https://registry.npmjs.org
+          always-auth=true
+          EOF
+          echo "--- .npmrc (token redacted) ---"
+          sed 's|=.*|=***|' .npmrc
+
+      # The core probe. A valid, unexpired token returns the npm username.
+      # 401/E401 here means the token is wrong, revoked, or expired.
+      - name: Probe 1 — identity (npm whoami)
+        run: |
+          if OUT=$(npm whoami --registry=https://registry.npmjs.org 2>&1); then
+            echo "RESULT-WHOAMI: OK — authenticated as '$OUT'"
+          else
+            echo "RESULT-WHOAMI: FAILED — $OUT"
+          fi
+
+      # Proves the token's user belongs to the @ouronet npm org. A granular
+      # token scoped only to packages may fail this while still publishing.
+      - name: Probe 2 — @ouronet org membership
+        run: |
+          if OUT=$(npm org ls ouronet 2>&1); then
+            echo "RESULT-ORG: OK"
+            echo "$OUT"
+          else
+            echo "RESULT-ORG: FAILED (not necessarily fatal) — $OUT"
+          fi
+
+      # Proves the token can read the scope's package permissions.
+      - name: Probe 3 — @ouronet scope access
+        run: |
+          if OUT=$(npm access list packages @ouronet 2>&1); then
+            echo "RESULT-ACCESS: OK"
+            echo "$OUT"
+          else
+            echo "RESULT-ACCESS: FAILED — $OUT"
+          fi
+
+      - name: Install + build (the tarball must be real)
+        run: |
+          npm ci --prefer-offline --no-audit --no-fund
+          npm run build
+
+      # --dry-run does everything a publish does EXCEPT the upload: it packs
+      # the tarball, contacts the registry, and reports what WOULD ship.
+      - name: Probe 4 — publish --dry-run
+        run: |
+          if OUT=$(npm publish --dry-run --access public 2>&1); then
+            echo "RESULT-DRYRUN: OK — this package would publish"
+            echo "$OUT" | tail -30
+          else
+            echo "RESULT-DRYRUN: FAILED — $OUT"
+          fi
+
+      - name: What would ship
+        run: |
+          echo "package: $(node -p "require('./package.json').name")@$(node -p "require('./package.json').version")"
